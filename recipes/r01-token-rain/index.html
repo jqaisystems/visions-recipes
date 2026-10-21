@@ -1,0 +1,517 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <!--
+      R01 · Token Rain. Prompt Engineering, JQ AI SYSTEMS.
+      One take: a Three.js (WebGPURenderer, WebGL2 backend, TSL) particle stage under DOM type.
+      Every visual is a pure function of time: the painter (DOM) and renderAt (GL) read the same T table.
+    -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "three/webgpu": "./assets/vendor/three.webgpu.js",
+          "three/tsl": "./assets/vendor/three.tsl.js"
+        }
+      }
+    </script>
+    <style>
+      @font-face { font-family: "Geist"; src: url("assets/fonts/Geist-latin.woff2") format("woff2"); font-weight: 100 900; }
+      @font-face { font-family: "Geist Mono"; src: url("assets/fonts/GeistMono-latin.woff2") format("woff2"); font-weight: 100 900; }
+      @font-face { font-family: "Instrument Serif"; src: url("assets/fonts/InstrumentSerif-Regular.ttf") format("truetype"); font-style: normal; }
+      @font-face { font-family: "Instrument Serif"; src: url("assets/fonts/InstrumentSerif-Italic.ttf") format("truetype"); font-style: italic; }
+
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #111110; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #111110; }
+
+      #tr-gl { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; z-index: 0; }
+
+      /* World layer: rides the GL camera's vertical travel (1 world unit = 100 px). */
+      #tr-world { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; z-index: 2; overflow: visible; }
+      #tr-field {
+        position: absolute; left: 240px; top: 236px; width: 1440px; height: 104px;
+        display: flex; align-items: center; gap: 22px; padding: 0 36px;
+        background: #1A1A18; border: 2px solid #2A2A27; border-radius: 14px;
+        font: 500 32px/1 "Geist Mono", monospace; color: #F5F5F0;
+      }
+      #tr-field .tr-chev { color: #00A89D; }
+      #tr-typed { white-space: pre; }
+      #tr-caret { display: inline-block; width: 3px; height: 40px; background: #00A89D; margin-left: -18px; }
+      #tr-para {
+        position: absolute; left: 240px; top: 392px; width: 1440px;
+        font: 400 46px/1.95 "Geist", sans-serif; letter-spacing: -0.01em; color: #D6D6D1;
+      }
+      .tr-w { display: inline-block; white-space: pre; }
+      .tr-tag {
+        position: absolute; font: 500 20px/1 "Geist Mono", monospace; letter-spacing: 0.12em;
+        text-transform: uppercase; color: #3CC8BC; white-space: nowrap; opacity: 0;
+      }
+      #tr-scan {
+        position: absolute; left: 0; top: 380px; width: 3px; height: 360px; background: #3CC8BC;
+        box-shadow: 0 0 18px 2px rgba(0, 168, 157, 0.75), 0 0 60px 8px rgba(0, 168, 157, 0.25); opacity: 0;
+      }
+      #tr-line {
+        position: absolute; left: 240px; top: 5220px; white-space: nowrap;
+        font: 400 150px/1 "Instrument Serif", serif; letter-spacing: -0.01em; color: #F5F5F0; opacity: 0;
+      }
+      #tr-l2 { font-style: italic; color: #3CC8BC; }
+
+      /* HUD: fixed to the frame, not the world. */
+      #tr-hud { position: absolute; inset: 0; width: 1920px; height: 1080px; z-index: 3; }
+      #tr-rule { position: absolute; left: 96px; top: 92px; width: 1728px; height: 2px; background: #2E2E2B; transform-origin: 0 50%; }
+      .tr-hl {
+        position: absolute; font: 500 21px/1 "Geist Mono", monospace; letter-spacing: 0.16em;
+        text-transform: uppercase; color: #9A9A95; white-space: nowrap;
+      }
+      #tr-hl-a { left: 96px; top: 56px; }
+      #tr-hl-b { right: 96px; top: 56px; }
+      #tr-status { left: 96px; bottom: 64px; color: #9A9A95; }
+      #tr-status b { color: #3CC8BC; font-weight: 500; }
+      #tr-hl-c { right: 96px; bottom: 64px; }
+
+      /* Lockup */
+      #tr-lock { position: absolute; inset: 0; width: 1920px; height: 1080px; z-index: 4; }
+      #tr-logo { position: absolute; left: 240px; top: 244px; height: 76px; width: auto; clip-path: inset(0 100% 0 0); }
+      #tr-title-mask { position: absolute; left: 240px; top: 676px; height: 80px; overflow: hidden; }
+      #tr-title { display: block; font: 600 64px/80px "Geist", sans-serif; letter-spacing: -0.02em; color: #F5F5F0; white-space: nowrap; }
+      #tr-url { position: absolute; left: 240px; top: 778px; font: 500 28px/1 "Geist Mono", monospace; color: #3CC8BC; white-space: pre; }
+    </style>
+  </head>
+  <body>
+    <div data-hf-id="hf-3x1a" id="root" data-composition-id="main" data-start="0" data-duration="26" data-width="1920" data-height="1080">
+      <canvas data-hf-id="hf-99mb" id="tr-gl" class="clip" data-start="0" data-duration="26" data-track-index="0" width="1920" height="1080"></canvas>
+
+      <div data-hf-id="hf-ge2w" id="tr-world" class="clip" data-start="0" data-duration="26" data-track-index="1">
+        <div data-hf-id="hf-lslu" id="tr-field" data-layout-allow-occlusion><span data-hf-id="hf-lc16" class="tr-chev">&gt;</span><span data-hf-id="hf-r963" id="tr-typed"></span><span data-hf-id="hf-7f82" id="tr-caret"></span></div>
+        <p data-hf-id="hf-1jqd" id="tr-para" data-layout-allow-occlusion><span data-hf-id="hf-0j0v" class="tr-w" data-f="1">In</span> <span data-hf-id="hf-wi2r" class="tr-w" data-f="1">today's</span> <span data-hf-id="hf-bjo6" class="tr-w" data-f="1">fast-paced</span> <span data-hf-id="hf-phd4" class="tr-w" data-f="1">world,</span> <span data-hf-id="hf-8ytp" class="tr-w">we're</span> <span data-hf-id="hf-c0jv" class="tr-w" data-f="2">thrilled</span> <span data-hf-id="hf-9ihi" class="tr-w" data-f="2">to</span> <span data-hf-id="hf-rg4s" class="tr-w" data-f="2">unveil</span> <span data-hf-id="hf-27dq" class="tr-w">a</span> <span data-hf-id="hf-uiak" class="tr-w" data-f="3">game-changing</span> <span data-hf-id="hf-rsbo" class="tr-w">solution</span> <span data-hf-id="hf-zd0q" class="tr-w">that</span> <span data-hf-id="hf-pdq1" class="tr-w" data-f="4">empowers</span> <span data-hf-id="hf-g2rn" class="tr-w">teams</span> <span data-hf-id="hf-l19i" class="tr-w">to</span> <span data-hf-id="hf-xmi8" class="tr-w" data-f="5">unlock</span> <span data-hf-id="hf-5w20" class="tr-w" data-f="5">their</span> <span data-hf-id="hf-uq6x" class="tr-w" data-f="5">full</span> <span data-hf-id="hf-z5p6" class="tr-w" data-f="5">potential</span> <span data-hf-id="hf-ju9d" class="tr-w" data-f="6">&#8212;</span> <span data-hf-id="hf-k9vx" class="tr-w" data-f="7">it's</span> <span data-hf-id="hf-she3" class="tr-w" data-f="7">not</span> <span data-hf-id="hf-ejfo" class="tr-w" data-f="7">just</span> <span data-hf-id="hf-yyil" class="tr-w" data-f="7">a</span> <span data-hf-id="hf-7ufg" class="tr-w" data-f="7">tool,</span> <span data-hf-id="hf-p0sh" class="tr-w" data-f="7">it's</span> <span data-hf-id="hf-253l" class="tr-w" data-f="7">a</span> <span data-hf-id="hf-ce4p" class="tr-w" data-f="7">revolution.</span></p>
+        <div data-hf-id="hf-p29t" class="tr-tag" data-f="1" data-layout-allow-occlusion>cliché opener</div>
+        <div data-hf-id="hf-hqnv" class="tr-tag" data-f="2" data-layout-allow-occlusion>hype</div>
+        <div data-hf-id="hf-hu7d" class="tr-tag" data-f="3" data-layout-allow-occlusion>buzzword</div>
+        <div data-hf-id="hf-gtqb" class="tr-tag" data-f="4" data-layout-allow-occlusion>empty verb</div>
+        <div data-hf-id="hf-zuwu" class="tr-tag" data-f="5" data-layout-allow-occlusion>cliché</div>
+        <div data-hf-id="hf-8ra3" class="tr-tag" data-f="6" data-layout-allow-occlusion>em dash</div>
+        <div data-hf-id="hf-u28p" class="tr-tag" data-f="7" data-layout-allow-occlusion>not x, it's y</div>
+        <div data-hf-id="hf-7quf" id="tr-scan"></div>
+        <h2 data-hf-id="hf-5vsq" id="tr-line" data-layout-allow-occlusion data-layout-allow-overflow><span data-hf-id="hf-zqe3" id="tr-l1">Same model.</span> <span data-hf-id="hf-6ask" id="tr-l2">Your voice.</span></h2>
+      </div>
+
+      <div data-hf-id="hf-693w" id="tr-hud" class="clip" data-start="0" data-duration="26" data-track-index="2">
+        <div data-hf-id="hf-43ce" id="tr-rule"></div>
+        <div data-hf-id="hf-qys9" class="tr-hl" id="tr-hl-a" data-layout-allow-occlusion>R01 · Token Rain</div>
+        <div data-hf-id="hf-7exe" class="tr-hl" id="tr-hl-b" data-layout-allow-occlusion>Prompt Engineering</div>
+        <div data-hf-id="hf-xvui" class="tr-hl" id="tr-status" data-layout-allow-occlusion>Prompt</div>
+        <div data-hf-id="hf-dfa1" class="tr-hl" id="tr-hl-c" data-layout-allow-occlusion>JQ AI Systems</div>
+      </div>
+
+      <div data-hf-id="hf-pi6j" id="tr-lock" class="clip" data-start="20" data-duration="6" data-track-index="3">
+        <img data-hf-id="hf-tjm9" id="tr-logo" src="assets/img/jqai-logo-nav.png" alt="JQ AI SYSTEMS" />
+        <div data-hf-id="hf-yl0y" id="tr-title-mask" data-layout-allow-occlusion data-layout-allow-overflow><span data-hf-id="hf-xbuc" id="tr-title">Prompt Engineering</span></div>
+        <div data-hf-id="hf-oamx" id="tr-url" data-layout-allow-occlusion></div>
+      </div>
+      <audio id="tr-score" src="assets/bgm/score.wav" data-start="0" data-duration="26" data-track-index="5" data-volume="0.6"></audio>
+    </div>
+
+    <script type="module">
+      import * as THREE from "three/webgpu";
+      import {
+        uniform, instancedBufferAttribute, vec2, vec3, float, clamp, smoothstep, length, uv,
+        mx_noise_vec3, mix, color, sin, cos, exp, min, max, pass,
+      } from "three/tsl";
+      import { bloom } from "./assets/vendor/BloomNode.js";
+
+      const W = 1920, H = 1080, PX = 100;     // 1 world unit = 100 px on the z = 0 plane
+      const DUR = 26;
+      const Y_END = -48;                      // world y of the landing plane (final line)
+      const GATES = [-14, -26, -38];          // draft, critique, rewrite
+      const GATE_NAMES = ["Draft", "Critique", "Rewrite"];
+
+      // ---- the one timing table (score/compose.py mirrors these)
+      const T = {
+        rule: [0.1, 0.9],
+        field: 0.3,
+        type: [0.6, 1.9],
+        enter: 2.0,
+        stream: [2.3, 4.4],
+        scanLabel: 4.7,
+        scan: [5.0, 6.9],
+        scanX: [200, 1720],
+        burnFlag: [7.4, 8.1],
+        burnRest: [8.5, 9.2],
+        cam: [9.4, 16.0],
+        land: [15.2, 16.6],
+        lineIn: [16.5, 17.2],
+        partOut: [16.8, 17.5],
+        ruleForm: [21.0, 21.7],
+        logo: [21.3, 22.1],
+        title: [22.0, 22.7],
+        url: [22.5, 23.5],
+      };
+      const PROMPT = "write a launch post for our new product";
+      const URL_TEXT = "ai.joaoqueiros.com/services/prompt-engineering";
+
+      const clamp01 = (v) => Math.min(1, Math.max(0, v));
+      const lin = (t, a, b) => clamp01((t - a) / (b - a));
+      const inOut2 = (p) => (p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2);
+
+      // ---- camera, shared by GL and the DOM world layer
+      const FOV = 30;
+      const D = (H / 2 / PX) / Math.tan((FOV / 2) * Math.PI / 180);
+      // The camera rides the rain: same smoothstep as the particles' mean fall (fall start ~9.4 s, land ~15.9 s),
+      // sitting above the stream and looking down into it.
+      function cameraAt(t) {
+        const p = lin(t, T.cam[0], T.cam[1]);
+        const e = p * p * (3 - 2 * p);
+        const arc = Math.sin(Math.PI * e);
+        return { y: Y_END * e + 4 * arc, z: D + 10 * arc, x: 1.6 * arc, lookY: Y_END * e - 3 * arc, streamY: Y_END * e, p };
+      }
+
+      // Seeded PRNG (mulberry32).
+      function rng(seed) { return () => { seed |= 0; seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+
+      async function build() {
+        await Promise.all([
+          document.fonts.load('400 46px "Geist"'), document.fonts.load('500 32px "Geist Mono"'),
+          document.fonts.load('400 150px "Instrument Serif"'), document.fonts.load('italic 400 150px "Instrument Serif"'),
+          document.fonts.load('600 64px "Geist"'),
+        ]);
+        await document.fonts.ready;
+
+        // ---------- measure the static layout (world transform is identity here)
+        const words = [...document.querySelectorAll("#tr-para .tr-w")].map((el, i) => {
+          const r = el.getBoundingClientRect();
+          return { el, i, f: +(el.dataset.f || 0), x: r.left, y: r.top, w: r.width, h: r.height, text: el.textContent };
+        });
+        // inline-block boxes span the full line height; glyphs sit centred in them
+        const mctx = document.createElement("canvas").getContext("2d");
+        mctx.font = '400 46px "Geist"';
+        const fm = mctx.measureText("Hg");
+        const contentH = fm.fontBoundingBoxAscent + fm.fontBoundingBoxDescent;
+        for (const w of words) w.cy = w.y + (w.h - contentH) / 2;
+        const nW = words.length;
+        const [sx0, sx1] = T.scanX;
+        const lineTops = [...new Set(words.map((w) => Math.round(w.y)))].sort((a, b) => a - b);
+        for (const w of words) {
+          w.line = lineTops.indexOf(Math.round(w.y));
+          w.showT = T.stream[0] + (w.i / nW) * (T.stream[1] - T.stream[0]);
+          w.flagT = T.scan[0] + ((w.x - sx0) / (sx1 - sx0)) * (T.scan[1] - T.scan[0]);
+          const span = w.f ? T.burnFlag : T.burnRest;
+          w.t0 = span[0] + ((w.x - sx0) / (sx1 - sx0)) * (span[1] - span[0] - 0.3) + (w.f ? 0 : w.line * 0.04);
+          w.dur = 0.3;
+        }
+        const tagBoxes = [];
+        const tags = [...document.querySelectorAll(".tr-tag")].map((el) => {
+          const f = +el.dataset.f;
+          const first = words.find((w) => w.f === f);
+          // keep tags on one line from colliding: push right of the previous tag
+          let left = first.x;
+          const prev = tagBoxes.find((b) => Math.abs(b.y - first.y) < 4 && left < b.right + 24);
+          if (prev) left = prev.right + 24;
+          el.style.left = `${left}px`;
+          el.style.top = `${first.cy - 24}px`;
+          tagBoxes.push({ y: first.y, right: left + el.getBoundingClientRect().width });
+          return { el, f, flagT: first.flagT, burnT: Math.min(...words.filter((w) => w.f === f).map((w) => w.t0)) };
+        });
+        const paraBox = document.getElementById("tr-para").getBoundingClientRect();
+        const scan = document.getElementById("tr-scan");
+        scan.style.top = `${paraBox.top - 30}px`;
+        scan.style.height = `${paraBox.height + 60}px`;
+
+        const lineEls = [document.getElementById("tr-l1"), document.getElementById("tr-l2")].map((el) => {
+          const r = el.getBoundingClientRect();
+          return { el, x: r.left, y: r.top - 4800, w: r.width, h: r.height, text: el.textContent, italic: el.id === "tr-l2" };
+        });
+
+        // ---------- DOM painter
+        const els = {
+          world: document.getElementById("tr-world"),
+          field: document.getElementById("tr-field"),
+          typed: document.getElementById("tr-typed"),
+          caret: document.getElementById("tr-caret"),
+          status: document.getElementById("tr-status"),
+          url: document.getElementById("tr-url"),
+        };
+        const nFlags = 7;
+        const hexMix = (a, b, k) => {
+          const pa = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16));
+          const pb = [1, 3, 5].map((i) => parseInt(b.slice(i, i + 2), 16));
+          return `rgb(${pa.map((v, i) => Math.round(v + (pb[i] - v) * k)).join(",")})`;
+        };
+        let lastStatus = "";
+        let glRender = null; // set once the GL stage exists; the painter drives it so DOM and GL share one seek
+        function paint(t) {
+          if (glRender) glRender(t);
+          const cam = cameraAt(t);
+          els.world.style.transform = `translate3d(0, ${(cam.y * PX).toFixed(2)}px, 0)`;
+          // the field enters, then clears out before it can reach the HUD
+          els.field.style.opacity = String(lin(t, T.field, T.field + 0.5) * (1 - lin(t, T.cam[0], T.cam[0] + 0.45)));
+
+          const n = Math.round(lin(t, T.type[0], T.type[1]) * PROMPT.length);
+          els.typed.textContent = PROMPT.slice(0, n);
+          const typing = t >= T.type[0] && t < T.type[1];
+          els.caret.style.opacity = typing || (t < T.stream[1] && (t % 0.9) < 0.45) ? "1" : "0";
+
+          for (const w of words) {
+            const shown = lin(t, w.showT, w.showT + 0.12);
+            const flagged = w.f ? lin(t, w.flagT, w.flagT + 0.15) : 0;
+            const dimmed = w.f ? 0 : lin(t, w.flagT, w.flagT + 0.3);
+            const burn = lin(t, w.t0, w.t0 + w.dur);
+            w.el.style.opacity = burn >= 1 ? "0" : String(shown);
+            w.el.style.color = w.f ? hexMix("#D6D6D1", "#3CC8BC", flagged) : hexMix("#D6D6D1", "#77776F", dimmed);
+            w.el.style.boxShadow = w.f && flagged > 0 ? `inset 0 -7px 0 rgba(0,168,157,${(0.35 * flagged).toFixed(3)})` : "none";
+            w.el.style.clipPath = burn > 0 ? `inset(-12px -12px -12px ${(burn * w.w).toFixed(1)}px)` : "none";
+          }
+          for (const g of tags) {
+            g.el.style.opacity = String(lin(t, g.flagT, g.flagT + 0.2) * (1 - lin(t, g.burnT, g.burnT + 0.2)));
+          }
+          const sp = lin(t, T.scan[0], T.scan[1]);
+          scan.style.transform = `translateX(${(sx0 + sp * (sx1 - sx0)).toFixed(1)}px)`;
+          scan.style.opacity = String(lin(t, T.scan[0] - 0.15, T.scan[0]) * (1 - lin(t, T.scan[1], T.scan[1] + 0.25)));
+
+          els.url.textContent = URL_TEXT.slice(0, Math.round(lin(t, T.url[0], T.url[1]) * URL_TEXT.length));
+
+          let s;
+          if (t < T.enter) s = "Prompt";
+          else if (t < T.scanLabel) s = `Streaming · <b>${words.filter((w) => t >= w.showT).length}</b> tokens`;
+          else if (t < T.cam[0]) s = `Anti-pattern scan · <b>${new Set(words.filter((w) => w.f && t >= w.flagT).map((w) => w.f)).size}/${nFlags}</b> flagged`;
+          else if (t < T.cam[1]) {
+            const passN = GATES.filter((gy) => cam.streamY < gy + 1).length;
+            s = passN ? `Chain · pass <b>${passN}/3</b> ${GATE_NAMES[passN - 1].toLowerCase()}` : "Chain · pass <b>0/3</b>";
+          } else if (t < T.ruleForm[0]) s = "Output · <b>on voice</b>";
+          else s = "";
+          if (s !== lastStatus) { els.status.innerHTML = s; lastStatus = s; }
+        }
+
+        // ---------- GSAP timeline (simple eased moves; the painter owns every per-frame state above)
+        const tl = gsap.timeline({ paused: true });
+        const clock = { t: 0 };
+        tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+        tl.fromTo("#tr-rule", { scaleX: 0 }, { scaleX: 1, duration: T.rule[1] - T.rule[0], ease: "power3.inOut" }, T.rule[0]);
+        tl.fromTo(".tr-hl", { opacity: 0 }, { opacity: 1, duration: 0.4, ease: "power1.out", stagger: 0.08 }, 0.25);
+        tl.fromTo("#tr-field", { y: 26 }, { y: 0, duration: 0.5, ease: "power3.out" }, T.field);
+        tl.to("#tr-hl-c", { opacity: 0, duration: 0.4, ease: "power1.in" }, T.ruleForm[0]);
+        tl.fromTo("#tr-line", { opacity: 0 }, { opacity: 1, duration: T.lineIn[1] - T.lineIn[0], ease: "power1.inOut" }, T.lineIn[0]);
+        tl.fromTo("#tr-line", { y: 0 }, { y: -10, duration: DUR - T.lineIn[0], ease: "sine.inOut" }, T.lineIn[0]);
+        tl.fromTo("#tr-logo", { clipPath: "inset(0 100% 0 0)" }, { clipPath: "inset(0 0% 0 0)", duration: T.logo[1] - T.logo[0], ease: "power2.inOut" }, T.logo[0]);
+        tl.fromTo("#tr-title", { yPercent: 105 }, { yPercent: 0, duration: T.title[1] - T.title[0], ease: "power4.out" }, T.title[0]);
+
+        // ---------- particles
+        const off = document.createElement("canvas"); off.width = W; off.height = H;
+        const g = off.getContext("2d", { willReadFrequently: true });
+        const r = rng(20261021);
+
+        function sampleText(text, font, x, top, step, keep, letterSpacing) {
+          g.clearRect(0, 0, W, H);
+          g.font = font; g.letterSpacing = letterSpacing; g.fillStyle = "#fff"; g.textBaseline = "alphabetic";
+          const m = g.measureText(text);
+          g.fillText(text, x, top + m.fontBoundingBoxAscent);
+          const x0 = Math.max(0, Math.floor(x - 20)), y0 = Math.max(0, Math.floor(top - 20));
+          const bw = Math.min(W - x0, Math.ceil(m.width + 40)), bh = Math.min(H - y0, Math.ceil(m.fontBoundingBoxAscent + m.fontBoundingBoxDescent + 40));
+          const img = g.getImageData(x0, y0, bw, bh).data;
+          const out = [];
+          for (let yy = 0; yy < bh; yy += step) for (let xx = 0; xx < bw; xx += step) {
+            if (img[(yy * bw + xx) * 4 + 3] > 120 && r() < keep) out.push(x0 + xx, y0 + yy);
+          }
+          return out;
+        }
+        const toWorld = (px, py, yOff = 0) => [(px - W / 2) / PX, (H / 2 - py) / PX + yOff];
+
+        // targets: the final line
+        const targets = [];
+        for (const L of lineEls) {
+          const font = `${L.italic ? "italic " : ""}400 150px "Instrument Serif"`;
+          const pts = sampleText(L.text, font, L.x, L.y, 1, 0.85, "-1.5px");
+          for (let k = 0; k < pts.length; k += 2) targets.push(pts[k], pts[k + 1], L.italic ? 1 : 0);
+        }
+        const M = targets.length / 3;
+        // shuffle target order (seeded) so neighbours in the draft land far apart
+        const order = Array.from({ length: M }, (_, k) => k);
+        for (let k = M - 1; k > 0; k--) { const j = Math.floor(r() * (k + 1)); [order[k], order[j]] = [order[j], order[k]]; }
+
+        const parts = []; // [Ax,Ay,Az,rel, Bx,By,Bz,land, fs,kind,flag,teal, Rx,Ry,ruleT,alpha]
+        let ti = 0;
+        const fallStart = (rel) => Math.max(rel + 0.35, T.cam[0] - 0.2 + r() * 0.7);
+        const landT = () => T.land[0] + r() * (T.land[1] - T.land[0]);
+        function pushFaller(Ax, Ay, Az, rel, kind, flag, alpha) {
+          const isHalo = r() < 0.07;
+          let Bx, By, Bz = 0, teal = 0;
+          if (isHalo) {
+            // gaussian cloud around the line (Box-Muller), not a box
+            const u1 = Math.max(1e-6, r()), u2 = r();
+            const rad = Math.sqrt(-2 * Math.log(u1));
+            const hx = 900 + rad * Math.cos(2 * Math.PI * u2) * 560, hy = 495 + rad * Math.sin(2 * Math.PI * u2) * 120;
+            [Bx, By] = toWorld(hx, hy, Y_END); Bz = (r() - 0.5) * 3;
+          } else {
+            const k = order[ti++ % M];
+            [Bx, By] = toWorld(targets[k * 3], targets[k * 3 + 1], Y_END); teal = targets[k * 3 + 2];
+          }
+          const rx = 240 + r() * 1440, ry = 650 + (r() - 0.5) * 3;
+          const [Rx, Ry] = toWorld(rx, ry, Y_END);
+          const ruleT = T.ruleForm[0] + ((rx - 240) / 1440) * (T.ruleForm[1] - T.ruleForm[0] - 0.4);
+          parts.push(Ax, Ay, Az, rel, Bx, By, Bz, landT(), fallStart(rel), isHalo ? 2 : kind, flag, teal, Rx, Ry, ruleT, alpha);
+        }
+        // kind 0: the draft's own glyphs
+        for (const w of words) {
+          const pts = sampleText(w.text, '400 46px "Geist"', w.x, w.cy, 1, w.f ? 0.9 : 0.6, "-0.46px");
+          for (let k = 0; k < pts.length; k += 2) {
+            const [Ax, Ay] = toWorld(pts[k], pts[k + 1]);
+            const rel = w.t0 + ((pts[k] - w.x) / w.w) * w.dur;
+            pushFaller(Ax, Ay, 0, rel, 0, w.f ? 1 : 0, w.f ? 0.85 : 0.5);
+          }
+        }
+        const nText = parts.length / 16;
+        // kind 1: extra rain joining from above the frame
+        const NA = 52000;
+        for (let k = 0; k < NA; k++) {
+          const Ax = (r() - 0.5) * 22, Ay = 6.5 + r() * 9, Az = (r() - 0.5) * 8;
+          pushFaller(Ax, Ay, Az, T.cam[0] - 0.6 + r() * 1.2, 1, 0, 0.32);
+        }
+        // kind 3: depth dust along the whole camera path
+        const ND = 7000;
+        for (let k = 0; k < ND; k++) {
+          const Ax = (r() - 0.5) * 30, Ay = 7 - r() * 64, Az = -12 + r() * 15;
+          parts.push(Ax, Ay, Az, 0, Ax, Ay, Az, 1e4, 0, 3, 0, 0, 0, 0, 1e4, 0.2);
+        }
+        const N = parts.length / 16;
+        const buf = (o) => { const a = new Float32Array(N * 4); for (let k = 0; k < N; k++) for (let c = 0; c < 4; c++) a[k * 4 + c] = parts[k * 16 + o + c]; return a; };
+        const seeds = new Float32Array(N * 4); for (let k = 0; k < N * 4; k++) seeds[k] = r();
+
+        const canvas = document.getElementById("tr-gl");
+        // Hide KHR_parallel_shader_compile: with it, the WebGL backend skips draws whose programs are still linking,
+        // which left the first frame of each render chunk blank. Without it every program links before its draw.
+        const gl = canvas.getContext("webgl2", { antialias: true, alpha: false, depth: true, stencil: false, preserveDrawingBuffer: true });
+        const getExt = gl.getExtension.bind(gl), getSup = gl.getSupportedExtensions.bind(gl);
+        gl.getExtension = (name) => (name === "KHR_parallel_shader_compile" ? null : getExt(name));
+        gl.getSupportedExtensions = () => getSup().filter((n) => n !== "KHR_parallel_shader_compile");
+        const renderer = new THREE.WebGPURenderer({ canvas, context: gl, antialias: true, forceWebGL: true });
+        renderer.setPixelRatio(1); renderer.setSize(W, H, false);
+        renderer.setClearColor(0x111110, 1);
+        await renderer.init();
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(FOV, W / H, 0.1, 400);
+
+        const uTime = uniform(0);
+        const attr = (a) => instancedBufferAttribute(new THREE.InstancedBufferAttribute(a, 4));
+        const aA = attr(buf(0)), aB = attr(buf(4)), aC = attr(buf(8)), aR = attr(buf(12)), aS = attr(seeds);
+
+        const kind = aC.y;
+        const kHalo = smoothstep(1.5, 1.9, kind).mul(float(1).sub(smoothstep(2.1, 2.5, kind)));
+        const kDust = smoothstep(2.5, 2.9, kind);
+        const lifeF = clamp(uTime.sub(aA.w), 0, max(aC.x.sub(aA.w), 0));
+        const P0 = aA.xyz
+          .add(mx_noise_vec3(aA.xyz.mul(0.9).add(vec3(0, lifeF.mul(0.5), aS.x.mul(7)))).mul(min(lifeF, 1.5).mul(0.35)))
+          .add(vec3(aS.z.sub(0.5).mul(lifeF).mul(0.3), lifeF.mul(0.25).mul(aS.w.add(0.3)), aS.y.sub(0.5).mul(lifeF).mul(0.9)));
+        const p = clamp(uTime.sub(aC.x).div(aB.w.sub(aC.x)), 0, 1);
+        const e = p.mul(p).mul(float(3).sub(p.mul(2)));
+        const y = mix(P0.y, aB.y, e);
+        const depth = P0.y.sub(y);
+        const th = depth.mul(aS.x.mul(0.08).add(0.11));
+        const gauss = (gy) => exp(y.sub(gy).div(2.6).pow(2).negate());
+        const funnel = float(1).sub(gauss(GATES[0]).add(gauss(GATES[1])).add(gauss(GATES[2])).mul(0.8));
+        const hx = P0.x.mul(cos(th)).sub(P0.z.mul(sin(th))).mul(funnel);
+        const hz = P0.x.mul(sin(th)).add(P0.z.mul(cos(th))).mul(funnel);
+        const flight = sin(e.mul(Math.PI));
+        const turb = mx_noise_vec3(vec3(hx, y.mul(0.3), hz).mul(0.4).add(uTime.mul(0.15))).mul(flight.mul(0.9));
+        const Hpos = vec3(hx, y, hz).add(turb);
+        const e2 = smoothstep(0.72, 1.0, p);
+        const landed = mix(Hpos, aB.xyz, e2)
+          .add(mx_noise_vec3(aB.xyz.mul(1.7).add(uTime.mul(0.25))).mul(kHalo.mul(e2).mul(0.22)));
+        const rp = smoothstep(aR.z, aR.z.add(0.8), uTime).mul(kHalo);
+        const ruled = mix(landed, vec3(aR.x, aR.y, 0), rp.mul(rp).mul(float(3).sub(rp.mul(2))));
+        const dust = aA.xyz.add(mx_noise_vec3(aA.xyz.mul(0.15).add(uTime.mul(0.05))).mul(1.4));
+        const pos = mix(ruled, dust, kDust);
+
+        // streak along the fall: speed in world units per second
+        const speed = float(6).mul(p).mul(float(1).sub(p)).mul(P0.y.sub(aB.y).abs()).div(aB.w.sub(aC.x));
+        const size = aS.w.mul(0.02).add(0.02).mul(kDust.mul(1.6).add(1));
+        const streak = min(speed.mul(0.05), 4).mul(float(1).sub(e2)).add(1);
+
+        const mat = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+        mat.positionNode = pos;
+        mat.scaleNode = vec2(size, size.mul(streak));
+        const gw = (gy) => smoothstep(gy + 0.6, gy - 0.6, y);
+        const cGrey = color(0xA3A39F), cTeal = color(0x00A89D), cTealLt = color(0x3CC8BC), cBlue = color(0x0099D6), cWhite = color(0xF5F5F0);
+        let c = mix(cGrey, cTeal, aC.z);
+        c = mix(c, color(0xD9D9D4), gw(GATES[0]));
+        c = mix(c, mix(cTeal, cBlue, aS.y), gw(GATES[1]));
+        c = mix(c, mix(cWhite, cTealLt, aC.w), gw(GATES[2]));
+        c = mix(c, mix(cTealLt, cBlue, aS.z), kHalo.mul(e2));
+        c = mix(c, color(0x4F8F8A), kDust);
+        mat.colorNode = c;
+        const released = smoothstep(aA.w, aA.w.add(0.05), uTime).mul(float(1).sub(kDust)).add(kDust);
+        const outFade = float(1).sub(smoothstep(T.partOut[0], T.partOut[1], uTime.sub(aS.y.mul(0.3))));
+        const keep = mix(outFade, float(1), max(kHalo, kDust));
+        const soft = smoothstep(0.5, 0.08, length(uv().sub(0.5)));
+        const settle = mix(float(1), float(0.42), e2.mul(float(1).sub(max(kHalo, kDust))));
+        mat.opacityNode = soft.mul(released).mul(keep).mul(aR.w).mul(settle).mul(rp.mul(1.2).add(1));
+
+        const sprite = new THREE.Sprite(mat);
+        sprite.count = N; sprite.frustumCulled = false;
+        scene.add(sprite);
+
+        // gates: two rings + a mono label each
+        const gateObjs = GATES.map((gy, k) => {
+          const u = uniform(0);
+          const ringMat = new THREE.MeshBasicNodeMaterial({ transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
+          ringMat.colorNode = mix(color(0x00A89D), color(0x3CC8BC), u); ringMat.opacityNode = u.mul(0.75).add(0.25);
+          const ring = new THREE.Mesh(new THREE.TorusGeometry(4.6, 0.022, 8, 320), ringMat);
+          ring.rotation.x = Math.PI / 2; ring.position.y = gy; scene.add(ring);
+          const ring2 = new THREE.Mesh(new THREE.TorusGeometry(5.3, 0.01, 6, 320), ringMat);
+          ring2.rotation.x = Math.PI / 2; ring2.position.y = gy; scene.add(ring2);
+          const lc = document.createElement("canvas"); lc.width = 720; lc.height = 96;
+          const lg = lc.getContext("2d");
+          lg.font = '500 46px "Geist Mono"'; lg.letterSpacing = "6px"; lg.textBaseline = "middle";
+          lg.fillStyle = "#3CC8BC"; lg.fillText(`0${k + 1}`, 4, 50);
+          lg.fillStyle = "#F5F5F0"; lg.fillText(GATE_NAMES[k].toUpperCase(), 110, 50);
+          const tex = new THREE.CanvasTexture(lc); tex.colorSpace = THREE.SRGBColorSpace;
+          const lu = uniform(0);
+          const lm = new THREE.SpriteNodeMaterial({ map: tex, transparent: true, depthWrite: false });
+          lm.opacityNode = lu;
+          const label = new THREE.Sprite(lm);
+          label.scale.set(5.4, 0.72, 1); label.position.set(-8.2, gy + 0.8, 0.5); scene.add(label);
+          return { gy, u, lu, ring, ring2, label };
+        });
+
+        const post = new THREE.PostProcessing(renderer);
+        const scenePass = pass(scene, camera);
+        const sceneColor = scenePass.getTextureNode("output");
+        post.outputNode = sceneColor.add(bloom(sceneColor, 0.85, 0.45, 0.12));
+
+        function renderAt(t) {
+          const cam = cameraAt(t);
+          camera.position.set(cam.x, cam.y, cam.z);
+          camera.lookAt(0, cam.lookY, 0);
+          for (const go of gateObjs) {
+            const near = Math.exp(-Math.pow((cam.y - go.gy - 3) / 5, 2));
+            go.u.value = near;
+            go.lu.value = lin(t, T.cam[0], T.cam[0] + 0.6) * (1 - lin(t, T.cam[1] - 0.4, T.cam[1] + 0.2)) * (0.35 + 0.65 * near);
+            go.ring.rotation.z = t * 0.12; go.ring2.rotation.z = -t * 0.08;
+          }
+          uTime.value = t;
+          post.render();
+        }
+        // Warm every pipeline before the first capture (programs link synchronously, see the context below).
+        for (const go of gateObjs) { go.ring.frustumCulled = false; go.ring2.frustumCulled = false; go.label.frustumCulled = false; }
+        for (const tt of [0, 8, 11, 13, 15, 17, 22]) renderAt(tt);
+
+        let lastGL = -1;
+        glRender = (t) => { if (t !== lastGL) { lastGL = t; renderAt(t); } };
+        window.addEventListener("hf-seek", (ev) => glRender(ev.detail.time));
+        glRender(window.__hfThreeTime || 0);
+        window.TR_INFO = { N, nText, M, words: words.map((w) => ({ text: w.text, f: w.f, show: +w.showT.toFixed(3), flag: +w.flagT.toFixed(3), burn: +w.t0.toFixed(3) })) };
+
+        // register last, after every tween exists
+        paint(0);
+        window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = window.__hf.buildReady || {};
+      window.__hf.buildReady["token-rain"] = build();
+    </script>
+  </body>
+</html>

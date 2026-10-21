@@ -1,0 +1,16 @@
+# renders and tool state never go in the repo
+renders/
+snapshots/
+dist/
+.hyperframes/
+.thumbnails/
+.waveform-cache/
+node_modules/
+*.mp4
+*.mov
+*.webm
+.env*
+*.key
+*.pem
+.DS_Store
+Thumbs.db
