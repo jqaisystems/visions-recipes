@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <!--
+      R02 · Paper Terminal. JQ AI Skills, JQ AI SYSTEMS.
+      One take, DOM + CSS 3D. A paper terminal folds, step by step, into the brand-voice-linter skill, files itself
+      on a shelf of all 47 skills, and the camera pulls back. Every element is written by one painter from time.
+    -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <style>
+      @font-face { font-family: "Geist"; src: url("assets/fonts/Geist-latin.woff2") format("woff2"); font-weight: 100 900; }
+      @font-face { font-family: "Geist Mono"; src: url("assets/fonts/GeistMono-latin.woff2") format("woff2"); font-weight: 100 900; }
+      @font-face { font-family: "Instrument Serif"; src: url("assets/fonts/InstrumentSerif-Regular.ttf") format("truetype"); font-style: normal; }
+      @font-face { font-family: "Instrument Serif"; src: url("assets/fonts/InstrumentSerif-Italic.ttf") format("truetype"); font-style: italic; }
+
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #111110; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #111110; }
+
+      /* background: warm light from the paper, a slow dot field */
+      #pt-bg { position: absolute; inset: 0; width: 1920px; height: 1080px; z-index: 0; overflow: hidden; }
+      #pt-glow { position: absolute; left: 360px; top: 40px; width: 1200px; height: 1000px; border-radius: 50%;
+        background: radial-gradient(closest-side, rgba(243, 241, 236, 0.10), rgba(243, 241, 236, 0.03) 55%, rgba(17, 17, 16, 0) 100%); }
+      #pt-dots { position: absolute; left: -60px; top: -60px; width: 2040px; height: 1200px; opacity: 0.22;
+        background-image: radial-gradient(circle, #3a3a36 1.4px, transparent 1.6px); background-size: 36px 36px; }
+
+      /* the shelf: one world layer, camera = translate + scale written by the painter */
+      #pt-world { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; z-index: 1; transform-origin: 0 0; }
+      .pt-card { position: absolute; width: 300px; height: 75px; border-radius: 6px; background: #F3F1EC;
+        display: flex; align-items: center; gap: 11px; padding: 0 16px; color: #0E0F0F;
+        font: 500 13.5px/1 "Geist Mono", monospace; white-space: nowrap; overflow: hidden;
+        box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35); }
+      .pt-card .pt-dot { flex: 0 0 auto; width: 9px; height: 9px; border-radius: 50%; background: #00A89D; }
+      .pt-card .pt-nm { flex: 1 1 auto; }
+
+      /* the sheet: four hinged strips, one per SKILL.md step */
+      #pt-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; z-index: 2; perspective: 2400px; perspective-origin: 960px 420px; }
+      #pt-paper { position: absolute; left: 580px; top: 160px; width: 760px; height: 760px; transform-style: preserve-3d; transform-origin: 380px 95px; }
+      .pt-strip { position: absolute; left: 0; width: 760px; height: 190px; transform-style: preserve-3d; transform-origin: 50% 0; }
+      #pt-s0 { top: 0; }
+      #pt-s1, #pt-s2, #pt-s3 { top: 190px; }
+      .pt-face { position: absolute; left: 0; top: 0; width: 760px; height: 190px; backface-visibility: hidden; overflow: hidden; }
+      .pt-front { background: #F3F1EC; }
+      .pt-back { background: #E3DFD6; transform: rotateX(180deg); }
+      .pt-shade { position: absolute; inset: 0; background: #0E0F0F; opacity: 0; pointer-events: none; }
+      .pt-body { position: absolute; left: 0; top: 0; width: 760px; height: 190px; padding: 34px 40px; }
+      #pt-s0 .pt-body { top: 44px; height: 146px; padding: 22px 40px; }
+      .pt-num { font: 500 18px/1 "Geist Mono", monospace; color: #00837A; letter-spacing: 0.1em; }
+      .pt-step { margin-top: 14px; font: 600 38px/1.1 "Geist", sans-serif; letter-spacing: -0.02em; color: #0E0F0F; }
+      .pt-det { margin-top: 12px; font: 400 20px/1.3 "Geist Mono", monospace; color: #5E5A54; }
+      .pt-label { font: 500 18px/1 "Geist Mono", monospace; color: #5E5A54; letter-spacing: 0.04em; }
+      #pt-head { position: absolute; left: 0; top: 0; width: 760px; height: 44px; background: #E6E2D9; display: flex; align-items: center;
+        gap: 10px; padding: 0 18px; font: 500 16px/1 "Geist Mono", monospace; color: #5E5A54; }
+      #pt-head i { width: 11px; height: 11px; border-radius: 50%; background: #C9C4B9; display: block; }
+      #pt-head .pt-path { margin-left: 12px; }
+      #pt-head .pt-count { margin-left: auto; color: #007169; }
+      .pt-crease { position: absolute; left: 0; top: 0; width: 760px; height: 2px; background: #00A89D; opacity: 0; }
+
+      /* terminal text, laid over the sheet while it is flat */
+      #pt-screen { position: absolute; left: 0; top: 44px; width: 760px; height: 716px; overflow: hidden; transform: translateZ(1px); }
+      #pt-scroll { padding: 26px 40px; font: 400 23px/1.5 "Geist Mono", monospace; color: #0E0F0F; }
+      .pt-ghost { color: #8A857D; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .pt-day { color: #A8A298; font-size: 17px; margin-top: 10px; }
+      #pt-typed { white-space: pre-wrap; }
+      #pt-cmd { margin-top: 18px; white-space: pre; color: #00837A; }
+      .pt-caret { display: inline-block; width: 12px; height: 26px; background: #0E0F0F; vertical-align: -5px; }
+      #pt-roller { position: absolute; left: -10px; top: 0; width: 780px; height: 4px; background: #0E0F0F; opacity: 0; transform: translateZ(2px);
+        box-shadow: 0 0 0 1px rgba(0, 168, 157, 0.6), 0 6px 18px rgba(0, 0, 0, 0.35); }
+      /* the label stamped on the folded packet: the shelf card itself, scaled up */
+      #pt-stamp { position: absolute; left: 0; top: 0; transform-origin: 0 0; transform: translateZ(3px) scale(2.5333333); opacity: 0; }
+
+      /* HUD */
+      #pt-hud { position: absolute; inset: 0; width: 1920px; height: 1080px; z-index: 3; }
+      .pt-fade { position: absolute; left: 0; width: 1920px; height: 150px; }
+      #pt-fade-t { top: 0; background: linear-gradient(#111110 40%, rgba(17, 17, 16, 0)); }
+      #pt-fade-b { bottom: 0; background: linear-gradient(rgba(17, 17, 16, 0), #111110 60%); }
+      #pt-rule { position: absolute; left: 96px; top: 92px; width: 1728px; height: 2px; background: #2E2E2B; transform-origin: 0 50%; }
+      .pt-hl { position: absolute; font: 500 21px/1 "Geist Mono", monospace; letter-spacing: 0.16em; text-transform: uppercase; color: #ABABA6; white-space: nowrap; }
+      #pt-hl-a { left: 96px; top: 56px; }
+      #pt-hl-b { right: 96px; top: 56px; }
+      #pt-status { left: 96px; bottom: 64px; }
+      #pt-status b { color: #3CC8BC; font-weight: 500; }
+      #pt-hl-c { right: 96px; bottom: 64px; }
+
+      /* lockup */
+      #pt-lock { position: absolute; inset: 0; width: 1920px; height: 1080px; z-index: 4; }
+      #pt-scrim { position: absolute; left: -200px; top: 60px; width: 1700px; height: 980px; border-radius: 50%;
+        background: radial-gradient(closest-side, rgba(17, 17, 16, 0.92), rgba(17, 17, 16, 0.7) 60%, rgba(17, 17, 16, 0) 100%); opacity: 0; }
+      #pt-logo { position: absolute; left: 180px; top: 236px; height: 70px; width: auto; clip-path: inset(0 100% 0 0); }
+      #pt-line { position: absolute; left: 180px; top: 352px; font: 400 112px/1.02 "Instrument Serif", serif; letter-spacing: -0.01em; color: #F5F5F0; }
+      #pt-line .pt-lw { display: inline-block; opacity: 0; }
+      #pt-line em { color: #3CC8BC; }
+      #pt-sub { position: absolute; left: 180px; top: 618px; font: 600 40px/1 "Geist", sans-serif; letter-spacing: -0.02em; color: #F5F5F0; opacity: 0; }
+      #pt-url { position: absolute; left: 180px; top: 684px; font: 500 28px/1 "Geist Mono", monospace; color: #3CC8BC; white-space: pre; }
+    </style>
+  </head>
+  <body>
+    <div data-hf-id="hf-3x1a" id="root" data-composition-id="main" data-start="0" data-duration="26" data-width="1920" data-height="1080">
+      <div data-hf-id="hf-16xo" id="pt-bg" class="clip" data-start="0" data-duration="26" data-track-index="0"><div data-hf-id="hf-akf9" id="pt-glow"></div><div data-hf-id="hf-5b4q" id="pt-dots"></div></div>
+
+      <div data-hf-id="hf-ukgn" id="pt-world" class="clip" data-start="0" data-duration="26" data-track-index="1" data-layout-allow-overflow></div>
+
+      <div data-hf-id="hf-imkr" id="pt-stage" class="clip" data-start="0" data-duration="26" data-track-index="2">
+        <div data-hf-id="hf-lmck" id="pt-paper">
+          <div data-hf-id="hf-2e7t" class="pt-strip" id="pt-s0">
+            <div data-hf-id="hf-bc88" class="pt-face pt-front">
+              <div data-hf-id="hf-vrt8" id="pt-head"><i data-hf-id="hf-wt6k"></i><i data-hf-id="hf-zeb8"></i><i data-hf-id="hf-y7e5"></i><span data-hf-id="hf-vurg" class="pt-path">~/drafts · zsh</span><span data-hf-id="hf-xxo6" class="pt-count" id="pt-count">typed 101×</span></div>
+              <div data-hf-id="hf-oi4r" class="pt-body" data-layout-allow-occlusion><p data-hf-id="hf-kl9m" class="pt-label">SKILL.md · brand-voice-linter</p><p data-hf-id="hf-tca7" class="pt-step"><span data-hf-id="hf-7srq" class="pt-num">00</span>&nbsp; Load the voice guide</p></div>
+              <div data-hf-id="hf-3k6g" class="pt-shade"></div>
+            </div>
+            <div data-hf-id="hf-7jdq" class="pt-face pt-back"><div data-hf-id="hf-li3k" class="pt-shade"></div></div>
+            <div data-hf-id="hf-1mk0" class="pt-strip" id="pt-s1">
+              <div data-hf-id="hf-j2qo" class="pt-face pt-front"><div data-hf-id="hf-q2l0" class="pt-crease"></div>
+                <div data-hf-id="hf-j6ln" class="pt-body" data-layout-allow-occlusion><p data-hf-id="hf-ce5z" class="pt-num">01</p><p data-hf-id="hf-zlcv" class="pt-step">Scan</p><p data-hf-id="hf-m1vv" class="pt-det">em dashes, buzzwords, hedges, AI tells</p></div><div data-hf-id="hf-kb6h" class="pt-shade"></div></div>
+              <div data-hf-id="hf-rlc2" class="pt-face pt-back"><div data-hf-id="hf-kphi" class="pt-shade"></div></div>
+              <div data-hf-id="hf-aafv" class="pt-strip" id="pt-s2">
+                <div data-hf-id="hf-hvtl" class="pt-face pt-front"><div data-hf-id="hf-3hyk" class="pt-crease"></div>
+                  <div data-hf-id="hf-isam" class="pt-body" data-layout-allow-occlusion><p data-hf-id="hf-bzuy" class="pt-num">02</p><p data-hf-id="hf-g774" class="pt-step">Report</p><p data-hf-id="hf-mcra" class="pt-det">a suggested rewrite for every violation</p></div><div data-hf-id="hf-jikf" class="pt-shade"></div></div>
+                <div data-hf-id="hf-rzn3" class="pt-face pt-back"><div data-hf-id="hf-jwvg" class="pt-shade"></div></div>
+                <div data-hf-id="hf-6cbu" class="pt-strip" id="pt-s3">
+                  <div data-hf-id="hf-ia4m" class="pt-face pt-front"><div data-hf-id="hf-2b1h" class="pt-crease"></div>
+                    <div data-hf-id="hf-idzl" class="pt-body" data-layout-allow-occlusion><p data-hf-id="hf-bljx" class="pt-num">03</p><p data-hf-id="hf-llp8" class="pt-step">Fix (only when asked)</p><p data-hf-id="hf-n5hi" class="pt-det">report-only by default</p></div><div data-hf-id="hf-ipyd" class="pt-shade"></div></div>
+                  <div data-hf-id="hf-sdy4" class="pt-face pt-back"><div data-hf-id="hf-j49e" class="pt-shade"></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div data-hf-id="hf-s0c0" id="pt-screen" data-layout-allow-occlusion>
+            <div data-hf-id="hf-covt" id="pt-scroll">
+              <p data-hf-id="hf-ymki" class="pt-day">monday</p>
+              <p data-hf-id="hf-bbrn" class="pt-ghost">&gt; You are a brand voice editor. Check this…</p>
+              <p data-hf-id="hf-n7hd" class="pt-day">tuesday</p>
+              <p data-hf-id="hf-3ctv" class="pt-ghost">&gt; You are a brand voice editor. Check this…</p>
+              <p data-hf-id="hf-h7sz" class="pt-day">today</p>
+              <p data-hf-id="hf-7aj3" id="pt-typed"></p>
+              <p data-hf-id="hf-p5ar" id="pt-cmd"></p>
+            </div>
+          </div>
+          <div data-hf-id="hf-ua3m" id="pt-roller"></div>
+          <div data-hf-id="hf-ep11" id="pt-stamp" class="pt-card" data-layout-allow-occlusion><span data-hf-id="hf-jnfn" class="pt-dot"></span><span data-hf-id="hf-mqeq" class="pt-nm">brand-voice-linter</span></div>
+        </div>
+      </div>
+
+      <div data-hf-id="hf-rwbn" id="pt-hud" class="clip" data-start="0" data-duration="26" data-track-index="3">
+        <div data-hf-id="hf-ka3n" class="pt-fade" id="pt-fade-t"></div><div data-hf-id="hf-ep2t" class="pt-fade" id="pt-fade-b"></div>
+        <div data-hf-id="hf-b870" id="pt-rule"></div>
+        <div data-hf-id="hf-s9x5" class="pt-hl" id="pt-hl-a" data-layout-allow-occlusion>R02 · Paper Terminal</div>
+        <div data-hf-id="hf-i2l2" class="pt-hl" id="pt-hl-b" data-layout-allow-occlusion>JQ AI Skills</div>
+        <div data-hf-id="hf-f2go" class="pt-hl" id="pt-status" data-layout-allow-occlusion></div>
+        <div data-hf-id="hf-ww65" class="pt-hl" id="pt-hl-c" data-layout-allow-occlusion>JQ AI Systems</div>
+      </div>
+
+      <div data-hf-id="hf-kd90" id="pt-lock" class="clip" data-start="19.5" data-duration="6.5" data-track-index="4">
+        <div data-hf-id="hf-vsjk" id="pt-scrim"></div>
+        <img data-hf-id="hf-uqx3" id="pt-logo" src="assets/img/jqai-logo-nav.png" alt="JQ AI SYSTEMS" />
+        <h2 data-hf-id="hf-bxj3" id="pt-line" data-layout-allow-occlusion><span data-hf-id="hf-hdb2" class="pt-lw">Repeatable</span> <span data-hf-id="hf-mjdb" class="pt-lw">AI</span> <span data-hf-id="hf-2kw7" class="pt-lw">workflows,</span><br data-hf-id="hf-x5px" /><span data-hf-id="hf-h6yd" class="pt-lw"><em data-hf-id="hf-26rv">packaged</em></span> <span data-hf-id="hf-5rjd" class="pt-lw"><em data-hf-id="hf-yn6r">as</em></span> <span data-hf-id="hf-6ygg" class="pt-lw"><em data-hf-id="hf-f1vt">skills.</em></span></h2>
+        <p data-hf-id="hf-e6qn" id="pt-sub" data-layout-allow-occlusion>JQ AI Skills · 47 skills · MIT</p>
+        <p data-hf-id="hf-vf14" id="pt-url" data-layout-allow-occlusion></p>
+      </div>
+
+      <audio data-hf-id="hf-wdc5" id="pt-score" src="assets/bgm/score.wav" data-start="0" data-duration="26" data-track-index="5" data-volume="0.74"></audio>
+    </div>
+
+    <script>
+      (function () {
+        const DUR = 26;
+        // ---- the one timing table (score/compose.py mirrors these)
+        const T = {
+          rule: [0.1, 0.9],
+          paperIn: [0.15, 0.85],
+          ghosts: [0.3, 0.6],
+          type: [0.9, 3.4],
+          scroll: [3.9, 4.4],
+          cmd: [4.5, 5.2],
+          enter: 5.35,
+          print: [5.5, 6.5],
+          folds: [[7.6, 8.25], [8.25, 8.9], [8.9, 9.55]], // s3, s2, s1
+          stamp: 9.7,
+          shelfIn: [10.0, 11.8],
+          flight: [10.1, 12.5],
+          land: 12.5,
+          pull: [12.7, 16.5],
+          calls: [16.7, 17.35, 18.0, 18.65, 19.3],
+          recede: [19.8, 20.8],
+          logo: [20.4, 21.1],
+          words: [20.7, 21.6],
+          sub: 21.9,
+          url: [22.3, 23.3],
+        };
+        const PROMPT = "> You are a brand voice editor. Check this copy against the voice guide. Flag em dashes, buzzwords, hedges, vague superlatives and AI-tell phrases. Suggest a rewrite for every line. Change nothing unless I ask.";
+        const CMD = "$ /skill brand-voice-linter";
+        const URL_TEXT = "github.com/jqaisystems/jqai-ai-skills";
+        const SKILLS = ["agents-md-writer", "ai-image-run-pacing", "automation-state-reconciler", "backup-readiness-auditor", "brand-voice-linter", "case-study-writer", "client-delivery-auditor", "client-intake-builder", "client-workspace-scaffolder", "code-deduplicator", "cold-outreach-writer", "demo-animation", "demo-animation-v2", "discovery-brief", "em-dash-remover", "etsy-listing-optimizer", "follow-up-radar", "github-profile-proof-updater", "github-safe-publisher", "idea-inbox", "implement-client-feedback", "lead-scorer", "llms-txt-generator", "local-app-public-demo", "media-spec-checker", "obsidian-daily-note", "ops-status-report", "outreach-pipeline-designer", "php-form-mailer", "proposal-writer", "release-announcement-writer", "remove-ai-image-metadata", "research-brief-curator", "research-to-article", "screen-recorder", "session-handoff", "skill-builder", "skill-reviewer", "social-campaign-proof-tracker", "thumbnail-legibility-check", "thumbnail-set-designer", "vault-janitor", "verify-public-claims", "web-scraper", "website-change-verifier", "windows-reinstall-planner", "write-evidence-backed-profile"];
+        const CALLS = ["em-dash-remover", "github-safe-publisher", "case-study-writer", "research-to-article", "proposal-writer"];
+        const SLOT = SKILLS.indexOf("brand-voice-linter");
+
+        const clamp01 = (v) => Math.min(1, Math.max(0, v));
+        const lin = (t, a, b) => clamp01((t - a) / (b - a));
+        const smooth = (p) => p * p * (3 - 2 * p);
+        const inOut = (p) => (p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2);
+        const out3 = (p) => 1 - Math.pow(1 - p, 3);
+        const out4 = (p) => 1 - Math.pow(1 - p, 4);
+        const mix = (a, b, k) => a + (b - a) * k;
+
+        // ---- shelf layout: 5 columns x 10 rows, filed alphabetically
+        const CW = 300, CH = 75, GX = 320, GY = 95, X0 = 170, Y0 = 75;
+        const world = document.getElementById("pt-world");
+        const cards = SKILLS.map((name, i) => {
+          const el = document.createElement("div");
+          el.className = "pt-card";
+          el.setAttribute("data-layout-allow-occlusion", "");
+          el.innerHTML = `<span class="pt-dot"></span><span class="pt-nm" data-layout-allow-occlusion data-layout-allow-overlap>${name}</span>`;
+          const x = X0 + (i % 5) * GX, y = Y0 + Math.floor(i / 5) * GY;
+          el.style.left = `${x}px`; el.style.top = `${y}px`;
+          world.appendChild(el);
+          return { el, name, i, x, y, cx: x + CW / 2, cy: y + CH / 2 };
+        });
+        const slot = cards[SLOT];
+        // shelf entrance order: nearest to the slot first
+        for (const c of cards) c.inT = T.shelfIn[0] + Math.min(1, Math.hypot(c.cx - slot.cx, c.cy - slot.cy) / 900) * (T.shelfIn[1] - T.shelfIn[0] - 0.5);
+
+        // ---- camera: world screen = W + S * p. Starts close on a point down-left of the slot, pulls back to the full shelf.
+        const S0 = 2.4, S1 = 0.9, FOCUS = { x: slot.cx - 230, y: slot.cy + 120 };
+        function cameraAt(t) {
+          // ends at 0.9 on the shelf centre (960, 540) so the HUD lines stay clear
+          const e = inOut(lin(t, T.pull[0], T.pull[1]));
+          let S = mix(S0, S1, e);
+          let tx = mix(960 - S0 * FOCUS.x, 960 - S1 * 960, e), ty = mix(540 - S0 * FOCUS.y, 540 - S1 * 540, e);
+          // recede behind the lockup: scale about the frame centre
+          const r = out3(lin(t, T.recede[0], T.recede[1]));
+          const k = mix(1, 0.9, r);
+          tx = 960 + (tx - 960) * k; ty = 540 + (ty - 540) * k; S *= k;
+          return { S, tx, ty, dim: mix(1, 0.2, r) };
+        }
+
+        const $ = (id) => document.getElementById(id);
+        const els = {
+          paper: $("pt-paper"), s1: $("pt-s1"), s2: $("pt-s2"), s3: $("pt-s3"), s0: $("pt-s0"),
+          screen: $("pt-screen"), scroll: $("pt-scroll"), typed: $("pt-typed"), cmd: $("pt-cmd"), count: $("pt-count"),
+          roller: $("pt-roller"), stamp: $("pt-stamp"), status: $("pt-status"), rule: $("pt-rule"), dots: $("pt-dots"),
+          hls: [...document.querySelectorAll(".pt-hl")], hlc: $("pt-hl-c"),
+          logo: $("pt-logo"), words: [...document.querySelectorAll(".pt-lw")], sub: $("pt-sub"), url: $("pt-url"), scrim: $("pt-scrim"),
+        };
+        const strips = [els.s0, els.s1, els.s2, els.s3];
+        const bodies = strips.map((s) => s.querySelector(":scope > .pt-front .pt-body"));
+        const shades = strips.map((s) => [s.querySelector(":scope > .pt-front .pt-shade"), s.querySelector(":scope > .pt-back .pt-shade")]);
+        const creases = [null, ...[els.s1, els.s2, els.s3].map((s) => s.querySelector(":scope > .pt-front .pt-crease"))];
+
+        let lastStatus = "";
+        function paint(t) {
+          // background drift
+          els.dots.style.transform = `translate(${(-t * 1.4).toFixed(2)}px, ${(-t * 0.8).toFixed(2)}px)`;
+
+          // HUD
+          els.rule.style.transform = `scaleX(${out3(lin(t, T.rule[0], T.rule[1])).toFixed(4)})`;
+          const hudIn = lin(t, 0.25, 0.75);
+          for (const h of els.hls) h.style.opacity = String(hudIn * (h === els.hlc ? 1 - lin(t, T.recede[0], T.recede[0] + 0.4) : 1));
+
+          // ---- terminal text
+          els.count.textContent = `typed ${t < T.ghosts[0] ? 101 : t < T.ghosts[1] ? 102 : 103}×`;
+          const n = Math.round(lin(t, T.type[0], T.type[1]) * PROMPT.length);
+          const typing = t < T.type[1];
+          els.typed.innerHTML = PROMPT.slice(0, n).replace(/&/g, "&amp;").replace(/</g, "&lt;") + (t < T.cmd[0] && (typing || (t % 0.8) < 0.4) ? '<span class="pt-caret"></span>' : "");
+          const c = Math.round(lin(t, T.cmd[0], T.cmd[1]) * CMD.length);
+          els.cmd.innerHTML = t >= T.cmd[0] ? CMD.slice(0, c) + (t < T.enter || (t < T.print[0] && (t % 0.8) < 0.4) ? '<span class="pt-caret"></span>' : "") : "";
+          els.scroll.style.transform = `translateY(${(-out3(lin(t, T.scroll[0], T.scroll[1])) * 150).toFixed(1)}px)`;
+
+          // ---- the roller prints SKILL.md down the sheet: terminal text vanishes below it, steps appear above it
+          const rp = lin(t, T.print[0], T.print[1]);
+          const rollerY = 44 + rp * 716;
+          els.roller.style.opacity = String(rp > 0 && rp < 1 ? 1 : 0);
+          els.roller.style.transform = `translate3d(0, ${rollerY.toFixed(1)}px, 2px)`;
+          els.screen.style.clipPath = rp > 0 ? `inset(${Math.max(0, rollerY - 44).toFixed(1)}px 0 0 0)` : "none";
+          els.screen.style.opacity = rp >= 1 ? "0" : "1";
+          bodies.forEach((b, i) => {
+            const top = i === 0 ? 44 : i * 190, h = i === 0 ? 146 : 190;
+            const shown = rp <= 0 ? 0 : clamp01((rollerY - top) / h);
+            b.style.clipPath = `inset(0 0 ${((1 - shown) * 100).toFixed(2)}% 0)`;
+          });
+
+          // ---- folds: s3 onto s2, s2 onto s1, s1 behind s0 (zigzag); the sheet tilts while it folds
+          const f = T.folds.map(([a, b]) => inOut(lin(t, a, b)));
+          const ang = [0, -178 * f[2], 178 * f[1], -178 * f[0]];
+          els.s1.style.transform = `rotateX(${ang[1].toFixed(2)}deg) translateZ(${(-0.6 * f[2]).toFixed(2)}px)`;
+          els.s2.style.transform = `rotateX(${ang[2].toFixed(2)}deg) translateZ(${(0.6 * f[1]).toFixed(2)}px)`;
+          els.s3.style.transform = `rotateX(${ang[3].toFixed(2)}deg) translateZ(${(-0.6 * f[0]).toFixed(2)}px)`;
+          let cum = 0;
+          strips.forEach((s, i) => {
+            cum += ang[i];
+            const shade = 0.32 * Math.abs(Math.sin((cum * Math.PI) / 180));
+            shades[i][0].style.opacity = shade.toFixed(3);
+            shades[i][1].style.opacity = (shade * 0.8).toFixed(3);
+            if (creases[i]) creases[i].style.opacity = (Math.sin(Math.PI * f[3 - i]) * 0.9).toFixed(3);
+          });
+          const foldAll = (f[0] + f[1] + f[2]) / 3;
+          const vis = 190 + 190 * (1 - f[2]) * (1 + (1 - f[1]) * (1 + (1 - f[0])));
+          const tilt = Math.sin(Math.PI * foldAll);
+
+          // ---- paper pose: in, fold-centred, then flight to its slot on the shelf
+          const cam = cameraAt(t);
+          const pin = out3(lin(t, T.paperIn[0], T.paperIn[1]));
+          let dx = 0, dy = mix(40, 0, pin) + (540 - (160 + vis / 2)), k = 1, rx = 6 * (1 - pin) + 18 * tilt, ry = -16 * tilt, rz = 0;
+          const fp = inOut(lin(t, T.flight[0], T.flight[1]));
+          if (fp > 0) {
+            const tgx = cam.tx + cam.S * slot.cx, tgy = cam.ty + cam.S * slot.cy;
+            const sx = 960, sy = 540;
+            const arc = Math.sin(Math.PI * fp);
+            dx = mix(sx, tgx, fp) - 960 + 0 * arc;
+            dy = mix(sy, tgy, fp) - 255 - 90 * arc;
+            k = mix(1, cam.S * (CW / 760), fp);
+            rx = 0; ry = -14 * arc; rz = -4 * arc;
+          }
+          els.paper.style.transform = `translate3d(${dx.toFixed(2)}px, ${dy.toFixed(2)}px, 0) scale(${k.toFixed(4)}) rotateX(${rx.toFixed(2)}deg) rotateY(${ry.toFixed(2)}deg) rotateZ(${rz.toFixed(2)}deg)`;
+          els.paper.style.opacity = t >= T.land ? "0" : String(lin(t, T.paperIn[0], T.paperIn[0] + 0.3));
+
+          // stamp: the shelf card lands on the packet
+          const st = lin(t, T.stamp, T.stamp + 0.28);
+          els.stamp.style.opacity = String(st > 0 ? 1 : 0);
+          els.stamp.style.transform = `translateZ(3px) scale(${(2.5333333 * mix(1.07, 1, out4(st))).toFixed(5)})`;
+
+          // ---- shelf
+          world.style.transform = `translate(${cam.tx.toFixed(2)}px, ${cam.ty.toFixed(2)}px) scale(${cam.S.toFixed(5)})`;
+          world.style.opacity = cam.dim.toFixed(3);
+          const callIdx = T.calls.findIndex((ct) => t >= ct && t < ct + 0.65);
+          for (const cd of cards) {
+            let o, y = 0, lift = 0;
+            if (cd.i === SLOT) o = t >= T.land ? 1 : 0;
+            else { const p = out3(lin(t, cd.inT, cd.inT + 0.5)); o = p; y = (1 - p) * 14; }
+            const ci = CALLS.indexOf(cd.name);
+            if (ci >= 0) lift = Math.sin(Math.PI * lin(t, T.calls[ci], T.calls[ci] + 0.65));
+            cd.el.style.opacity = o.toFixed(3);
+            cd.el.style.transform = `translateY(${(y - 14 * lift).toFixed(2)}px) scale(${(1 + 0.18 * lift).toFixed(4)})`; cd.el.style.zIndex = lift > 0.01 ? "2" : "";
+            cd.el.style.boxShadow = lift > 0.01
+              ? `0 ${10 + 14 * lift}px ${24 + 20 * lift}px rgba(0,0,0,.4), 0 0 0 ${(2 * lift).toFixed(2)}px #00A89D, 0 0 ${(28 * lift).toFixed(1)}px rgba(0,168,157,${(0.55 * lift).toFixed(3)})`
+              : "0 10px 24px rgba(0,0,0,.35)";
+          }
+
+          // ---- lockup
+          els.scrim.style.opacity = String(out3(lin(t, T.recede[0], T.recede[1])));
+          els.logo.style.clipPath = `inset(0 ${((1 - inOut(lin(t, T.logo[0], T.logo[1]))) * 100).toFixed(2)}% 0 0)`;
+          els.words.forEach((w, i) => {
+            const p = out4(lin(t, T.words[0] + i * 0.12, T.words[0] + i * 0.12 + 0.5));
+            w.style.opacity = p > 0 ? "1" : "0";
+            w.style.transform = `translateY(${((1 - p) * 40).toFixed(2)}px)`;
+            w.style.clipPath = `inset(0 0 ${((1 - p) * 100).toFixed(1)}% 0)`;
+          });
+          const sp = out3(lin(t, T.sub, T.sub + 0.5));
+          els.sub.style.opacity = sp.toFixed(3);
+          els.sub.style.transform = `translateY(${((1 - sp) * 16).toFixed(2)}px)`;
+          els.url.textContent = URL_TEXT.slice(0, Math.round(lin(t, T.url[0], T.url[1]) * URL_TEXT.length));
+
+          // ---- status line
+          let s;
+          if (t < T.scroll[0]) s = `Same prompt · typed <b>${t < T.ghosts[0] ? 101 : t < T.ghosts[1] ? 102 : 103}</b> times`;
+          else if (t < T.print[0]) s = "Package it · <b>/skill</b>";
+          else if (t < T.folds[0][0]) s = "SKILL.md · <b>4</b> steps";
+          else if (t < T.stamp) s = `Folding · <b>${f.filter((v) => v > 0.5).length}/3</b> creases`;
+          else if (t < T.pull[0]) s = "Filed · <b>brand-voice-linter</b>";
+          else if (t < T.calls[0]) s = `Library · <b>${Math.max(1, Math.round(1 + 46 * inOut(lin(t, T.pull[0], T.pull[1] - 0.4))))}</b> skills`;
+          else if (t < T.recede[0]) s = callIdx >= 0 ? `Calling · <b>${CALLS[callIdx]}</b>` : "Library · <b>47</b> skills";
+          else s = "";
+          if (s !== lastStatus) { els.status.innerHTML = s; lastStatus = s; }
+        }
+
+        const tl = gsap.timeline({ paused: true });
+        const clock = { t: 0 };
+        tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+        paint(0);
+        window.PT_T = T;
+        window.__timelines["main"] = tl;
+      })();
+    </script>
+  </body>
+</html>

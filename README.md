@@ -8,6 +8,7 @@ Watch the films and read the recipes at **[visions.joaoqueiros.com/recipes](http
 
 | | Recipe | Made for | Stack | Get it |
 |---|---|---|---|---|
+| <img src="recipes/r02-paper-terminal/poster.jpg" width="240" alt="Paper Terminal: a sheet of paper folding along the four steps of a SKILL.md"> | **R02 · [Paper Terminal](recipes/r02-paper-terminal)**<br>A terminal drawn as paper prints a document, folds along its sections into a card, and files the card on a shelf of many. | JQ AI Skills · JQ AI SYSTEMS | HTML, CSS 3D, GSAP, Python (score) | [watch](https://visions.joaoqueiros.com/recipes/paper-terminal/?utm_source=github&utm_medium=referral&utm_campaign=recipes) · [zip](https://github.com/jqaisystems/visions-recipes/releases/tag/r02-paper-terminal-v1) |
 | <img src="recipes/r01-token-rain/poster.jpg" width="240" alt="Token Rain: token particles pouring through a glowing ring labelled 01 DRAFT"> | **R01 · [Token Rain](recipes/r01-token-rain)**<br>Text dissolves into particles sampled from its own letters, rains through a sequence of gates and recompiles as new text. | Prompt Engineering · JQ AI SYSTEMS | Three.js WebGPURenderer, TSL, GSAP, Canvas 2D, Python (score) | [watch](https://visions.joaoqueiros.com/recipes/token-rain/?utm_source=github&utm_medium=referral&utm_campaign=recipes) · [zip](https://github.com/jqaisystems/visions-recipes/releases/tag/r01-token-rain-v1) |
 
 ## Use a recipe
