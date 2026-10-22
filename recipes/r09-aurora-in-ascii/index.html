@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <!--
+      R09 · Aurora in ASCII. The Recipes library on visions.joaoqueiros.com.
+      One take, Three.js (WebGPURenderer, WebGL2 backend, TSL). A live 3D scene (aurora ribbons, stars, a ridge)
+      is rendered to a texture, and one post shader cuts the frame into cells: each cell measures the picture at
+      its centre and draws the matching glyph from a font atlas, in that spot's colour. The cell size is a
+      uniform, which gives the shrink beat; the title is a second mask read by the same pass. Everything is
+      computed from time, so any frame renders on its own. DOM type on top, one painter.
+    -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "three/webgpu": "./assets/vendor/three.webgpu.js",
+          "three/tsl": "./assets/vendor/three.tsl.js"
+        }
+      }
+    </script>
+    <style>
+      @font-face { font-family: "IBM Plex Mono"; src: url("assets/fonts/IBMPlexMono-Regular.ttf") format("truetype"); font-weight: 400; }
+      @font-face { font-family: "IBM Plex Mono"; src: url("assets/fonts/IBMPlexMono-Medium.ttf") format("truetype"); font-weight: 500; }
+      @font-face { font-family: "Fraunces"; src: url("assets/fonts/Fraunces-latin.woff2") format("woff2"); font-weight: 100 900; }
+
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #07090C; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #07090C; }
+
+      #aa-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #aa-gl { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+
+      #aa-type { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      .aa-mono { position: absolute; white-space: pre; font: 500 26px/1 "IBM Plex Mono", monospace; color: #CFFBE4;
+        text-shadow: 0 0 10px rgba(92, 242, 162, 0.55); }
+      #aa-cmd { left: 96px; top: 84px; }
+      #aa-status { left: 96px; top: 978px; font-size: 18px; letter-spacing: 0.06em; color: #9FE9C6; opacity: 0;
+        text-shadow: 0 0 8px rgba(92, 242, 162, 0.4); }
+      #aa-sub { left: 0; width: 1920px; top: 676px; text-align: center; font-size: 30px; letter-spacing: 0.08em; }
+      #aa-url { left: 0; width: 1920px; top: 736px; text-align: center; font-size: 24px; letter-spacing: 0.1em; color: #A9F3D2; }
+      .aa-cur { display: inline-block; width: 0.6em; height: 1em; margin-left: 2px; vertical-align: -0.12em;
+        background: #CFFBE4; box-shadow: 0 0 10px rgba(92, 242, 162, 0.7); }
+    </style>
+  </head>
+  <body>
+    <div data-hf-id="hf-3x1a" id="root" data-composition-id="main" data-start="0" data-duration="26" data-width="1920" data-height="1080">
+      <div data-hf-id="hf-me2j" id="aa-stage" class="clip" data-start="0" data-duration="26" data-track-index="0">
+        <canvas data-hf-id="hf-nazn" id="aa-gl" width="1920" height="1080" data-layout-allow-overflow></canvas>
+      </div>
+      <div data-hf-id="hf-u9h8" id="aa-type" class="clip" data-start="0" data-duration="26" data-track-index="1">
+        <p data-hf-id="hf-kway" id="aa-cmd" class="aa-mono" data-layout-allow-occlusion></p>
+        <p data-hf-id="hf-quw8" id="aa-status" class="aa-mono" data-layout-allow-occlusion></p>
+        <p data-hf-id="hf-86nw" id="aa-sub" class="aa-mono" data-layout-allow-occlusion></p>
+        <p data-hf-id="hf-a9fx" id="aa-url" class="aa-mono" data-layout-allow-occlusion></p>
+      </div>
+
+      <audio data-hf-id="hf-d2ly" id="aa-score" src="assets/bgm/score.wav" data-start="0" data-duration="26" data-track-index="7" data-volume="0.71"></audio>
+    </div>
+
+    <script type="module">
+      import * as THREE from "three/webgpu";
+      import {
+        uniform, vec2, vec3, vec4, float, clamp, smoothstep, mix, sin, cos, abs, max, min, floor, fract, dot, pow,
+        uv, texture, mx_noise_float, pass, color, screenUV, positionLocal, instanceIndex, hash,
+      } from "three/tsl";
+
+      const W = 1920, H = 1080, DUR = 26;
+      const CMD = "render aurora --ascii";
+      const SUB = "films, prompts and source";
+      const URL_TEXT = "visions.joaoqueiros.com/recipes";
+      const RAMP = " .:-=+*#%@";
+      const CW = 12, CH = 20;                       // a cell at full size: 160 x 54 glyphs
+
+      // ---- one timing table (score/compose.py mirrors these)
+      const T = {
+        type: [0.8, 2.6], enter: 2.9,             // the command types itself, then runs
+        reveal: [3.3, 3.0],                        // cells flicker on between 3.3 and 6.3
+        rise: [3.6, 10.0],                         // the curtains grow from nothing to full height
+        bright: [10.0, 15.0],                      // ripple and brighten
+        shrink: [15.0, 17.0, 19.0],                // cells shrink to 1/4, then grow back
+        dim: [19.2, 21.0], title: [19.6, 2.0],     // aurora dims, the title's cells come on
+        sub: [22.0, 23.0], url: [22.8, 24.0],
+      };
+      window.AA_T = T;
+
+      const clamp01 = (v) => Math.min(1, Math.max(0, v));
+      const lin = (t, a, b) => clamp01((t - a) / (b - a));
+      const ease = (x) => x * x * (3 - 2 * x);
+      // cell scale, shared by the shader and the status line
+      function cellScale(t) {
+        const [a, m, b] = T.shrink;
+        if (t <= a || t >= b) return 1;
+        const u = t < m ? ease(lin(t, a, m)) : 1 - ease(lin(t, m, b));
+        return 1 - 0.75 * u;
+      }
+
+      // ---- DOM painter
+      const els = { cmd: document.getElementById("aa-cmd"), status: document.getElementById("aa-status"),
+        sub: document.getElementById("aa-sub"), url: document.getElementById("aa-url") };
+      const cur = (t) => (Math.floor(t * 2.2) % 2 === 0 ? '<span class="aa-cur"></span>' : '<span class="aa-cur" style="opacity:0"></span>');
+      let glRender = null;
+      function paint(t) {
+        if (glRender) glRender(t);
+        // terminal: prompt, typed command, cursor; after enter the line stays, then fades away
+        const n = Math.round(lin(t, T.type[0], T.type[1]) * CMD.length);
+        const typing = t < T.enter;
+        els.cmd.innerHTML = "$ " + CMD.slice(0, n) + (typing ? cur(t) : "");
+        els.cmd.style.opacity = (1 - 0.6 * lin(t, 4.2, 6.0) - 0.4 * lin(t, 8.0, 10.0)).toFixed(3);
+        // status line: the grid's live cell size
+        const s = cellScale(t);
+        const cw = CW * s, ch = CH * s;
+        els.status.textContent = `aurora.ascii   cell ${cw.toFixed(1)} x ${ch.toFixed(1)} px   ${Math.round(W / cw)} x ${Math.round(H / ch)} glyphs`;
+        els.status.style.opacity = (0.85 * lin(t, 3.4, 4.2) * (1 - lin(t, 19.4, 20.4))).toFixed(3);
+        // end: subtitle and url type in under the title, a cursor waits after the url
+        els.sub.textContent = SUB.slice(0, Math.round(lin(t, T.sub[0], T.sub[1]) * SUB.length));
+        const un = Math.round(lin(t, T.url[0], T.url[1]) * URL_TEXT.length);
+        els.url.innerHTML = URL_TEXT.slice(0, un) + (t >= T.url[0] ? cur(t) : "");
+      }
+      const tl = gsap.timeline({ paused: true });
+      const clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+
+      async function build() {
+        await Promise.all([document.fonts.load('500 26px "IBM Plex Mono"'), document.fonts.load('400 300px "Fraunces"')]);
+
+        const canvas = document.getElementById("aa-gl");
+        // Hide KHR_parallel_shader_compile so every program links before its first draw (see R01).
+        const gl = canvas.getContext("webgl2", { antialias: false, alpha: false, depth: true, stencil: false, preserveDrawingBuffer: true });
+        const getExt = gl.getExtension.bind(gl), getSup = gl.getSupportedExtensions.bind(gl);
+        gl.getExtension = (name) => (name === "KHR_parallel_shader_compile" ? null : getExt(name));
+        gl.getSupportedExtensions = () => getSup().filter((x) => x !== "KHR_parallel_shader_compile");
+        const renderer = new THREE.WebGPURenderer({ canvas, context: gl, antialias: false, forceWebGL: true });
+        renderer.setPixelRatio(1); renderer.setSize(W, H, false);
+        renderer.setClearColor(0x000000, 1);
+        await renderer.init();
+
+        // ---- glyph atlas: the ramp in Plex Mono, one 60 x 100 box per glyph
+        const GW = 60, GH = 100;
+        const ac = document.createElement("canvas"); ac.width = GW * RAMP.length; ac.height = GH;
+        const ax = ac.getContext("2d");
+        ax.fillStyle = "#000"; ax.fillRect(0, 0, ac.width, ac.height);
+        ax.fillStyle = "#fff"; ax.font = '500 84px "IBM Plex Mono"'; ax.textAlign = "center"; ax.textBaseline = "middle";
+        for (let i = 0; i < RAMP.length; i++) ax.fillText(RAMP[i], GW * (i + 0.5), GH * 0.53);
+        const atlas = new THREE.CanvasTexture(ac);
+        atlas.generateMipmaps = true; atlas.minFilter = THREE.LinearMipmapLinearFilter; atlas.magFilter = THREE.LinearFilter;
+        atlas.flipY = true;
+
+        // ---- title mask: "Recipes" in Fraunces, softened so its edges read as a ramp
+        const tc = document.createElement("canvas"); tc.width = W; tc.height = H;
+        const tx = tc.getContext("2d");
+        tx.fillStyle = "#000"; tx.fillRect(0, 0, W, H);
+        tx.filter = "blur(5px)"; tx.fillStyle = "#fff"; tx.font = '400 300px "Fraunces"'; tx.textAlign = "center"; tx.textBaseline = "alphabetic";
+        tx.fillText("Recipes", W / 2, 590);
+        const titleTex = new THREE.CanvasTexture(tc); titleTex.flipY = true;
+
+        // ---- the 3D scene
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(58, W / H, 0.1, 400);
+        camera.position.set(0, 1.2, 0);
+        camera.lookAt(0, 14, -40);
+        const uTime = uniform(0), uRise = uniform(0), uBright = uniform(0), uDim = uniform(1);
+
+        const GREEN = color(0x5CF2A2), TEAL = color(0x3FC8D8), VIOLET = color(0x9B7BFF);
+
+        // aurora: wide vertical ribbons whose base line wanders in depth, with rays running up them
+        const curtains = [
+          { z: -34, y: 1.5, h: 30, seed: 1.7, amp: 1.0 },
+          { z: -46, y: 3.0, h: 40, seed: 4.3, amp: 0.85 },
+          { z: -60, y: 5.0, h: 50, seed: 8.9, amp: 0.7 },
+        ];
+        for (const c of curtains) {
+          const geo = new THREE.PlaneGeometry(150, 1, 480, 1);
+          geo.translate(0, 0.5, 0);
+          const m = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
+          const p = positionLocal;
+          const flow = uTime.mul(0.06).add(c.seed);
+          const fold = mx_noise_float(vec3(p.x.mul(0.018), flow, c.seed)).mul(14);
+          const sway = sin(p.x.mul(0.05).add(uTime.mul(0.35).add(c.seed))).mul(2.2);
+          const rise = smoothstep(0.0, 1.0, uRise.mul(1.15).sub(mx_noise_float(vec3(p.x.mul(0.01), c.seed, 0.5)).mul(0.15).add(0.075)));
+          const hh = float(c.h).mul(rise).mul(float(0.75).add(mx_noise_float(vec3(p.x.mul(0.03), flow.mul(1.4), 3.0)).mul(0.35)));
+          // the base line snakes up and down across the sky, so each curtain reads as a folded ribbon
+          const base = float(c.y).add(mx_noise_float(vec3(p.x.mul(0.016), flow.mul(0.8), c.seed)).mul(9.0));
+          m.positionNode = vec3(p.x, base.add(p.y.mul(hh)), float(c.z).add(fold).add(sway.mul(p.y)));
+          const v = uv().y;
+          const rays = pow(mx_noise_float(vec3(uv().x.mul(220), uTime.mul(0.22).add(c.seed), 1.0)).mul(0.5).add(0.5), 3.0);
+          // bright lower hem, long soft fade upwards, and patches that drift along the curtain
+          const band = smoothstep(0.0, 0.04, v).mul(pow(float(1).sub(v), 2.2)).mul(float(0.6).add(float(1).sub(smoothstep(0.0, 0.18, v)).mul(0.9)));
+          const patch = smoothstep(-0.35, 0.4, mx_noise_float(vec3(uv().x.mul(5.0).sub(uTime.mul(0.05)), c.seed, 9.0)));
+          const lift = float(0.55).add(uBright.mul(0.45).mul(float(0.7).add(sin(uTime.mul(1.3).add(uv().x.mul(20)).add(c.seed)).mul(0.3))));
+          const hue = mix(mix(GREEN, TEAL, smoothstep(0.08, 0.35, v)), VIOLET.mul(1.8), smoothstep(0.3, 0.75, v));
+          const edgeFade = smoothstep(0.0, 0.12, uv().x).mul(smoothstep(1.0, 0.88, uv().x));
+          m.colorNode = hue.mul(band.mul(float(0.25).add(rays.mul(1.5))).mul(patch).mul(lift).mul(c.amp).mul(edgeFade).mul(uDim).mul(1.25));
+          m.opacityNode = float(1);
+          scene.add(new THREE.Mesh(geo, m));
+        }
+
+        // stars: a few hundred soft points high in the sky, twinkling
+        {
+          const smat = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+          const r1 = hash(instanceIndex), r2 = hash(instanceIndex.add(7919)), r3 = hash(instanceIndex.add(15331));
+          smat.positionNode = vec3(r1.sub(0.5).mul(240), float(6).add(r2.mul(70)), float(-90).sub(r3.mul(20)));
+          smat.scaleNode = vec2(float(0.35).add(r3.mul(0.5)));
+          const q = uv().sub(0.5).mul(2);
+          const soft = smoothstep(1.0, 0.0, dot(q, q));
+          const tw = float(0.55).add(sin(uTime.mul(float(1.5).add(r1.mul(3))).add(r2.mul(40))).mul(0.45));
+          smat.colorNode = mix(color(0xE8FFF6), VIOLET, r3.mul(0.5)).mul(tw).mul(float(0.6).add(uRise.mul(0.4))).mul(uDim);
+          smat.opacityNode = soft;
+          const stars = new THREE.Sprite(smat); stars.count = 420; stars.frustumCulled = false;
+          scene.add(stars);
+        }
+
+        // ridge: a dark hill line in front, its top edge catching the aurora
+        {
+          const geo = new THREE.PlaneGeometry(160, 30, 320, 1);
+          const m = new THREE.MeshBasicNodeMaterial({ transparent: false });
+          const p = positionLocal;
+          const top = mx_noise_float(vec3(p.x.mul(0.035), 2.0, 0.0)).mul(2.6).add(mx_noise_float(vec3(p.x.mul(0.12), 5.0, 0.0)).mul(0.7));
+          const isTop = p.y.greaterThan(0);
+          m.positionNode = vec3(p.x, isTop.select(top.add(1.2), float(-25)), float(-22));
+          const edge = smoothstep(0.975, 1.0, uv().y);
+          m.colorNode = mix(color(0x05090B), GREEN.mul(0.22).add(TEAL.mul(0.1)), edge.mul(uRise)).mul(uDim.mul(0.5).add(0.5));
+          scene.add(new THREE.Mesh(geo, m));
+        }
+
+        // ---- the ASCII pass
+        const uScale = uniform(1), uReveal = uniform(0), uTitle = uniform(0);
+        const post = new THREE.PostProcessing(renderer);
+        const sceneTex = pass(scene, camera).getTextureNode("output");
+
+        const px = vec2(screenUV.x.mul(W), screenUV.y.mul(H));
+        const cs = vec2(CW, CH).mul(uScale);
+        const centre = vec2(W / 2, H / 2);
+        const g = px.sub(centre).div(cs);                  // the grid zooms about the frame's centre
+        const cell = floor(g), local = fract(g);
+        const cuv = cell.add(0.5).mul(cs).add(centre).div(vec2(W, H));
+        const sc = sceneTex.sample(cuv).rgb;
+        const lumS = dot(sc, vec3(0.2126, 0.7152, 0.0722));
+
+        // per cell: when it switches on, plus a flicker of random glyphs around that moment
+        const cid = cell.add(vec2(400, 400));
+        const hseed = hash(cid.x.mul(1031).add(cid.y.mul(7)).toUint());
+        const tOn = float(T.reveal[0]).add(hseed.mul(T.reveal[1]));
+        const on = smoothstep(0, 0.05, uTime.sub(tOn));
+        const flick = float(1).sub(smoothstep(0.0, 0.35, uTime.sub(tOn))).mul(on);
+        const rnd = hash(cid.x.mul(131).add(cid.y.mul(977)).add(floor(uTime.mul(15)).mul(7121)).toUint());
+
+        // title: the mask at the cell centre, coming on cell by cell with its own flicker
+        const tm = texture(titleTex, vec2(cuv.x, float(1).sub(cuv.y))).r;
+        const tOnT = float(T.title[0]).add(hash(cid.x.mul(17).add(cid.y.mul(5003)).toUint()).mul(T.title[1]));
+        const tVis = smoothstep(0, 0.05, uTime.sub(tOnT)).mul(uTitle.greaterThan(0).select(float(1), float(0)));
+        const tFlick = float(1).sub(smoothstep(0.0, 0.3, uTime.sub(tOnT))).mul(tVis).mul(smoothstep(0.06, 0.15, tm));
+        const tLum = tm.mul(tVis);
+
+        const lum = max(lumS.mul(2.2), tLum);
+        const level = clamp(lum, 0, 0.999).pow(0.8);
+        const steady = floor(level.mul(RAMP.length));
+        const wild = floor(rnd.mul(RAMP.length - 1)).add(1);
+        const flickNow = max(flick, tFlick).greaterThan(0.02).and(rnd.greaterThan(0.25));
+        const gi = flickNow.select(wild, steady);
+        const auv = vec2(gi.add(local.x).div(RAMP.length), float(1).sub(local.y));
+        const glyph = texture(atlas, auv).r;
+
+        // colour: the scene's hue at full strength, the title in pale mint
+        const hueS = sc.div(max(lumS, 0.02)).mul(0.55).min(vec3(1.4));
+        const mint = color(0xDFFFEF);
+        const tint = mix(hueS, mint, smoothstep(0.05, 0.4, tLum).mul(smoothstep(0.0, 0.3, tLum.sub(lumS.mul(0.5)))));
+        const ink = tint.mul(glyph).mul(on.max(tVis)).mul(float(0.55).add(level.mul(0.75)));
+
+        // phosphor: a little of the picture bleeds behind the glyphs; scanlines and a soft vignette
+        const bleed = sc.mul(0.05).mul(on).add(color(0xDFFFEF).mul(tLum.mul(0.05)));
+        const smooth = smoothstep(0.62, 0.3, uScale);    // when the cells are tiny, the picture shows through
+        const shown = mix(ink.add(bleed), sc.mul(1.15).add(ink.mul(0.35)), smooth.mul(0.85));
+        const scan = float(0.9).add(sin(px.y.mul(Math.PI / 1.5)).mul(0.1));
+        const vg = float(1).sub(dot(screenUV.sub(0.5), screenUV.sub(0.5)).mul(0.55));
+        post.outputNode = vec4(shown.mul(scan).mul(vg).add(color(0x07090C)), 1);
+
+        function renderAt(t) {
+          uTime.value = t;
+          uRise.value = ease(lin(t, T.rise[0], T.rise[1]));
+          uBright.value = ease(lin(t, T.bright[0], T.bright[0] + 2)) * (1 - 0.4 * lin(t, T.bright[1], T.bright[1] + 3));
+          uDim.value = 1 - 0.7 * ease(lin(t, T.dim[0], T.dim[1]));
+          uScale.value = cellScale(t);
+          uTitle.value = t >= T.title[0] ? 1 : 0;
+          post.render();
+        }
+        for (const tt of [0, 5, 12, 17, 22]) renderAt(tt);       // warm every pipeline before the first capture
+
+        let lastGL = -1;
+        glRender = (t) => { if (t !== lastGL) { lastGL = t; renderAt(t); } };
+        window.addEventListener("hf-seek", (ev) => glRender(ev.detail.time));
+        glRender(window.__hfThreeTime || 0);
+
+        paint(0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = window.__hf.buildReady || {};
+      window.__hf.buildReady["aurora-in-ascii"] = build();
+    </script>
+  </body>
+</html>
