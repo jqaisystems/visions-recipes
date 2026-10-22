@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <!--
+      R07 · Gommage. Imagined Worlds, the Stills collection on visions.joaoqueiros.com.
+      One take, Three.js (WebGPURenderer, WebGL2 backend, TSL). "Lantern Festival" comes apart from the left into
+      about 32,000 leaves, each one carrying the colour of the spot it left; a wind spirals them and they settle,
+      bottom up, into "Sea of Blooms". The images' dissolve fronts and every leaf are computed on the GPU from time
+      and a per-leaf seed, so any frame renders on its own. DOM type on top, one painter.
+    -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "three/webgpu": "./assets/vendor/three.webgpu.js",
+          "three/tsl": "./assets/vendor/three.tsl.js"
+        }
+      }
+    </script>
+    <style>
+      @font-face { font-family: "Manrope"; src: url("assets/fonts/Manrope-latin.woff2") format("woff2"); font-weight: 200 800; }
+      @font-face { font-family: "Instrument Serif"; src: url("assets/fonts/InstrumentSerif-Regular.ttf") format("truetype"); font-style: normal; }
+      @font-face { font-family: "Instrument Serif"; src: url("assets/fonts/InstrumentSerif-Italic.ttf") format("truetype"); font-style: italic; }
+
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #0E0C0A; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #0E0C0A; }
+
+      #gm-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #gm-gl { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+
+      /* lockup: bottom left, over a soft shade so it reads on the painting */
+      #gm-lock { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #gm-shade { position: absolute; left: 0; bottom: 0; width: 1920px; height: 520px; opacity: 0;
+        background: linear-gradient(to top, rgba(14, 12, 10, 0.85), rgba(14, 12, 10, 0.5) 55%, rgba(14, 12, 10, 0)); }
+      #gm-kicker { position: absolute; left: 112px; top: 742px; opacity: 0;
+        font: 600 18px/1 "Manrope", sans-serif; letter-spacing: 0.2em; text-transform: uppercase; color: #FFF1D6; text-shadow: 0 1px 12px rgba(14, 12, 10, 0.8); }
+      #gm-title { position: absolute; left: 104px; top: 774px; opacity: 0; white-space: nowrap;
+        font: 400 150px/1 "Instrument Serif", serif; letter-spacing: -0.01em; color: #FBF6EC;
+        text-shadow: 0 2px 30px rgba(14, 12, 10, 0.45); }
+      #gm-title em { font-style: italic; }
+      #gm-url { position: absolute; left: 112px; top: 950px; white-space: pre;
+        font: 600 21px/1 "Manrope", sans-serif; letter-spacing: 0.14em; color: #F2E7D4; }
+    </style>
+  </head>
+  <body>
+    <div data-hf-id="hf-3x1a" id="root" data-composition-id="main" data-start="0" data-duration="26" data-width="1920" data-height="1080">
+      <div data-hf-id="hf-rk75" id="gm-stage" class="clip" data-start="0" data-duration="26" data-track-index="0">
+        <canvas data-hf-id="hf-6em0" id="gm-gl" width="1920" height="1080"></canvas>
+      </div>
+      <div data-hf-id="hf-26r7" id="gm-lock" class="clip" data-start="0" data-duration="26" data-track-index="1">
+        <div data-hf-id="hf-edy7" id="gm-shade" data-layout-allow-occlusion></div>
+        <p data-hf-id="hf-d0hq" id="gm-kicker" data-layout-allow-occlusion>Stills · Midjourney</p>
+        <h1 data-hf-id="hf-0suk" id="gm-title" data-layout-allow-occlusion>Imagined <em data-hf-id="hf-og76">Worlds</em></h1>
+        <p data-hf-id="hf-usi4" id="gm-url" data-layout-allow-occlusion></p>
+      </div>
+
+      <audio data-hf-id="hf-pi5w" id="gm-score" src="assets/bgm/score.wav" data-start="0" data-duration="26" data-track-index="7" data-volume="0.53"></audio>
+    </div>
+
+    <script type="module">
+      import * as THREE from "three/webgpu";
+      import {
+        uniform, instancedBufferAttribute, vec2, vec3, vec4, float, clamp, smoothstep, mix, sin, cos, abs, exp, max, min,
+        uv, texture, mx_noise_float, pass, color,
+      } from "three/tsl";
+      import { bloom } from "./assets/vendor/BloomNode.js";
+
+      const W = 1920, H = 1080, DUR = 26;
+      const URL_TEXT = "visions.joaoqueiros.com/stills";
+
+      // ---- one timing table (score/compose.py mirrors these)
+      const T = {
+        hold: [0, 3.0],
+        out: [3.0, 5.6],       // the dissolve front crosses image A: births from 3.0 to 8.6
+        land: [14.6, 6.0],     // leaves settle into image B bottom up: from 14.6 to 20.6
+        shade: [21.0, 22.0], kicker: 21.4, title: 21.7, url: [22.6, 23.6],
+      };
+      window.GM_T = T;
+      const STEP = 8;                                   // one leaf every 8 px: 240 x 135
+      const GOLD = color(0xF2B45A);
+
+      const clamp01 = (v) => Math.min(1, Math.max(0, v));
+      const lin = (t, a, b) => clamp01((t - a) / (b - a));
+      const out3 = (x) => 1 - Math.pow(1 - x, 3);
+
+      function rng(seed) { return () => { seed |= 0; seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+
+      // ---- DOM painter
+      const els = { shade: document.getElementById("gm-shade"), kicker: document.getElementById("gm-kicker"),
+        title: document.getElementById("gm-title"), url: document.getElementById("gm-url") };
+      let glRender = null;
+      function paint(t) {
+        if (glRender) glRender(t);
+        els.shade.style.opacity = out3(lin(t, T.shade[0], T.shade[1])).toFixed(3);
+        const k = out3(lin(t, T.kicker, T.kicker + 0.6));
+        els.kicker.style.opacity = k.toFixed(3);
+        const ti = out3(lin(t, T.title, T.title + 1.0));
+        els.title.style.opacity = ti.toFixed(3);
+        els.title.style.transform = `translateY(${((1 - ti) * 22).toFixed(2)}px)`;
+        els.url.textContent = URL_TEXT.slice(0, Math.round(lin(t, T.url[0], T.url[1]) * URL_TEXT.length));
+      }
+      const tl = gsap.timeline({ paused: true });
+      const clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+
+      async function build() {
+        await Promise.all([document.fonts.load('400 150px "Instrument Serif"'), document.fonts.load('600 21px "Manrope"')]);
+
+        const canvas = document.getElementById("gm-gl");
+        // Hide KHR_parallel_shader_compile so every program links before its first draw (see R01).
+        const gl = canvas.getContext("webgl2", { antialias: true, alpha: false, depth: true, stencil: false, preserveDrawingBuffer: true });
+        const getExt = gl.getExtension.bind(gl), getSup = gl.getSupportedExtensions.bind(gl);
+        gl.getExtension = (name) => (name === "KHR_parallel_shader_compile" ? null : getExt(name));
+        gl.getSupportedExtensions = () => getSup().filter((n) => n !== "KHR_parallel_shader_compile");
+        const renderer = new THREE.WebGPURenderer({ canvas, context: gl, antialias: true, forceWebGL: true });
+        renderer.setPixelRatio(1); renderer.setSize(W, H, false);
+        renderer.setClearColor(0x0e0c0a, 1);
+        await renderer.init();
+
+        const loader = new THREE.TextureLoader();
+        const [texA, texB] = await Promise.all([loader.loadAsync("assets/img/lantern-festival.jpg"), loader.loadAsync("assets/img/sea-of-blooms.jpg")]);
+        for (const tx of [texA, texB]) { tx.colorSpace = THREE.SRGBColorSpace; tx.generateMipmaps = true; tx.minFilter = THREE.LinearMipmapLinearFilter; }
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-W / 2, W / 2, H / 2, -H / 2, -10, 10);
+        const uTime = uniform(0);
+
+        // frame position (px, origin centre, y up) -> image uv. The 3:2 images cover the 16:9 frame; each pushes in slowly.
+        const pushA = (t) => float(1).add(smoothstep(0, 9, t).mul(0.05));
+        const pushB = (t) => float(1).add(smoothstep(14, 26, t).mul(0.04));
+        const imgUV = (p, s) => {
+          const f = vec2(p.x.div(W).add(0.5), p.y.div(H).add(0.5));
+          const c = f.sub(0.5).div(s).add(0.5);
+          return vec2(c.x, c.y.mul(1080 / 1280).add((1280 - 1080) / 2 / 1280));
+        };
+        // the two fronts, shared by the planes and the leaves: when a spot leaves image A, and when it lands in B
+        const leaveAt = (p) => {
+          const n = mx_noise_float(vec3(p.mul(0.0045), 1.3));
+          const f = clamp(p.x.div(W).add(0.5).mul(0.82).add(n.mul(0.13)).add(0.05), 0, 1);
+          return float(T.out[0]).add(f.mul(T.out[1]));
+        };
+        const landAt = (p) => {
+          const n = mx_noise_float(vec3(p.mul(0.0045), 7.1));
+          const f = clamp(p.y.div(H).add(0.5).mul(0.82).add(n.mul(0.13)).add(0.05), 0, 1);
+          return float(T.land[0]).add(f.mul(T.land[1]));
+        };
+
+        // ---- image planes
+        const plane = new THREE.PlaneGeometry(W, H);
+        const framePos = vec2(uv().x.sub(0.5).mul(W), uv().y.sub(0.5).mul(H));
+
+        const matA = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false });
+        const tA = leaveAt(framePos);
+        const before = tA.sub(uTime);                                   // seconds until this spot leaves
+        const edgeA = float(1).sub(smoothstep(0, 0.16, before)).mul(smoothstep(-0.02, 0.0, before));
+        matA.colorNode = texture(texA, imgUV(framePos, pushA(uTime))).rgb.add(GOLD.mul(edgeA.mul(0.9)));
+        matA.opacityNode = smoothstep(-0.02, 0.02, before);
+        const meshA = new THREE.Mesh(plane, matA); meshA.renderOrder = 0; scene.add(meshA);
+
+        const matB = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false });
+        const tB = landAt(framePos);
+        const after = uTime.sub(tB);                                    // seconds since this spot was settled
+        const edgeB = smoothstep(0.0, 0.15, after).mul(float(1).sub(smoothstep(0.15, 0.7, after)));
+        matB.colorNode = texture(texB, imgUV(framePos, pushB(uTime))).rgb.add(GOLD.mul(edgeB.mul(0.9)));
+        matB.opacityNode = smoothstep(0.05, 0.45, after);
+        const meshB = new THREE.Mesh(plane, matB); meshB.renderOrder = 1; scene.add(meshB);
+
+        // ---- leaves: one per 8 px cell of A, each assigned a random cell of B
+        const R = rng(707);
+        const cols = W / STEP, rows = H / STEP, N = cols * rows;
+        const src = [], dst = [];
+        for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) src.push([-W / 2 + (i + 0.5) * STEP, -H / 2 + (j + 0.5) * STEP]);
+        for (let k = 0; k < N; k++) dst.push(src[k]);
+        for (let k = N - 1; k > 0; k--) { const r = Math.floor(R() * (k + 1)); [dst[k], dst[r]] = [dst[r], dst[k]]; }
+        const a0 = new Float32Array(N * 4), a1 = new Float32Array(N * 4);
+        for (let k = 0; k < N; k++) {
+          a0.set([src[k][0] + (R() - 0.5) * STEP, src[k][1] + (R() - 0.5) * STEP, dst[k][0], dst[k][1]], k * 4);
+          // seeds; the last one marks ~0.8% of leaves that never land and keep drifting over B
+          a1.set([R(), R(), R(), R() < 0.008 ? 1 : 0], k * 4);
+        }
+        const attr = (a) => instancedBufferAttribute(new THREE.InstancedBufferAttribute(a, 4));
+        const A0 = attr(a0), A1 = attr(a1);
+        const pSrc = A0.xy, pDst = A0.zw;
+        const tb = leaveAt(pSrc);
+        const drifter = A1.w;
+        const tl0 = landAt(pDst);
+        const tland = mix(tl0, float(36), drifter);
+        const u = clamp(uTime.sub(tb).div(tland.sub(tb)), 0, 1);
+        const e = u.mul(u).mul(float(3).sub(u.mul(2)));
+        const arc = sin(u.mul(Math.PI));
+        // first a gust to the right and up, then a slow spiral round the frame, then a fall into place
+        const gust = vec2(float(160).add(A1.x.mul(260)), float(60).add(A1.y.mul(180))).mul(smoothstep(0, 0.18, u)).mul(float(1).sub(smoothstep(0.25, 0.7, u)));
+        const ang = A1.x.mul(6.283).add(e.mul(Math.PI * 2 * 1.35));
+        const rad = float(180).add(A1.y.mul(300)).mul(arc);
+        const spiral = vec2(cos(ang).mul(1.45), sin(ang).mul(0.78)).mul(rad);
+        const wp = mix(pSrc, pDst, e);
+        const wind = vec2(
+          mx_noise_float(vec3(wp.mul(0.0028), uTime.mul(0.32).add(A1.z.mul(5)))),
+          mx_noise_float(vec3(wp.mul(0.0028), uTime.mul(0.32).add(17.0)))
+        ).mul(150).mul(arc);
+        const fall = vec2(0, float(-40).mul(smoothstep(0.75, 1.0, u)).mul(float(1).sub(smoothstep(0.95, 1.0, u))));
+        // mid-flight the leaves gather into a slow two-arm vortex, so the wind has a shape
+        const vr = float(70).add(A1.y.pow(0.7).mul(470));
+        const arm = A1.z.greaterThan(0.5).select(float(Math.PI), float(0));
+        const vth = arm.add(vr.div(70).log().mul(2.1)).add(uTime.mul(0.5)).add(A1.x.sub(0.5).mul(0.55));
+        const vortex = vec2(cos(vth).mul(vr).mul(1.45), sin(vth).mul(vr).mul(0.82))
+          .add(vec2(mx_noise_float(vec3(vr.mul(0.02), vth, uTime.mul(0.4))), mx_noise_float(vec3(vth, vr.mul(0.02), 3.0))).mul(28));
+        const gather = smoothstep(0.12, 0.38, u).mul(float(1).sub(smoothstep(0.62, 0.86, u))).mul(float(1).sub(drifter));
+        const pos = mix(wp.add(gust).add(spiral).add(wind).add(fall), vortex, gather);
+
+        const lmat = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false });
+        lmat.positionNode = vec3(pos, 1);
+        const size = float(13).add(A1.z.mul(7)).mul(float(1).add(arc.mul(0.65)));
+        lmat.scaleNode = vec2(size.mul(0.62), size);
+        lmat.rotationNode = A1.x.mul(6.283).add(uTime.sub(tb).max(0).mul(A1.y.sub(0.5).mul(3.2)));
+        // colour: the spot it left, turning into the spot it will fill; it catches gold as it leaves
+        const cA = texture(texA, imgUV(pSrc, pushA(tb))).rgb;
+        const cB = texture(texB, imgUV(pDst, pushB(tland))).rgb;
+        const born = uTime.sub(tb);
+        const glow = exp(born.max(0).mul(-3.2)).mul(smoothstep(0, 0.05, born));
+        const lit = float(1).add(arc.mul(0.12)).add(sin(uTime.mul(3.0).add(A1.z.mul(20))).mul(0.08).mul(arc));
+        lmat.colorNode = mix(cA, cB, max(smoothstep(0.55, 0.95, u), drifter.mul(smoothstep(T.land[0] - 2, T.land[0] + 2, uTime)))).mul(lit).add(GOLD.mul(glow.mul(1.4)));
+        // a leaf: two curved edges meeting at the tips, with a faint midrib
+        const q = uv().sub(0.5).mul(2);
+        const half = float(1).sub(q.y.mul(q.y)).max(0).pow(1.1).mul(0.92);
+        const leaf = smoothstep(half.add(0.04), half.sub(0.04), abs(q.x));
+        const rib = mix(float(0.72), float(1), smoothstep(0.0, 0.08, abs(q.x)));
+        const visible = smoothstep(-0.01, 0.03, born);
+        const settled = float(1).sub(smoothstep(0.0, 0.45, uTime.sub(tland)));
+        lmat.opacityNode = leaf.mul(visible).mul(settled);
+        lmat.colorNode = lmat.colorNode.mul(rib);
+        const leaves = new THREE.Sprite(lmat);
+        leaves.count = N; leaves.frustumCulled = false; leaves.renderOrder = 2;
+        scene.add(leaves);
+
+        const post = new THREE.PostProcessing(renderer);
+        const sceneColor = pass(scene, camera).getTextureNode("output");
+        post.outputNode = sceneColor.add(bloom(sceneColor, 0.45, 0.45, 0.85));
+
+        function renderAt(t) { uTime.value = t; post.render(); }
+        for (const tt of [0, 5, 10, 16, 22]) renderAt(tt);       // warm every pipeline before the first capture
+
+        let lastGL = -1;
+        glRender = (t) => { if (t !== lastGL) { lastGL = t; renderAt(t); } };
+        window.addEventListener("hf-seek", (ev) => glRender(ev.detail.time));
+        glRender(window.__hfThreeTime || 0);
+        window.GM_INFO = { N };
+
+        paint(0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = window.__hf.buildReady || {};
+      window.__hf.buildReady["gommage"] = build();
+    </script>
+  </body>
+</html>
