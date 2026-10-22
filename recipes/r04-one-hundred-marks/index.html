@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <!--
+      R04 · One Hundred Marks, One Line. Marks, the book of 398 identities by João Queirós.
+      One SVG path that never lifts: it closes into the outline of one mark, then flows into the next, a hundred
+      times, and settles on the JQ mark. Every outline has the same number of points, each one is rolled to start
+      where the last one did, and one painter computes every frame from time.
+    -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/outlines.js"></script>
+    <style>
+      @font-face { font-family: "Manrope"; src: url("assets/fonts/Manrope-latin.woff2") format("woff2"); font-weight: 200 800; }
+      @font-face { font-family: "Instrument Serif"; src: url("assets/fonts/InstrumentSerif-Regular.ttf") format("truetype"); font-style: normal; }
+
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #F7F5F0; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #F7F5F0; }
+
+      /* the page: warm paper with a soft edge, like a book under a lamp */
+      #om-paper { position: absolute; inset: 0; width: 1920px; height: 1080px;
+        background: radial-gradient(ellipse 75% 70% at 50% 46%, #FAF9F5 0%, #F7F5F0 55%, #EEEBE3 100%); }
+
+      #om-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #om-svg { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; overflow: visible; }
+      #om-line { fill: none; stroke: #151515; stroke-width: 2.4; stroke-linejoin: round; stroke-linecap: round; }
+      #om-pen { fill: #151515; }
+      #om-jq { position: absolute; opacity: 0; }
+
+      /* book-style captions */
+      #om-chrome { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      .om-small { position: absolute; font: 500 17px/1 "Manrope", sans-serif; letter-spacing: 0.16em; text-transform: uppercase;
+        color: #6F6B62; white-space: nowrap; }
+      #om-head { left: 96px; top: 88px; }
+      #om-count { right: 96px; top: 88px; font-variant-numeric: tabular-nums; }
+      #om-count b { color: #151515; font-weight: 600; }
+      #om-caption { position: absolute; left: 0; top: 806px; width: 1920px; text-align: center; white-space: nowrap;
+        font: 500 21px/1 "Manrope", sans-serif; letter-spacing: 0.02em; color: #5E5A52; }
+      #om-caption b { color: #151515; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+      /* lockup */
+      #om-lock { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #om-word { position: absolute; left: 0; top: 600px; width: 1920px; text-align: center; opacity: 0;
+        font: 400 132px/1 "Instrument Serif", serif; letter-spacing: -0.01em; color: #151515; }
+      #om-sub { position: absolute; left: 0; top: 764px; width: 1920px; text-align: center; opacity: 0;
+        font: 500 24px/1 "Manrope", sans-serif; letter-spacing: 0.01em; color: #3A3833; }
+      #om-url { position: absolute; left: 0; top: 836px; width: 1920px; text-align: center; white-space: pre;
+        font: 500 19px/1 "Manrope", sans-serif; letter-spacing: 0.14em; color: #6F6B62; }
+    </style>
+  </head>
+  <body>
+    <div data-hf-id="hf-3x1a" id="root" data-composition-id="main" data-start="0" data-duration="26" data-width="1920" data-height="1080">
+      <div data-hf-id="hf-iugp" id="om-paper" class="clip" data-start="0" data-duration="26" data-track-index="0"></div>
+
+      <div data-hf-id="hf-5ho8" id="om-stage" class="clip" data-start="0" data-duration="26" data-track-index="1">
+        <img data-hf-id="hf-w4s7" id="om-jq" src="assets/img/jq-mark.svg" alt="" data-layout-allow-occlusion />
+        <svg data-hf-id="hf-tlfx" id="om-svg" viewBox="0 0 1920 1080" data-layout-allow-occlusion>
+          <path data-hf-id="hf-9a33" id="om-line" d="" />
+          <circle data-hf-id="hf-34mx" id="om-pen" r="4.5" cx="-20" cy="-20" />
+        </svg>
+      </div>
+
+      <div data-hf-id="hf-8hp1" id="om-chrome" class="clip" data-start="0" data-duration="26" data-track-index="2">
+        <p data-hf-id="hf-4x27" id="om-head" class="om-small" data-layout-allow-occlusion>Marks · one line</p>
+        <p data-hf-id="hf-oaev" id="om-count" class="om-small" data-layout-allow-occlusion></p>
+        <p data-hf-id="hf-yzvl" id="om-caption" data-layout-allow-occlusion></p>
+      </div>
+
+      <div data-hf-id="hf-wy2t" id="om-lock" class="clip" data-start="0" data-duration="26" data-track-index="3">
+        <h1 data-hf-id="hf-z1ac" id="om-word" data-layout-allow-occlusion>Marks</h1>
+        <p data-hf-id="hf-2ntn" id="om-sub" data-layout-allow-occlusion>398 identities · 160 pages · one book</p>
+        <p data-hf-id="hf-1p1g" id="om-url" data-layout-allow-occlusion></p>
+      </div>
+
+      <audio data-hf-id="hf-75ld" id="om-score" src="assets/bgm/score.wav" data-start="0" data-duration="26" data-track-index="7" data-volume="0.58"></audio>
+    </div>
+
+    <script>
+      (function () {
+        const DUR = 26;
+        const URL_TEXT = "joaoqueiros.com/marks";
+
+        // ---- one timing table (the score reads the same numbers)
+        const T = {
+          draw: [0.4, 2.5],        // the pen draws one straight line
+          first: [2.7, 4.4],       // the line closes into the first mark
+          chrome: [3.8, 4.6],      // captions in
+          chain: [6.0, 19.4],      // 99 morphs, quick in the middle, slow at both ends
+          chromeOut: [19.0, 19.6],
+          end: [19.6, 21.4],       // the last mark opens into the JQ mark
+          fill: [21.1, 22.1],      // the outline fills with the real mark
+          lift: [21.0, 22.6],      // the mark rises to make room for the word
+          word: 22.2, sub: 23.0, url: [23.6, 24.6],
+        };
+        window.OM_T = T;
+
+        // ---- geometry
+        const N = 400;
+        const CX = 960, CY = 482, SIZE = 430;          // marks: longest side 430 px
+        const JQ = { cx: 960, cy: 360, size: 260 };    // the J outer path ends this big (longest side)
+        const JQ_PATH = 530.42 / 1080;                 // that path's share of the jq-mark.svg viewBox
+        const JQ_LIFT = 482 - 360;
+
+        const toScreen = (flat, cx, cy, s) => {
+          const a = new Float32Array(N * 2);
+          for (let i = 0; i < N; i++) { a[2 * i] = cx + flat[2 * i] * s; a[2 * i + 1] = cy + flat[2 * i + 1] * s; }
+          return a;
+        };
+
+        // the opening: a straight line, as a loop that goes out and comes back, so it has N points like every mark
+        const line = new Float32Array(N * 2);
+        for (let i = 0; i < N; i++) {
+          const u = i < N / 2 ? i / (N / 2) : 2 - i / (N / 2);
+          line[2 * i] = CX - 330 + u * 660; line[2 * i + 1] = CY;
+        }
+
+        const MARKS = window.OUTLINES.marks;
+        const shapes = [line];
+        MARKS.forEach((m) => shapes.push(toScreen(m.pts, CX, CY, SIZE)));
+        shapes.push(toScreen(window.OUTLINES.end, CX, CY, JQ.size));   // drawn at the chain's centre, lifted later
+
+        // roll each outline so its first point sits where the previous one's does: no twisting mid-morph
+        function roll(prev, cur) {
+          let best = 0, bestD = Infinity;
+          for (let k = 0; k < N; k += 2) {
+            let d = 0;
+            for (let j = 0; j < N; j += 8) {
+              const q = (j + k) % N;
+              const dx = prev[2 * j] - cur[2 * q], dy = prev[2 * j + 1] - cur[2 * q + 1];
+              d += dx * dx + dy * dy;
+            }
+            if (d < bestD) { bestD = d; best = k; }
+          }
+          const out = new Float32Array(N * 2);
+          for (let j = 0; j < N; j++) { const q = (j + best) % N; out[2 * j] = cur[2 * q]; out[2 * j + 1] = cur[2 * q + 1]; }
+          return out;
+        }
+        for (let i = 1; i < shapes.length; i++) shapes[i] = roll(shapes[i - 1], shapes[i]);
+
+        // ---- the chain's tempo: one step per morph, slow, then about four a second, then slow again
+        const steps = MARKS.length - 1;
+        const raw = [];
+        for (let i = 0; i < steps; i++) {
+          const u = i / (steps - 1);
+          raw.push(u < 0.8 ? 0.06 + 0.5 * Math.pow(1 - u / 0.8, 2.4) : 0.06 + 0.28 * Math.pow((u - 0.8) / 0.2, 2));
+        }
+        const total = raw.reduce((a, b) => a + b, 0);
+        const starts = [];
+        let acc = T.chain[0];
+        raw.forEach((d, i) => { starts.push(acc); raw[i] = (d / total) * (T.chain[1] - T.chain[0]); acc += raw[i]; });
+        window.OM_STEPS = starts.map((s, i) => [s, raw[i]]);
+
+        // ---- easing
+        const clamp = (v) => Math.max(0, Math.min(1, v));
+        const lin = (t, a, b) => clamp((t - a) / (b - a));
+        const io = (x) => 0.5 - 0.5 * Math.cos(Math.PI * x);
+        const out3 = (x) => 1 - Math.pow(1 - x, 3);
+        const io3 = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+
+        const els = {
+          line: document.getElementById("om-line"), pen: document.getElementById("om-pen"),
+          jq: document.getElementById("om-jq"), head: document.getElementById("om-head"),
+          count: document.getElementById("om-count"), caption: document.getElementById("om-caption"),
+          word: document.getElementById("om-word"), sub: document.getElementById("om-sub"), url: document.getElementById("om-url"),
+        };
+        const jqImg = JQ.size / JQ_PATH;
+        els.jq.style.width = els.jq.style.height = jqImg.toFixed(1) + "px";
+
+        const buf = new Float32Array(N * 2);
+        function blend(a, b, k, dy) {
+          for (let i = 0; i < N * 2; i += 2) { buf[i] = a[i] + (b[i] - a[i]) * k; buf[i + 1] = a[i + 1] + (b[i + 1] - a[i + 1]) * k + dy; }
+          return buf;
+        }
+        function d(p, n) {
+          let s = "M" + p[0].toFixed(1) + " " + p[1].toFixed(1);
+          for (let i = 2; i < n * 2; i += 2) s += "L" + p[i].toFixed(1) + " " + p[i + 1].toFixed(1);
+          return s + (n === N ? "Z" : "");
+        }
+
+        // which mark the line is on at time t, and how far into the next one
+        function where(t) {
+          if (t < T.first[0]) return { a: 0, b: 0, k: 0 };
+          if (t < T.chain[0]) return { a: 0, b: 1, k: io3(lin(t, T.first[0], T.first[1])) };
+          if (t < T.chain[1]) {
+            let i = steps - 1;
+            for (let s = 0; s < steps; s++) if (t < starts[s] + raw[s]) { i = s; break; }
+            const k = io(clamp((t - starts[i]) / (raw[i] * 0.72)));   // move for 72% of the step, rest for 28%
+            return { a: i + 1, b: i + 2, k };
+          }
+          if (t < T.end[0]) return { a: MARKS.length, b: MARKS.length, k: 0 };
+          return { a: MARKS.length, b: MARKS.length + 1, k: io3(lin(t, T.end[0], T.end[1])) };
+        }
+
+        let lastCap = -1;
+        function paint(t) {
+          const w = where(t);
+          const lift = -JQ_LIFT * io3(lin(t, T.lift[0], T.lift[1]));
+          const p = blend(shapes[w.a], shapes[w.b], w.k, w.b === MARKS.length + 1 || w.a === MARKS.length + 1 ? lift : 0);
+
+          // the opening draw: reveal the out-and-back loop half way, pen dot at the tip
+          if (t < T.first[0]) {
+            const g = io(lin(t, T.draw[0], T.draw[1]));
+            const n = Math.max(2, Math.round(g * (N / 2)));
+            els.line.setAttribute("d", g > 0 ? d(p, n) : "");
+            els.pen.setAttribute("cx", g > 0 && g < 1 ? p[2 * (n - 1)].toFixed(1) : -20);
+            els.pen.setAttribute("cy", p[2 * (n - 1) + 1].toFixed(1));
+          } else {
+            els.line.setAttribute("d", d(p, N));
+            els.pen.setAttribute("cx", -20);
+          }
+
+          // ink turns to the mark's teal as it lands, then hands over to the real mark
+          const land = lin(t, T.end[0] + 0.6, T.end[1]);
+          const ink = [21 + (0 - 21) * land, 21 + (167 - 21) * land, 21 + (157 - 21) * land].map(Math.round);
+          els.line.style.stroke = `rgb(${ink.join(",")})`;
+          const fill = io(lin(t, T.fill[0], T.fill[1]));
+          els.line.style.opacity = (1 - fill).toFixed(3);
+          els.jq.style.opacity = fill.toFixed(3);
+          els.jq.style.left = (JQ.cx - jqImg / 2).toFixed(1) + "px";
+          els.jq.style.top = (CY + lift - jqImg / 2).toFixed(1) + "px";
+
+          // captions: book index style, the mark the line is closing into
+          const cIn = out3(lin(t, T.chrome[0], T.chrome[1])) * (1 - lin(t, T.chromeOut[0], T.chromeOut[1]));
+          els.caption.style.opacity = els.count.style.opacity = cIn.toFixed(3);
+          els.head.style.opacity = (out3(lin(t, 0.2, 1.0)) * (1 - lin(t, T.chromeOut[0], T.chromeOut[1]))).toFixed(3);
+          let ci = w.b >= 1 && w.b <= MARKS.length ? (w.k >= 0.5 ? w.b : w.a) - 1 : MARKS.length - 1;
+          if (t < T.first[0] + 0.8) ci = 0;
+          ci = Math.max(0, Math.min(MARKS.length - 1, ci));
+          if (ci !== lastCap) {
+            const parts = MARKS[ci].caption ? MARKS[ci].caption.split(" · ") : [];
+            els.caption.innerHTML = parts.length ? "<b>" + parts[0] + "</b>" + (parts.length > 1 ? " · " + parts.slice(1).join(" · ") : "") : "";
+            els.count.innerHTML = "<b>" + String(ci + 1).padStart(3, "0") + "</b> / " + String(MARKS.length).padStart(3, "0");
+            lastCap = ci;
+          }
+
+          // lockup
+          const wp = out3(lin(t, T.word, T.word + 0.9));
+          els.word.style.opacity = wp.toFixed(3);
+          els.word.style.transform = `translateY(${((1 - wp) * 18).toFixed(2)}px)`;
+          const sp = out3(lin(t, T.sub, T.sub + 0.7));
+          els.sub.style.opacity = sp.toFixed(3);
+          els.sub.style.transform = `translateY(${((1 - sp) * 12).toFixed(2)}px)`;
+          els.url.textContent = URL_TEXT.slice(0, Math.round(lin(t, T.url[0], T.url[1]) * URL_TEXT.length));
+        }
+
+        const tl = gsap.timeline({ paused: true });
+        const clock = { t: 0 };
+        tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+        paint(0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+      })();
+    </script>
+  </body>
+</html>
