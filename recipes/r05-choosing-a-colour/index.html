@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <!--
+      R05 · Choosing a Colour. "How to Choose Brand Colours That Actually Work for Your Business", joaoqueiros.com.
+      One WebGL2 fragment shader paints marbled ink. Every pixel traces itself back through a moving flow field, so
+      each frame is computed from time alone, with no simulation state. The article's five steps drain, pool and
+      separate the ink into one palette; HTML carries the words.
+    -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <style>
+      @font-face { font-family: "Manrope"; src: url("assets/fonts/Manrope-latin.woff2") format("woff2"); font-weight: 200 800; }
+      @font-face { font-family: "Instrument Serif"; src: url("assets/fonts/InstrumentSerif-Regular.ttf") format("truetype"); font-style: normal; }
+      @font-face { font-family: "Instrument Serif"; src: url("assets/fonts/InstrumentSerif-Italic.ttf") format("truetype"); font-style: italic; }
+
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #1A1A18; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #1A1A18; }
+
+      #cc-ink { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #cc-gl { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+
+      /* the opening line, on a soft dark scrim so it reads over full colour */
+      #cc-open { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #cc-scrim { position: absolute; left: 260px; top: 380px; width: 1400px; height: 320px; border-radius: 50%;
+        background: radial-gradient(closest-side, rgba(26, 26, 24, 0.82), rgba(26, 26, 24, 0.55) 60%, rgba(26, 26, 24, 0) 100%); }
+      #cc-open-line { position: absolute; left: 0; top: 488px; width: 1920px; text-align: center; white-space: pre;
+        font: 400 104px/1 "Instrument Serif", serif; color: #F5F5F0; }
+
+      /* step card, top left */
+      #cc-steps { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #cc-step { position: absolute; left: 96px; top: 84px; width: 760px; padding: 26px 30px 28px; border-radius: 18px;
+        background: rgba(26, 26, 24, 0.78); opacity: 0; }
+      #cc-step-n { font: 600 18px/1 "Manrope", sans-serif; letter-spacing: 0.18em; color: #3CC8BC; }
+      #cc-step-t { margin-top: 14px; font: 400 52px/1.05 "Instrument Serif", serif; color: #F5F5F0; }
+      #cc-step-d { margin-top: 12px; font: 500 22px/1.35 "Manrope", sans-serif; color: #CFCFC8; }
+
+      /* 01 adjectives */
+      #cc-adj { position: absolute; left: 0; top: 470px; width: 1920px; text-align: center; white-space: nowrap; }
+      .cc-word { display: inline-block; margin: 0 34px; font: italic 400 140px/1 "Instrument Serif", serif; color: #F5F5F0;
+        opacity: 0; text-shadow: 0 0 30px rgba(26, 26, 24, 0.6); }
+
+      /* 02 competitors */
+      #cc-comp { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      .cc-dot { position: absolute; width: 74px; height: 74px; margin: -37px 0 0 -37px; border-radius: 50%; opacity: 0;
+        box-shadow: 0 0 0 3px rgba(245, 245, 240, 0.85); }
+      #cc-gap { position: absolute; width: 112px; height: 112px; margin: -56px 0 0 -56px; border-radius: 50%; opacity: 0;
+        border: 3px dashed #F5F5F0; }
+      #cc-gap-l { position: absolute; width: 300px; margin-left: -150px; text-align: center; opacity: 0;
+        font: 600 18px/1 "Manrope", sans-serif; letter-spacing: 0.16em; text-transform: uppercase; color: #F5F5F0; }
+
+      /* 03 primary code */
+      #cc-code { position: absolute; left: 1040px; top: 470px; opacity: 0; }
+      #cc-code-role { font: 600 18px/1 "Manrope", sans-serif; letter-spacing: 0.18em; text-transform: uppercase; color: #9A9A94; }
+      #cc-code-hex { margin-top: 14px; white-space: pre; font: 600 92px/1 "Manrope", sans-serif; letter-spacing: 0.01em; color: #F5F5F0;
+        font-variant-numeric: tabular-nums; }
+
+      /* 04 swatch labels */
+      #cc-labels { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      .cc-lab { position: absolute; bottom: 64px; opacity: 0; }
+      .cc-lab b { display: block; font: 600 17px/1 "Manrope", sans-serif; letter-spacing: 0.18em; text-transform: uppercase; }
+      .cc-lab span { display: block; margin-top: 10px; font: 600 44px/1 "Manrope", sans-serif; font-variant-numeric: tabular-nums; }
+      .cc-lab i { display: block; margin-top: 8px; font: 500 18px/1 "Manrope", sans-serif; font-style: normal; opacity: 0.8; }
+
+      /* 05 tests: five small layouts in the palette */
+      #cc-tests { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      .cc-test { position: absolute; top: 420px; width: 300px; opacity: 0; }
+      .cc-test .m { position: relative; width: 300px; height: 200px; border-radius: 14px; overflow: hidden;
+        box-shadow: 0 18px 40px rgba(26, 26, 24, 0.16); }
+      .cc-test p { margin-top: 18px; text-align: center; font: 600 17px/1 "Manrope", sans-serif; letter-spacing: 0.16em;
+        text-transform: uppercase; color: #5E5E58; }
+      .m i { position: absolute; display: block; border-radius: 4px; }
+
+      /* lockup */
+      #cc-lock { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #cc-mark { position: absolute; left: 895px; top: 214px; width: 130px; height: 130px; opacity: 0; }
+      #cc-title { position: absolute; left: 0; top: 400px; width: 1920px; text-align: center; opacity: 0;
+        font: 400 108px/1.04 "Instrument Serif", serif; color: #1A1A18; }
+      #cc-title em { color: #008F86; }
+      #cc-url { position: absolute; left: 0; top: 694px; width: 1920px; text-align: center; white-space: pre;
+        font: 600 22px/1 "Manrope", sans-serif; letter-spacing: 0.16em; color: #5E5E58; }
+    </style>
+  </head>
+  <body>
+    <div data-hf-id="hf-3x1a" id="root" data-composition-id="main" data-start="0" data-duration="26" data-width="1920" data-height="1080">
+      <div data-hf-id="hf-0k5l" id="cc-ink" class="clip" data-start="0" data-duration="26" data-track-index="0">
+        <canvas data-hf-id="hf-kwja" id="cc-gl" width="1920" height="1080"></canvas>
+      </div>
+
+      <div data-hf-id="hf-21xi" id="cc-open" class="clip" data-start="0" data-duration="4.4" data-track-index="1">
+        <div data-hf-id="hf-t8jc" id="cc-scrim" data-layout-allow-occlusion></div>
+        <h1 data-hf-id="hf-guhb" id="cc-open-line" data-layout-allow-occlusion></h1>
+      </div>
+
+      <div data-hf-id="hf-iiwc" id="cc-comp" class="clip" data-start="0" data-duration="26" data-track-index="2">
+        <div data-hf-id="hf-p5l6" id="cc-gap" data-layout-allow-occlusion></div>
+        <p data-hf-id="hf-meh9" id="cc-gap-l" data-layout-allow-occlusion>the gap</p>
+      </div>
+
+      <div data-hf-id="hf-rjb3" id="cc-steps" class="clip" data-start="0" data-duration="26" data-track-index="3">
+        <div data-hf-id="hf-b06d" id="cc-adj" data-layout-allow-occlusion><span data-hf-id="hf-qx25" class="cc-word">clear</span><span data-hf-id="hf-t67p" class="cc-word">warm</span><span data-hf-id="hf-fo1h" class="cc-word">precise</span></div>
+        <div data-hf-id="hf-l6yt" id="cc-code" data-layout-allow-occlusion><p data-hf-id="hf-4gr9" id="cc-code-role">primary</p><p data-hf-id="hf-hq9s" id="cc-code-hex"></p></div>
+        <div data-hf-id="hf-5zo8" id="cc-step" data-layout-allow-occlusion>
+          <p data-hf-id="hf-3fpw" id="cc-step-n"></p>
+          <h2 data-hf-id="hf-e6ti" id="cc-step-t"></h2>
+          <p data-hf-id="hf-zl3a" id="cc-step-d"></p>
+        </div>
+      </div>
+
+      <div data-hf-id="hf-vuqu" id="cc-labels" class="clip" data-start="0" data-duration="26" data-track-index="4"></div>
+      <div data-hf-id="hf-jtdn" id="cc-tests" class="clip" data-start="0" data-duration="26" data-track-index="5"></div>
+
+      <div data-hf-id="hf-xdlg" id="cc-lock" class="clip" data-start="0" data-duration="26" data-track-index="6">
+        <img data-hf-id="hf-0749" id="cc-mark" src="assets/img/jq-mark.svg" alt="" data-layout-allow-occlusion />
+        <h1 data-hf-id="hf-s732" id="cc-title" data-layout-allow-occlusion>How to choose brand colours<br data-hf-id="hf-x5px" /><em data-hf-id="hf-kjwe">that actually work.</em></h1>
+        <p data-hf-id="hf-l836" id="cc-url" data-layout-allow-occlusion></p>
+      </div>
+
+      <audio data-hf-id="hf-jy3n" id="cc-score" src="assets/bgm/score.wav" data-start="0" data-duration="26" data-track-index="7" data-volume="0.54"></audio>
+    </div>
+
+        
+    <script>
+      (function () {
+        const DUR = 26;
+        const OPEN = "Most brands start with “I like blue.”";
+        const URL_TEXT = "joaoqueiros.com · blog";
+
+        // ---- one timing table (the score reads the same numbers)
+        const T = {
+          open: [0.5, 2.6], openOut: [3.6, 4.2],
+          s1: 4.2, words: [4.7, 0.35], drain: [5.6, 7.8],
+          s2: 8.2, dim: [8.0, 8.8], dots: [8.6, 0.09], gap: 10.6, dotsOut: [12.0, 12.5],
+          s3: 12.2, pool: [12.4, 15.0], code: [14.0, 14.8],
+          s4: 16.2, bands: [16.3, 18.8], labels: [17.6, 0.25],
+          s5: 20.2, fade: [20.0, 20.7], tests: [20.5, 0.18], testsOut: [22.8, 23.2],
+          mark: 23.3, title: 23.6, url: [24.4, 25.2],
+          speed: [11.5, 16.5],            // the flow slows from full to calm
+        };
+        window.CC_T = T;
+
+        const STEPS = [
+          { t: T.s1, n: "01 · Personality", ti: "Define how it should feel", d: "Three to five adjectives become the filter for every colour." },
+          { t: T.s2, n: "02 · Competitors", ti: "Study the landscape", d: "Look at ten to fifteen. Most cluster around one colour." },
+          { t: T.s3, n: "03 · Primary", ti: "Choose one primary", d: "The colour people will associate with the brand." },
+          { t: T.s4, n: "04 · Supporting", ti: "Build the palette", d: "1 primary · 1 to 2 secondary · 1 to 2 neutrals." },
+          { t: T.s5, n: "05 · Test", ti: "Test it before you commit", d: "A card, a web page, a social post, dark and light." },
+        ];
+        const SWATCH = [
+          { role: "primary", hex: "#00A89D", rgb: "0 · 168 · 157", ink: "#1A1A18" },
+          { role: "secondary", hex: "#0099D6", rgb: "0 · 153 · 214", ink: "#1A1A18" },
+          { role: "neutral", hex: "#1A1A18", rgb: "26 · 26 · 24", ink: "#F5F5F0" },
+          { role: "neutral", hex: "#F5F5F0", rgb: "245 · 245 · 240", ink: "#1A1A18" },
+        ];
+        const EDGES = [0.4, 0.6, 0.8, 1.0];
+        // twelve competitors: most of them blue, as the article warns
+        const COMP = ["#1F4E9A", "#2D6CDF", "#0B3D91", "#3A86FF", "#1565C0", "#274472", "#2F80ED", "#0D47A1", "#4A90D9", "#2E7D32", "#C62828", "#1E3A8A"];
+
+        // ---- easing
+        const clamp = (v) => Math.max(0, Math.min(1, v));
+        const lin = (t, a, b) => clamp((t - a) / (b - a));
+        const io = (x) => 0.5 - 0.5 * Math.cos(Math.PI * x);
+        const out3 = (x) => 1 - Math.pow(1 - x, 3);
+
+        // ---- the ink shader: one full-screen triangle, everything else is in the fragment shader
+        const FRAG = `#version 300 es
+      precision highp float;
+      uniform vec2 uRes;
+      uniform float uT, uSpeed, uDrain, uDim, uPool, uBands, uFade;
+      uniform vec4 uBand;        // right edges of the four swatches (0..1 of width)
+      out vec4 o;
+
+      const vec3 TEAL = vec3(0.0, 0.659, 0.616);
+      const vec3 BLUE = vec3(0.0, 0.600, 0.839);
+      const vec3 INK = vec3(0.102, 0.102, 0.094);
+      const vec3 BONE = vec3(0.961, 0.961, 0.941);
+
+      float hash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+      float noise(vec3 x) {
+        vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(mix(hash(i), hash(i + vec3(1,0,0)), f.x), mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
+                   mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x), mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y), f.z);
+      }
+      float fbm(vec3 p) { float a = 0.5, s = 0.0; for (int i = 0; i < 4; i++) { s += a * noise(p); p = p * 2.03 + 11.7; a *= 0.5; } return s; }
+
+      // divergence-free flow: the curl of a slowly changing noise potential
+      vec2 flow(vec2 p, float t) {
+        float e = 0.02;
+        vec3 q = vec3(p * 1.1, t * 0.12);
+        float n1 = fbm(q + vec3(0, e, 0)), n2 = fbm(q - vec3(0, e, 0));
+        float n3 = fbm(q + vec3(e, 0, 0)), n4 = fbm(q - vec3(e, 0, 0));
+        return vec2(n1 - n2, -(n3 - n4)) / (2.0 * e);
+      }
+
+      vec3 hue2rgb(float h) { return clamp(abs(mod(h * 6.0 + vec3(0, 4, 2), 6.0) - 3.0) - 1.0, 0.0, 1.0); }
+      float hueOf(vec3 c) {
+        float mx = max(c.r, max(c.g, c.b)), mn = min(c.r, min(c.g, c.b)), d = mx - mn + 1e-5;
+        float h = mx == c.r ? mod((c.g - c.b) / d, 6.0) : mx == c.g ? (c.b - c.r) / d + 2.0 : (c.r - c.g) / d + 4.0;
+        return h / 6.0;
+      }
+      float hueNear(float h, float k, float w) { float d = abs(h - k); d = min(d, 1.0 - d); return smoothstep(w, w * 0.35, d); }
+
+      void main() {
+        vec2 uv = gl_FragCoord.xy / uRes;
+        vec2 p = (gl_FragCoord.xy - 0.5 * uRes) / uRes.y;
+
+        // trace this pixel back through the flow: the ink that is here now came from x
+        vec2 x = p;
+        float dt = 0.045 * uSpeed;
+        for (int i = 0; i < 28; i++) x -= flow(x, uT - float(i) * 0.05) * dt;
+
+        // the dye: bands of every hue, with pale marbling veins
+        float h = fbm(vec3(x * 1.25 + 3.0, uT * 0.03));
+        vec3 col = 0.5 + 0.46 * cos(6.2831 * (fract(h * 2.6 + 0.08) + vec3(0.0, 0.33, 0.67)));
+        col = pow(col, vec3(1.15)) * 0.94;
+        float f = fract(h * 7.0), vein = smoothstep(0.045, 0.0, min(f, 1.0 - f));
+        col = mix(col, BONE, vein * 0.75);
+
+        // 01: colours that don't fit drain to warm greys; teal and blue stay
+        float keep = max(hueNear(hueOf(col), 0.488, 0.09), hueNear(hueOf(col), 0.548, 0.06));
+        float lum = dot(col, vec3(0.299, 0.587, 0.114));
+        vec3 grey = mix(vec3(0.42, 0.41, 0.39), vec3(0.93, 0.92, 0.89), lum);
+        col = mix(col, grey, uDrain * (1.0 - keep * (1.0 - vein)));
+
+        // 02: dim the ink so the competitor dots read
+        col = mix(col, INK, uDim * 0.72);
+
+        // 03: everything darkens to ink and one teal body pools at the left
+        vec3 marble = vec3(0.84 + 0.5 * (h - 0.5)) + vein * 0.14;
+        vec2 c = vec2(-0.40, -0.07);
+        float ang = atan(p.y - c.y, p.x - c.x);
+        float edge = 0.09 * (fbm(vec3(cos(ang) * 1.6, sin(ang) * 1.6, uT * 0.35)) - 0.5) + 0.03 * (fbm(vec3(p * 5.0, uT * 0.5)) - 0.5);
+        float r = uPool * 0.31 + edge * uPool;
+        float inPool = smoothstep(r + 0.004, r - 0.004, length(p - c));
+        vec3 outside = mix(col, INK * (0.9 + 0.2 * h), smoothstep(0.0, 0.55, uPool));
+        col = mix(outside, TEAL * marble, inPool);
+
+        // 04: the ink separates into four swatches; each fills down from the top with a soft wavy front
+        if (uBands > 0.0) {
+          float y = 1.0 - uv.y;
+          vec3 bc[4] = vec3[4](TEAL, BLUE, INK, BONE);
+          float lo = 0.0;
+          for (int i = 0; i < 4; i++) {
+            float hi = uBand[i];
+            float wob = 0.012 * (1.0 - uBands) * sin(uv.y * 18.0 + float(i) * 2.0 + uT * 2.0);
+            float inBand = step(lo + wob, uv.x) * step(uv.x, hi + wob);
+            float fill = clamp(uBands * 1.6 - float(i) * 0.2, 0.0, 1.0) * 1.15;
+            float front = fill + 0.035 * sin(uv.x * 40.0 + uT * 3.0 + float(i));
+            float a = inBand * smoothstep(front, front - 0.04, y);
+            vec3 m = bc[i] * (0.97 + 0.08 * (h - 0.5) * (1.0 - uBands * 0.8));
+            if (i == 2) m = INK + vec3(0.05) * (h - 0.5) * (1.0 - uBands);
+            col = mix(col, m, a);
+            lo = hi;
+          }
+        }
+
+        // 05: the page turns to bone for the tests and the title
+        col = mix(col, BONE, uFade);
+        o = vec4(col, 1.0);
+      }
+`;
+        const VERT = `#version 300 es
+      in vec2 a; void main() { gl_Position = vec4(a, 0.0, 1.0); }
+`;
+
+        // ---- WebGL
+        const cv = document.getElementById("cc-gl");
+        const gl = cv.getContext("webgl2", { preserveDrawingBuffer: true, antialias: false });
+        function sh(type, src) {
+          const s = gl.createShader(type);
+          gl.shaderSource(s, src);
+          gl.compileShader(s);
+          if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+          return s;
+        }
+        const prog = gl.createProgram();
+        gl.attachShader(prog, sh(gl.VERTEX_SHADER, VERT));
+        gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FRAG));
+        gl.linkProgram(prog);
+        gl.useProgram(prog);
+        const buf = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+        const loc = gl.getAttribLocation(prog, "a");
+        gl.enableVertexAttribArray(loc);
+        gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+        const U = {};
+        ["uRes", "uT", "uSpeed", "uDrain", "uDim", "uPool", "uBands", "uFade", "uBand"].forEach((n) => (U[n] = gl.getUniformLocation(prog, n)));
+        gl.viewport(0, 0, 1920, 1080);
+        gl.uniform2f(U.uRes, 1920, 1080);
+        gl.uniform4f(U.uBand, ...EDGES);
+
+        // ---- HTML pieces
+        const $ = (id) => document.getElementById(id);
+        const els = { open: $("cc-open-line"), scrim: $("cc-scrim"), step: $("cc-step"), sn: $("cc-step-n"), st: $("cc-step-t"), sd: $("cc-step-d"),
+          words: [...document.querySelectorAll(".cc-word")], gap: $("cc-gap"), gapL: $("cc-gap-l"), code: $("cc-code"), hex: $("cc-code-hex"),
+          mark: $("cc-mark"), title: $("cc-title"), url: $("cc-url") };
+
+        const comp = $("cc-comp");
+        // thirteen places on a ring; the one on the left stays empty: that is the gap
+        const SLOTS = COMP.length + 1, GAP_SLOT = 10;
+        const slotXY = (k) => { const a = -Math.PI / 2 + (k / SLOTS) * Math.PI * 2; return [1180 + Math.cos(a) * 300, 560 + Math.sin(a) * 300]; };
+        const dots = COMP.map((c, i) => {
+          const [sx, sy] = slotXY(i < GAP_SLOT ? i : i + 1);
+          const d = document.createElement("div");
+          d.className = "cc-dot";
+          d.style.background = c;
+          d.style.left = sx.toFixed(0) + "px";
+          d.style.top = sy.toFixed(0) + "px";
+          comp.appendChild(d);
+          return d;
+        });
+        // the gap sits where nobody is: teal, on the ring's empty side
+        const [gx, gy] = slotXY(GAP_SLOT);
+        els.gap.style.left = gx.toFixed(0) + "px"; els.gap.style.top = gy.toFixed(0) + "px";
+        els.gapL.style.left = (gx - 76).toFixed(0) + "px"; els.gapL.style.top = (gy - 9).toFixed(0) + "px"; els.gapL.style.textAlign = "right"; els.gapL.style.width = "130px"; els.gapL.style.marginLeft = "-130px";
+
+        const labs = SWATCH.map((s, i) => {
+          const d = document.createElement("div");
+          d.className = "cc-lab";
+          d.style.left = (((i ? EDGES[i - 1] : 0) * 1920) + 44).toFixed(0) + "px";
+          d.style.color = s.ink;
+          d.innerHTML = `<b>${s.role}</b><span>${s.hex}</span><i>RGB ${s.rgb}</i>`;
+          $("cc-labels").appendChild(d);
+          return d;
+        });
+
+        // five small layouts, all in the palette
+        const TESTS = [
+          { name: "business card", bg: "#F5F5F0", html: '<i style="left:26px;top:30px;width:44px;height:44px;border-radius:50%;background:#00A89D"></i><i style="left:26px;top:132px;width:150px;height:12px;background:#1A1A18"></i><i style="left:26px;top:154px;width:100px;height:9px;background:#0099D6"></i>' },
+          { name: "web page", bg: "#F5F5F0", html: '<i style="left:0;top:0;width:300px;height:34px;border-radius:0;background:#1A1A18"></i><i style="left:22px;top:60px;width:170px;height:16px;background:#1A1A18"></i><i style="left:22px;top:86px;width:120px;height:10px;background:#767672"></i><i style="left:22px;top:124px;width:96px;height:30px;border-radius:15px;background:#00A89D"></i><i style="left:200px;top:54px;width:80px;height:110px;background:#0099D6"></i>' },
+          { name: "social post", bg: "#00A89D", html: '<i style="left:24px;top:28px;width:180px;height:22px;background:#F5F5F0"></i><i style="left:24px;top:60px;width:130px;height:22px;background:#F5F5F0"></i><i style="left:24px;top:150px;width:60px;height:10px;background:#1A1A18"></i><i style="left:226px;top:126px;width:50px;height:50px;border-radius:50%;background:#0099D6"></i>' },
+          { name: "on dark", bg: "#1A1A18", html: '<i style="left:26px;top:34px;width:160px;height:16px;background:#F5F5F0"></i><i style="left:26px;top:62px;width:110px;height:10px;background:#767672"></i><i style="left:26px;top:124px;width:96px;height:30px;border-radius:15px;background:#00A89D"></i><i style="left:134px;top:124px;width:96px;height:30px;border-radius:15px;border:2px solid #0099D6;background:transparent"></i>' },
+          { name: "on light", bg: "#FFFFFF", html: '<i style="left:26px;top:34px;width:160px;height:16px;background:#1A1A18"></i><i style="left:26px;top:62px;width:110px;height:10px;background:#767672"></i><i style="left:26px;top:124px;width:96px;height:30px;border-radius:15px;background:#008F86"></i><i style="left:200px;top:30px;width:74px;height:74px;border-radius:50%;background:#0099D6"></i>' },
+        ];
+        const tests = TESTS.map((x, i) => {
+          const d = document.createElement("div");
+          d.className = "cc-test";
+          d.style.left = (130 + i * 340).toFixed(0) + "px";
+          d.innerHTML = `<div class="m" style="background:${x.bg}">${x.html}</div><p>${x.name}</p>`;
+          $("cc-tests").appendChild(d);
+          return d;
+        });
+
+        let lastStep = -1;
+        function paint(t) {
+          // ---- the ink
+          const calm = io(lin(t, T.speed[0], T.speed[1]));
+          gl.uniform1f(U.uT, t);
+          gl.uniform1f(U.uSpeed, 1 - 0.8 * calm);
+          gl.uniform1f(U.uDrain, io(lin(t, T.drain[0], T.drain[1])));
+          gl.uniform1f(U.uDim, io(lin(t, T.dim[0], T.dim[1])) * (1 - io(lin(t, T.dotsOut[0], T.dotsOut[1]))));
+          gl.uniform1f(U.uPool, io(lin(t, T.pool[0], T.pool[1])));
+          gl.uniform1f(U.uBands, io(lin(t, T.bands[0], T.bands[1])));
+          gl.uniform1f(U.uFade, io(lin(t, T.fade[0], T.fade[1])));
+          gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+          // ---- opening line
+          els.open.textContent = OPEN.slice(0, Math.round(lin(t, T.open[0], T.open[1]) * OPEN.length));
+          const oo = 1 - lin(t, T.openOut[0], T.openOut[1]);
+          els.open.style.opacity = oo.toFixed(3);
+          els.scrim.style.opacity = (out3(lin(t, 0.1, 0.6)) * oo).toFixed(3);
+
+          // ---- step card: one at a time, a short fade between
+          let si = -1;
+          for (let i = 0; i < STEPS.length; i++) if (t >= STEPS[i].t) si = i;
+          if (si !== lastStep) {
+            if (si >= 0) { els.sn.textContent = STEPS[si].n; els.st.textContent = STEPS[si].ti; els.sd.textContent = STEPS[si].d; }
+            lastStep = si;
+          }
+          let so = 0;
+          if (si >= 0) {
+            const next = si + 1 < STEPS.length ? STEPS[si + 1].t : T.testsOut[0];
+            so = out3(lin(t, STEPS[si].t, STEPS[si].t + 0.4)) * (1 - lin(t, next - 0.3, next));
+          }
+          els.step.style.opacity = so.toFixed(3);
+          els.step.style.transform = `translateY(${((1 - out3(lin(t, STEPS[Math.max(si, 0)].t, STEPS[Math.max(si, 0)].t + 0.4))) * 10).toFixed(2)}px)`;
+          // on the bone page the card turns light
+          const light = lin(t, T.fade[0], T.fade[1]);
+          els.step.style.background = `rgba(${Math.round(26 + 219 * light)}, ${Math.round(26 + 219 * light)}, ${Math.round(24 + 216 * light)}, ${(0.78 + 0.22 * light).toFixed(2)})`;
+          els.st.style.color = light > 0.5 ? "#1A1A18" : "#F5F5F0";
+          els.sd.style.color = light > 0.5 ? "#4A4A45" : "#CFCFC8";
+          els.sn.style.color = light > 0.5 ? "#008F86" : "#3CC8BC";
+
+          // ---- 01 adjectives
+          els.words.forEach((w, i) => {
+            const a = out3(lin(t, T.words[0] + i * T.words[1], T.words[0] + i * T.words[1] + 0.6)) * (1 - lin(t, T.s2 - 0.5, T.s2));
+            w.style.opacity = a.toFixed(3);
+            w.style.transform = `translateY(${((1 - a) * 16).toFixed(2)}px)`;
+          });
+
+          // ---- 02 competitors and the gap
+          const dOut = 1 - lin(t, T.dotsOut[0], T.dotsOut[1]);
+          dots.forEach((d, i) => {
+            const a = out3(lin(t, T.dots[0] + i * T.dots[1], T.dots[0] + i * T.dots[1] + 0.4));
+            d.style.opacity = (a * dOut).toFixed(3);
+            d.style.transform = `scale(${(0.6 + 0.4 * a).toFixed(3)})`;
+          });
+          const g = out3(lin(t, T.gap, T.gap + 0.5)) * dOut;
+          els.gap.style.opacity = g.toFixed(3);
+          els.gap.style.transform = `scale(${(0.8 + 0.2 * g).toFixed(3)})`;
+          els.gapL.style.opacity = g.toFixed(3);
+
+          // ---- 03 the primary's code types beside the pool
+          const HEX = "#00A89D";
+          els.hex.textContent = HEX.slice(0, Math.round(lin(t, T.code[0], T.code[1]) * HEX.length));
+          els.code.style.opacity = (out3(lin(t, T.code[0] - 0.3, T.code[0])) * (1 - lin(t, T.bands[0], T.bands[0] + 0.4))).toFixed(3);
+
+          // ---- 04 swatch labels
+          labs.forEach((l, i) => {
+            const a = out3(lin(t, T.labels[0] + i * T.labels[1], T.labels[0] + i * T.labels[1] + 0.5)) * (1 - lin(t, T.fade[0], T.fade[0] + 0.4));
+            l.style.opacity = a.toFixed(3);
+            l.style.transform = `translateY(${((1 - a) * 14).toFixed(2)}px)`;
+          });
+
+          // ---- 05 tests
+          const tOut = 1 - lin(t, T.testsOut[0], T.testsOut[1]);
+          tests.forEach((x, i) => {
+            const a = out3(lin(t, T.tests[0] + i * T.tests[1], T.tests[0] + i * T.tests[1] + 0.5));
+            x.style.opacity = (a * tOut).toFixed(3);
+            x.style.transform = `translateY(${((1 - a) * 24).toFixed(2)}px)`;
+          });
+
+          // ---- lockup
+          const m = out3(lin(t, T.mark, T.mark + 0.6));
+          els.mark.style.opacity = m.toFixed(3);
+          const ti = out3(lin(t, T.title, T.title + 0.9));
+          els.title.style.opacity = ti.toFixed(3);
+          els.title.style.transform = `translateY(${((1 - ti) * 18).toFixed(2)}px)`;
+          els.url.textContent = URL_TEXT.slice(0, Math.round(lin(t, T.url[0], T.url[1]) * URL_TEXT.length));
+        }
+
+        const tl = gsap.timeline({ paused: true });
+        const clock = { t: 0 };
+        tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+        paint(0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+      })();
+    </script>
+  </body>
+</html>
