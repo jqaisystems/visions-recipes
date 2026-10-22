@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <!--
+      R06 · Brand Readiness Scan. The free Brand Readiness Check, joaoqueiros.com.
+      Canvas 2D depth scan. The business card is drawn once into a height map; every frame redraws it as stacked
+      scanlines lifted by height (a relief), revealed behind a sweeping scanner line. The scanner stops on eight
+      features, one per question of the check, and a list ticks them off. One painter computes every frame from time.
+    -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <style>
+      @font-face { font-family: "Manrope"; src: url("assets/fonts/Manrope-latin.woff2") format("woff2"); font-weight: 200 800; }
+      @font-face { font-family: "Instrument Serif"; src: url("assets/fonts/InstrumentSerif-Regular.ttf") format("truetype"); font-style: normal; }
+      @font-face { font-family: "Instrument Serif"; src: url("assets/fonts/InstrumentSerif-Italic.ttf") format("truetype"); font-style: italic; }
+
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #111110; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #111110; }
+
+      #bs-scan { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #bs-canvas { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+
+      /* the eight checks, right column */
+      #bs-ui { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #bs-list { position: absolute; left: 1380px; top: 250px; width: 470px; opacity: 0; }
+      #bs-list-h { font: 600 16px/1 "Manrope", sans-serif; letter-spacing: 0.18em; text-transform: uppercase; color: #8E8E88; }
+      #bs-list-h b { color: #F5F5F0; font-weight: 600; font-variant-numeric: tabular-nums; }
+      .bs-row { display: flex; align-items: center; height: 58px; border-bottom: 1px solid #2A2A27;
+        font: 500 21px/1.2 "Manrope", sans-serif; color: #6E6E68; white-space: nowrap; }
+      .bs-row:first-of-type { margin-top: 16px; border-top: 1px solid #2A2A27; }
+      .bs-row i { flex: none; width: 46px; font: 600 15px/1 "Manrope", sans-serif; font-style: normal; letter-spacing: 0.12em; color: #5A5A55; }
+      .bs-row s { flex: none; display: block; width: 22px; height: 22px; margin-left: auto; border-radius: 50%; border: 2px solid #3A3A36;
+        text-decoration: none; position: relative; }
+      .bs-row s::after { content: ""; position: absolute; left: 6px; top: 2px; width: 6px; height: 11px; border: solid #111110;
+        border-width: 0 2.5px 2.5px 0; transform: rotate(45deg); }
+
+      /* the current question, under the card */
+      #bs-q { position: absolute; left: 280px; top: 868px; width: 1000px; opacity: 0; }
+      #bs-q-n { font: 600 16px/1 "Manrope", sans-serif; letter-spacing: 0.18em; text-transform: uppercase; color: #3CC8BC; }
+      #bs-q-t { margin-top: 12px; font: 400 40px/1.1 "Instrument Serif", serif; color: #F5F5F0; }
+      #bs-q-d { margin-top: 10px; font: 500 20px/1.35 "Manrope", sans-serif; color: #A8A8A1; }
+
+      /* small proofs that appear above the card for some checks */
+      #bs-proof { position: absolute; left: 280px; top: 150px; height: 80px; display: flex; gap: 18px; }
+      .bs-tile { flex: none; height: 74px; padding: 0 18px; display: flex; align-items: center; gap: 12px; border-radius: 12px;
+        background: #1D1D1B; border: 1px solid #33332F; opacity: 0;
+        font: 600 15px/1 "Manrope", sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #C8C8C1; }
+      .bs-tile img { display: block; }
+      .bs-sw { display: block; width: 34px; height: 34px; border-radius: 8px; }
+
+      /* the four bands, as the scale (no score is claimed) */
+      #bs-bands { position: absolute; left: 280px; top: 884px; width: 1560px; opacity: 0; }
+      #bs-bar { position: relative; display: flex; height: 14px; border-radius: 7px; overflow: hidden; background: #22221F; }
+      #bs-bar span { display: block; height: 14px; }
+      #bs-fill { position: absolute; left: 0; top: 0; height: 14px; background: #00A89D; }
+      #bs-names { position: relative; height: 70px; margin-top: 16px; }
+      .bs-band { position: absolute; top: 0; opacity: 0.35; }
+      .bs-band b { display: block; font: 600 15px/1 "Manrope", sans-serif; letter-spacing: 0.14em; color: #8E8E88; font-variant-numeric: tabular-nums; }
+      .bs-band span { display: block; margin-top: 10px; font: 400 32px/1 "Instrument Serif", serif; color: #F5F5F0; }
+
+      /* lockup */
+      #bs-lock { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #bs-mark { position: absolute; left: 902px; top: 248px; width: 116px; height: 116px; opacity: 0; }
+      #bs-title { position: absolute; left: 0; top: 420px; width: 1920px; text-align: center; opacity: 0;
+        font: 400 120px/1 "Instrument Serif", serif; color: #F5F5F0; }
+      #bs-title em { color: #3CC8BC; }
+      #bs-sub { position: absolute; left: 0; top: 584px; width: 1920px; text-align: center; opacity: 0;
+        font: 500 26px/1 "Manrope", sans-serif; color: #C8C8C1; }
+      #bs-url { position: absolute; left: 0; top: 650px; width: 1920px; text-align: center; white-space: pre;
+        font: 600 21px/1 "Manrope", sans-serif; letter-spacing: 0.14em; color: #8E8E88; }
+    </style>
+  </head>
+  <body>
+    <div data-hf-id="hf-3x1a" id="root" data-composition-id="main" data-start="0" data-duration="26" data-width="1920" data-height="1080">
+      <div data-hf-id="hf-xz1t" id="bs-scan" class="clip" data-start="0" data-duration="26" data-track-index="0">
+        <canvas data-hf-id="hf-cd42" id="bs-canvas" width="1920" height="1080"></canvas>
+      </div>
+
+      <div data-hf-id="hf-u8p7" id="bs-ui" class="clip" data-start="0" data-duration="26" data-track-index="1">
+        <div data-hf-id="hf-qnkj" id="bs-proof" data-layout-allow-occlusion></div>
+        <div data-hf-id="hf-1wvv" id="bs-list" data-layout-allow-occlusion><p data-hf-id="hf-eibw" id="bs-list-h">Brand Readiness Check · <b data-hf-id="hf-sqbz">0</b> / 8</p></div>
+        <div data-hf-id="hf-m0do" id="bs-q" data-layout-allow-occlusion><p data-hf-id="hf-1j2u" id="bs-q-n"></p><h2 data-hf-id="hf-n7lw" id="bs-q-t"></h2><p data-hf-id="hf-5dpg" id="bs-q-d"></p></div>
+        <div data-hf-id="hf-j5d1" id="bs-bands" data-layout-allow-occlusion>
+          <div data-hf-id="hf-ev5o" id="bs-bar"><div data-hf-id="hf-wt12" id="bs-fill"></div></div>
+          <div data-hf-id="hf-ty6z" id="bs-names"></div>
+        </div>
+      </div>
+
+      <div data-hf-id="hf-wzvl" id="bs-lock" class="clip" data-start="0" data-duration="26" data-track-index="2">
+        <img data-hf-id="hf-rioy" id="bs-mark" src="assets/img/jq-mark.svg" alt="" data-layout-allow-occlusion />
+        <h1 data-hf-id="hf-ibyd" id="bs-title" data-layout-allow-occlusion>Is your brand <em data-hf-id="hf-p2pr">ready to grow?</em></h1>
+        <p data-hf-id="hf-btpy" id="bs-sub" data-layout-allow-occlusion>8 questions · about 60 seconds · a score out of 100</p>
+        <p data-hf-id="hf-vach" id="bs-url" data-layout-allow-occlusion></p>
+      </div>
+
+      <audio data-hf-id="hf-6dnx" id="bs-score" src="assets/bgm/score.wav" data-start="0" data-duration="26" data-track-index="7" data-volume="0.55"></audio>
+    </div>
+
+    <script>
+      (function () {
+        const DUR = 26;
+        const URL_TEXT = "joaoqueiros.com/brand-readiness-check";
+
+        // ---- one timing table (the score reads the same numbers)
+        const T = {
+          wake: [0.3, 1.4], outline: [0.8, 2.0],
+          sweep: [2.2, 5.6],
+          list: [4.8, 5.6],
+          checks: [6.4, 1.55],                // first check starts, length of each
+          bands: [19.0, 21.4], bandsIn: [18.7, 19.2],
+          dim: [21.6, 22.4],
+          mark: 22.3, title: 22.6, sub: 23.4, url: [24.0, 25.0],
+        };
+        window.BS_T = T;
+
+        // ---- the card: 960 x 548, drawn at (CX, CY) on screen
+        const CW = 960, CH = 548, CX = 280, CY = 270;
+        const RIDGE = 22;                     // px a full-height feature lifts
+        const ROW = 5, COL = 2;               // scanline spacing and sample step, in card px
+        const BG = "#111110";
+
+        // the eight questions, from the check itself (rect = the feature the scanner frames, card px)
+        const CHECKS = [
+          { k: "Clarity", t: "Clear in five seconds", d: "Can a stranger tell what you do and who it is for within five seconds?", r: [70, 300, 560, 120] },
+          { k: "Logo", t: "Works small, in one colour, on a van", d: "Does your logo still work at 16 pixels, in one colour, and on a van or sign?", r: [60, 60, 210, 210], fx: "small" },
+          { k: "Consistency", t: "The same colours and fonts everywhere", d: "Do you use the same colours and fonts everywhere?", r: [70, 300, 820, 200], fx: "swatch" },
+          { k: "Guidelines", t: "Rules a printer could follow", d: "Could a printer or freelancer follow your brand guidelines without asking you?", r: [0, 0, 960, 548], fx: "grid" },
+          { k: "Files", t: "You own the vector files", d: "Do you own the original vector files of your logo?", r: [60, 60, 210, 210], fx: "anchors" },
+          { k: "Credibility", t: "As credible as your best competitor", d: "Does your brand look as credible as your best competitor’s?", r: [0, 0, 960, 548], fx: "rival" },
+          { k: "Fit", t: "Fits the business you are today", d: "Has your offer, audience or size changed since your logo was made?", r: [70, 360, 520, 50] },
+          { k: "Pride", t: "Proud to hand it over", d: "Would you be proud to hand your business card to your ideal client today?", r: [0, 0, 960, 548], fx: "lift" },
+        ];
+        const BANDS = [
+          { lo: 0, hi: 39, name: "Starting point" }, { lo: 40, hi: 69, name: "Growing pains" },
+          { lo: 70, hi: 89, name: "Strong foundations" }, { lo: 90, hi: 100, name: "Ready to scale" },
+        ];
+
+        // the JQ mark: its four paths, and their corner points for the vector check (svg units, 1080 box)
+        const JQ = [
+          "M633.21,274.91H274.79V415.19h50.55V325.46H633.21A121.58,121.58,0,0,1,754.66,446.91V754.54h0v50.55h50.59V446.91C805.21,352.07,728.05,274.91,633.21,274.91Z",
+          "M627.61,754.54H447A121.58,121.58,0,0,1,325.58,633.09H275c0,94.84,77.16,172,172,172H627.61Z",
+          "M274.79,553v50.55h89v29.58a84,84,0,0,0,83.2,83.2H627.61V665.73H447c-17.39,0-32.65-15.25-32.65-32.64V553Z",
+          "M716.4,651.4h0V446.91a83.95,83.95,0,0,0-83.19-83.2H361v50.55H633.21c17.39,0,32.64,15.26,32.64,32.65V557.66h0V754.54h0v50.55H716.4Z",
+        ];
+        const ANCHORS = [[633.21,274.91],[274.79,274.91],[274.79,415.19],[325.34,415.19],[325.34,325.46],[633.21,325.46],[754.66,446.91],
+          [754.66,805.09],[805.25,805.09],[805.21,446.91],[627.61,754.54],[447,754.54],[325.58,633.09],[275,633.09],[447,805.09],
+          [627.61,805.09],[274.79,553],[274.79,603.55],[363.79,603.55],[363.79,633.13],[446.99,716.33],[627.61,716.33],[627.61,665.73],
+          [414.35,633.09],[414.35,553],[716.4,651.4],[716.4,446.91],[633.21,363.71],[361,363.71],[361,414.26],[665.85,446.91],[665.85,805.09],[716.4,805.09]];
+        const LOGO = { x: 60, y: 60, s: 210 / 530.5 };        // the mark's 530 px drawing fills 210 card px
+        const logoPt = (p) => [LOGO.x + (p[0] - 274.79) * LOGO.s, LOGO.y + (p[1] - 274.91) * LOGO.s];
+
+        // ---- height map: the card drawn once in greys (white = raised)
+        const HM = document.createElement("canvas");
+        HM.width = CW; HM.height = CH;
+        let H = new Float32Array(CW * CH);
+        function buildHeight() {
+          const g = HM.getContext("2d");
+          g.filter = "none";
+          g.fillStyle = "#000"; g.fillRect(0, 0, CW, CH);
+          g.fillStyle = "#3a3a3a"; g.fillRect(0, 0, CW, CH);                       // the card's thickness
+          g.save(); g.translate(LOGO.x, LOGO.y); g.scale(LOGO.s, LOGO.s); g.translate(-274.79, -274.91);
+          g.fillStyle = "#fff"; JQ.forEach((d) => g.fill(new Path2D(d))); g.restore();   // the mark, highest
+          g.fillStyle = "#d8d8d8"; g.font = '400 76px "Instrument Serif", serif'; g.fillText("João Queirós", 70, 372);
+          g.fillStyle = "#b4b4b4"; g.font = '500 30px "Manrope", sans-serif'; g.fillText("Brand identity designer", 72, 412);
+          g.fillStyle = "#a0a0a0"; g.font = '600 24px "Manrope", sans-serif'; g.fillText("joaoqueiros.com", 72, 490); g.fillText("Porto, Portugal", 690, 490);
+          g.fillStyle = "#c8c8c8"; g.fillRect(920, 0, 40, CH);                         // the teal edge, raised
+          // soften so the relief has slopes, then read it
+          const s = document.createElement("canvas"); s.width = CW; s.height = CH;
+          const sg = s.getContext("2d"); sg.filter = "blur(2.5px)"; sg.drawImage(HM, 0, 0);
+          const px = sg.getImageData(0, 0, CW, CH).data;
+          for (let i = 0; i < CW * CH; i++) H[i] = px[i * 4] / 255;
+        }
+        const hAt = (x, y) => H[Math.min(CH - 1, Math.max(0, y | 0)) * CW + Math.min(CW - 1, Math.max(0, x | 0))];
+
+        // ---- easing
+        const clamp = (v) => Math.max(0, Math.min(1, v));
+        const lin = (t, a, b) => clamp((t - a) / (b - a));
+        const io = (x) => 0.5 - 0.5 * Math.cos(Math.PI * x);
+        const out3 = (x) => 1 - Math.pow(1 - x, 3);
+
+        // ---- which check is active, and the scanner position
+        const checkAt = (t) => Math.floor((t - T.checks[0]) / T.checks[1]);
+        function scanX(t) {
+          if (t < T.sweep[0]) return -40;
+          if (t < T.checks[0]) return CW * io(lin(t, T.sweep[0], T.sweep[1]));
+          const i = Math.min(7, checkAt(t));
+          if (i < 0) return CW;
+          const target = (k) => CHECKS[k].r[0] + CHECKS[k].r[2] / 2;
+          const prev = i === 0 ? CW : target(i - 1);
+          const u = io(lin(t, T.checks[0] + i * T.checks[1], T.checks[0] + i * T.checks[1] + 0.45));
+          const x = prev + (target(i) - prev) * u;
+          return t > T.bandsIn[0] ? x + (CW + 60 - x) * io(lin(t, T.bandsIn[0], T.bands[0] + 0.6)) : x;
+        }
+
+        // ---- canvas
+        const cv = document.getElementById("bs-canvas");
+        const ctx = cv.getContext("2d");
+        const TEAL = "0, 168, 157", BONE = "245, 245, 240";
+
+        function paint(t) {
+          ctx.fillStyle = BG; ctx.fillRect(0, 0, 1920, 1080);
+          const dim = 1 - 0.94 * io(lin(t, T.dim[0], T.dim[1]));
+          const ci = t >= T.checks[0] && t < T.bands[0] ? Math.min(7, checkAt(t)) : -1;
+          const local = ci >= 0 ? (t - T.checks[0] - ci * T.checks[1]) / T.checks[1] : 0;
+          const focus = ci >= 0 ? io(clamp(local * 4)) * (1 - io(clamp((local - 0.85) / 0.15))) : 0;
+          const fx = ci >= 0 ? CHECKS[ci].fx : null;
+          const lift = fx === "lift" ? focus : 0;
+          const ridge = RIDGE * (1 + 0.8 * lift);
+          const sx = scanX(t);
+          const reveal = t < T.checks[0] ? Math.max(0, Math.min(CW, sx)) : CW;   // once swept, the relief stays
+          const oy = -14 * lift;                                         // the card rises toward you when handed over
+
+          ctx.save();
+          ctx.globalAlpha = dim;
+
+          // a rival card behind, for the credibility check
+          if (fx === "rival" && focus > 0) {
+            ctx.save(); ctx.globalAlpha = dim * focus * 0.8;
+            ctx.setLineDash([10, 8]); ctx.strokeStyle = "#5A5A55"; ctx.lineWidth = 2;
+            ctx.strokeRect(CX + 46, CY - 40, CW, CH);
+            ctx.setLineDash([]); ctx.fillStyle = "#6E6E68"; ctx.font = '600 15px "Manrope", sans-serif';
+            ctx.fillText("YOUR BEST COMPETITOR", CX + CW - 168, CY - 52);
+            ctx.restore();
+          }
+
+          // flat outline of the card, before the scanner reaches it
+          const wake = out3(lin(t, T.outline[0], T.outline[1]));
+          ctx.strokeStyle = `rgba(110, 110, 104, ${(0.7 * wake).toFixed(3)})`;
+          ctx.lineWidth = 1.5;
+          ctx.strokeRect(CX + reveal + 0.5, CY + 0.5, CW - reveal, CH);
+
+          // the relief: back rows first, each filled below with the background so nearer rows hide farther ones
+          const r = ci >= 0 ? CHECKS[ci].r : null;
+          if (reveal > 2) {
+            for (let y = 0; y <= CH; y += ROW) {
+              ctx.beginPath();
+              let first = true;
+              for (let x = 0; x <= reveal; x += COL) {
+                const px = CX + x, py = CY + oy + y - hAt(x, y) * ridge;
+                if (first) { ctx.moveTo(px, py); first = false; } else ctx.lineTo(px, py);
+              }
+              ctx.lineTo(CX + reveal, CY + oy + y + ROW + 2); ctx.lineTo(CX, CY + oy + y + ROW + 2); ctx.closePath();
+              ctx.fillStyle = BG; ctx.fill();
+              // base line in grey, brighter on the raised parts is handled by the highlight pass below
+              ctx.beginPath();
+              first = true;
+              for (let x = 0; x <= reveal; x += COL) {
+                const px = CX + x, py = CY + oy + y - hAt(x, y) * ridge;
+                if (first) { ctx.moveTo(px, py); first = false; } else ctx.lineTo(px, py);
+              }
+              ctx.strokeStyle = `rgba(150, 150, 144, ${(0.55 + 0.25 * lift).toFixed(3)})`;
+              ctx.lineWidth = 1.1; ctx.stroke();
+
+              // the feature under check, in teal
+              if (r && focus > 0 && y >= r[1] && y <= r[1] + r[3]) {
+                const x0 = Math.max(0, r[0]), x1 = Math.min(reveal, r[0] + r[2]);
+                if (x1 > x0) {
+                  ctx.beginPath();
+                  for (let x = x0 - (x0 % COL); x <= x1; x += COL) {
+                    const px = CX + x, py = CY + oy + y - hAt(x, y) * ridge;
+                    if (x === x0 - (x0 % COL)) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+                  }
+                  ctx.strokeStyle = fx === "lift" ? `rgba(${BONE}, ${(0.85 * focus).toFixed(3)})` : `rgba(${TEAL}, ${(0.95 * focus).toFixed(3)})`;
+                  ctx.lineWidth = 1.5; ctx.stroke();
+                }
+              }
+              // the glow just behind the scanner
+              if (sx > 0 && sx < CW + 40) {
+                const g0 = Math.max(0, sx - 70), g1 = Math.min(reveal, sx);
+                if (g1 > g0) {
+                  ctx.beginPath();
+                  for (let x = g0 - (g0 % COL); x <= g1; x += COL) {
+                    const px = CX + x, py = CY + oy + y - hAt(x, y) * ridge;
+                    if (x === g0 - (g0 % COL)) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+                  }
+                  ctx.strokeStyle = `rgba(${BONE}, 0.55)`; ctx.lineWidth = 1.3; ctx.stroke();
+                }
+              }
+            }
+          }
+
+          // guide lines for the guidelines check
+          if (fx === "grid" && focus > 0) {
+            ctx.save(); ctx.strokeStyle = `rgba(${TEAL}, ${(0.8 * focus).toFixed(3)})`; ctx.lineWidth = 1; ctx.setLineDash([6, 6]);
+            [[70, 0, 70, CH], [890, 0, 890, CH], [0, 60, CW, 60], [0, 500, CW, 500], [480, 0, 480, CH]].forEach(([a, b, c, d]) => {
+              ctx.beginPath(); ctx.moveTo(CX + a, CY + b - 12); ctx.lineTo(CX + c, CY + d - 12); ctx.stroke();
+            });
+            ctx.restore();
+          }
+          // corner points for the vector check
+          if (fx === "anchors" && focus > 0) {
+            ANCHORS.forEach((p, k) => {
+              const a = clamp(focus * 1.6 - k * 0.02);
+              if (a <= 0) return;
+              const [x, y] = logoPt(p);
+              const px = CX + x, py = CY + y - hAt(x, y) * ridge;
+              ctx.fillStyle = BG; ctx.strokeStyle = `rgba(${BONE}, ${a.toFixed(3)})`; ctx.lineWidth = 1.5;
+              ctx.fillRect(px - 4, py - 4, 8, 8); ctx.strokeRect(px - 4, py - 4, 8, 8);
+            });
+          }
+
+          // the frame around the feature
+          if (r && focus > 0 && fx !== "lift") {
+            const pad = 10, x = CX + r[0] - pad, y = CY + r[1] - pad - ridge, w = r[2] + pad * 2, h = r[3] + pad * 2 + ridge;
+            const L = 26;
+            ctx.strokeStyle = `rgba(${TEAL}, ${focus.toFixed(3)})`; ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            [[x, y, 1, 1], [x + w, y, -1, 1], [x, y + h, 1, -1], [x + w, y + h, -1, -1]].forEach(([a, b, dx, dy]) => {
+              ctx.moveTo(a + dx * L, b); ctx.lineTo(a, b); ctx.lineTo(a, b + dy * L);
+            });
+            ctx.stroke();
+          }
+
+          // the scanner line
+          if (sx > -30 && sx < CW + 50) {
+            const wakeA = out3(lin(t, T.wake[0], T.wake[1]));
+            const X = CX + Math.max(-20, sx);
+            const grd = ctx.createLinearGradient(X - 60, 0, X + 4, 0);
+            grd.addColorStop(0, `rgba(${TEAL}, 0)`); grd.addColorStop(1, `rgba(${TEAL}, ${(0.28 * wakeA).toFixed(3)})`);
+            ctx.fillStyle = grd; ctx.fillRect(X - 60, CY - 60, 64, CH + 100);
+            ctx.fillStyle = `rgba(${TEAL}, ${wakeA.toFixed(3)})`; ctx.fillRect(X - 1.5, CY - 60, 3, CH + 100);
+            ctx.fillStyle = `rgba(${BONE}, ${(0.9 * wakeA).toFixed(3)})`; ctx.fillRect(X - 0.5, CY - 60, 1, CH + 100);
+          }
+          ctx.restore();
+
+          paintUI(t, ci, focus, dim);
+        }
+
+        // ---- HTML: list, question, proofs, bands, lockup
+        const $ = (id) => document.getElementById(id);
+        const list = $("bs-list"), listN = $("bs-list-h").querySelector("b");
+        const rows = CHECKS.map((c, i) => {
+          const d = document.createElement("div");
+          d.className = "bs-row";
+          d.innerHTML = `<i>${String(i + 1).padStart(2, "0")}</i>${c.k}<s></s>`;
+          list.appendChild(d);
+          return d;
+        });
+        const proofs = {
+          small: [
+            '<img src="assets/img/jq-mark.svg" width="16" height="16" alt="">16 px',
+            '<img src="assets/img/jq-mark.svg" width="44" height="44" alt="" style="filter:grayscale(1) brightness(3)">one colour',
+            '<svg width="74" height="44" viewBox="0 0 74 44"><path d="M2 8h44v26H2zM46 16h16l10 10v8H46z" fill="#F5F5F0"/><circle cx="16" cy="36" r="6" fill="#111110" stroke="#F5F5F0" stroke-width="3"/><circle cx="58" cy="36" r="6" fill="#111110" stroke="#F5F5F0" stroke-width="3"/><image href="assets/img/jq-mark.svg" x="12" y="9" width="24" height="24"/></svg>on a van',
+          ],
+          swatch: [
+            '<span class="bs-sw" style="background:#00A89D"></span><span class="bs-sw" style="background:#F5F5F0"></span><span class="bs-sw" style="background:#1A1A18;border:1px solid #444"></span>one palette',
+            '<span style="font:400 30px/1 \'Instrument Serif\',serif;letter-spacing:0;text-transform:none;color:#F5F5F0">Aa</span><span style="font:600 24px/1 Manrope,sans-serif;letter-spacing:0;text-transform:none;color:#F5F5F0">Aa</span>two typefaces',
+          ],
+        };
+        const proofBox = $("bs-proof");
+        const proofEls = {};
+        Object.keys(proofs).forEach((k) => {
+          proofEls[k] = proofs[k].map((h) => {
+            const d = document.createElement("div");
+            d.className = "bs-tile"; d.innerHTML = h; d.style.position = "absolute"; d.style.top = "0";
+            proofBox.appendChild(d);
+            return d;
+          });
+        });
+        // lay the tiles out in a row (fixed widths keep layout off the clock)
+        Object.values(proofEls).forEach((arr) => { let x = 0; arr.forEach((d) => { d.style.left = x + "px"; x += d.offsetWidth + 18; }); });
+
+        const bandBox = $("bs-names"), bar = $("bs-bar");
+        const SEG = ["#4A2A24", "#4A4224", "#24424A", "#1E4A45"];
+        BANDS.forEach((b, i) => {
+          const w = ((b.hi - b.lo + (i ? 1 : 1)) / 101) * 100;
+          const s = document.createElement("span"); s.style.width = w + "%"; s.style.background = SEG[i]; bar.insertBefore(s, $("bs-fill"));
+          const n = document.createElement("div"); n.className = "bs-band"; n.style.left = ((b.lo / 101) * 1560).toFixed(0) + "px";
+          n.innerHTML = `<b>${b.lo} to ${b.hi}</b><span>${b.name}</span>`; bandBox.appendChild(n);
+        });
+        const bandEls = [...bandBox.children];
+
+        const q = { box: $("bs-q"), n: $("bs-q-n"), t: $("bs-q-t"), d: $("bs-q-d") };
+        let lastQ = -2;
+        function paintUI(t, ci, focus, dim) {
+          // list
+          const la = out3(lin(t, T.list[0], T.list[1])) * (1 - io(lin(t, T.dim[0], T.dim[1])));
+          list.style.opacity = la.toFixed(3);
+          const done = t < T.checks[0] ? 0 : Math.min(8, Math.floor((t - T.checks[0] + T.checks[1] * 0.45) / T.checks[1]));
+          listN.textContent = done;
+          rows.forEach((row, i) => {
+            const on = i === ci && focus > 0.05;
+            row.style.color = on ? "#F5F5F0" : i < done ? "#C8C8C1" : "#6E6E68";
+            row.querySelector("i").style.color = on ? "#3CC8BC" : "#5A5A55";
+            const tick = row.querySelector("s");
+            tick.style.background = i < done ? "#00A89D" : "transparent";
+            tick.style.borderColor = i < done ? "#00A89D" : "#3A3A36";
+          });
+
+          // question under the card
+          const qi = ci;
+          if (qi !== lastQ) {
+            if (qi >= 0) { q.n.textContent = `${String(qi + 1).padStart(2, "0")} · ${CHECKS[qi].k}`; q.t.textContent = CHECKS[qi].t; q.d.textContent = CHECKS[qi].d; }
+            lastQ = qi;
+          }
+          q.box.style.opacity = (qi >= 0 ? focus : 0).toFixed(3);
+          q.box.style.transform = `translateY(${((1 - focus) * 8).toFixed(2)}px)`;
+
+          // proofs above the card
+          Object.keys(proofEls).forEach((k) => {
+            const active = ci >= 0 && CHECKS[ci].fx === k;
+            proofEls[k].forEach((d, j) => {
+              const a = active ? clamp(focus * 1.4 - j * 0.15) : 0;
+              d.style.opacity = a.toFixed(3);
+              d.style.transform = `translateY(${((1 - a) * 10).toFixed(2)}px)`;
+            });
+          });
+
+          // bands, as the scale
+          const ba = out3(lin(t, T.bandsIn[0], T.bandsIn[1])) * (1 - lin(t, T.dim[0], T.dim[1]));
+          $("bs-bands").style.opacity = ba.toFixed(3);
+          const f = io(lin(t, T.bands[0], T.bands[1]));
+          $("bs-fill").style.width = (f * 100).toFixed(2) + "%";
+          bandEls.forEach((el, i) => {
+            const reached = f * 101 >= BANDS[i].lo + 1;
+            el.style.opacity = reached ? "1" : "0.35";
+          });
+
+          // lockup
+          $("bs-mark").style.opacity = out3(lin(t, T.mark, T.mark + 0.6)).toFixed(3);
+          const ti = out3(lin(t, T.title, T.title + 0.9));
+          $("bs-title").style.opacity = ti.toFixed(3);
+          $("bs-title").style.transform = `translateY(${((1 - ti) * 18).toFixed(2)}px)`;
+          const su = out3(lin(t, T.sub, T.sub + 0.7));
+          $("bs-sub").style.opacity = su.toFixed(3);
+          $("bs-sub").style.transform = `translateY(${((1 - su) * 12).toFixed(2)}px)`;
+          $("bs-url").textContent = URL_TEXT.slice(0, Math.round(lin(t, T.url[0], T.url[1]) * URL_TEXT.length));
+        }
+
+        buildHeight();
+        const tl = gsap.timeline({ paused: true });
+        const clock = { t: 0 };
+        tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+        paint(0);
+        // the height map has type in it: rebuild once the fonts are ready
+        if (document.fonts && document.fonts.load) {
+          Promise.all([document.fonts.load('400 76px "Instrument Serif"'), document.fonts.load('500 30px "Manrope"')]).then(() => { buildHeight(); paint(clock.t); });
+        }
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+      })();
+    </script>
+  </body>
+</html>
