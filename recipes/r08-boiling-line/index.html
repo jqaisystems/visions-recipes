@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <!--
+      R08 · Boiling Line. The Music page on visions.joaoqueiros.com.
+      Pure SVG that looks drawn by hand: every stroke is a polyline whose points get a seeded wobble that changes
+      12 times a second ("on twos"), drawn in two passes like a fineliner, and revealed with a dash offset. Motion
+      (waves, birds, the sun) is stepped to the same 12 drawings a second. One painter computes every frame from time.
+    -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <style>
+      @font-face { font-family: "Instrument Serif"; src: url("assets/fonts/InstrumentSerif-Regular.ttf") format("truetype"); font-style: normal; }
+      @font-face { font-family: "Instrument Serif"; src: url("assets/fonts/InstrumentSerif-Italic.ttf") format("truetype"); font-style: italic; }
+      @font-face { font-family: "Manrope"; src: url("assets/fonts/Manrope-latin.woff2") format("woff2"); font-weight: 200 800; }
+
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #F4EEE2; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #F4EEE2; }
+      #bl-art { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #bl-svg { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+      .ink { fill: none; stroke: #2B2420; stroke-linecap: round; stroke-linejoin: round; }
+      .wash { mix-blend-mode: multiply; }
+      #bl-title { font: 400 168px "Instrument Serif", serif; fill: #2B2420; }
+      #bl-sub { font: italic 400 46px "Instrument Serif", serif; fill: #4A3E36; }
+      #bl-url { font: 600 22px "Manrope", sans-serif; letter-spacing: 0.14em; fill: #6B5B4E; }
+    </style>
+  </head>
+  <body>
+    <div data-hf-id="hf-3x1a" id="root" data-composition-id="main" data-start="0" data-duration="26" data-width="1920" data-height="1080">
+      <div data-hf-id="hf-5ega" id="bl-art" class="clip" data-start="0" data-duration="26" data-track-index="0">
+        <svg data-hf-id="hf-cu7t" id="bl-svg" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg" data-layout-allow-occlusion>
+          <defs data-hf-id="hf-mh0t">
+            <!-- paper tooth -->
+            <filter data-hf-id="hf-0ap1" id="bl-paper" x="0" y="0" width="100%" height="100%">
+              <feTurbulence data-hf-id="hf-zmm3" type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="4" result="n" />
+              <feColorMatrix data-hf-id="hf-xx32" in="n" type="matrix" values="0 0 0 0 0.45  0 0 0 0 0.38  0 0 0 0 0.3  0 0 0 0.09 0" />
+            </filter>
+            <!-- watercolour edge and the boiling type: the seed changes 12 times a second -->
+            <filter data-hf-id="hf-mqcl" id="bl-wet" x="-10%" y="-10%" width="120%" height="120%">
+              <feTurbulence data-hf-id="hf-k8of" id="bl-wet-n" type="fractalNoise" baseFrequency="0.018" numOctaves="3" seed="1" result="n" />
+              <feDisplacementMap data-hf-id="hf-3dug" in="SourceGraphic" in2="n" scale="46" xChannelSelector="R" yChannelSelector="G" result="d" />
+              <feGaussianBlur data-hf-id="hf-roqj" in="d" stdDeviation="3" />
+            </filter>
+            <radialGradient data-hf-id="hf-wm9p" id="bl-g-sky" cx="1100" cy="400" r="760" gradientUnits="userSpaceOnUse">
+              <stop data-hf-id="hf-ext2" offset="0" stop-color="#E8894A" stop-opacity="0.75" /><stop data-hf-id="hf-dh4z" offset="0.55" stop-color="#EFA36A" stop-opacity="0.35" />
+              <stop data-hf-id="hf-r30i" offset="1" stop-color="#F4C08E" stop-opacity="0" />
+            </radialGradient>
+            <linearGradient data-hf-id="hf-dnny" id="bl-g-sea" x1="0" y1="471" x2="0" y2="820" gradientUnits="userSpaceOnUse">
+              <stop data-hf-id="hf-3tkl" offset="0" stop-color="#3E8C8A" stop-opacity="0.55" /><stop data-hf-id="hf-g959" offset="1" stop-color="#3E8C8A" stop-opacity="0.12" />
+            </linearGradient>
+            <clipPath data-hf-id="hf-0kwl" id="bl-sea"><rect data-hf-id="hf-3zax" x="0" y="471" width="1920" height="360" /></clipPath>
+            <filter data-hf-id="hf-wzbj" id="bl-boil" x="-5%" y="-20%" width="110%" height="140%">
+              <feTurbulence data-hf-id="hf-mf3e" id="bl-boil-n" type="fractalNoise" baseFrequency="0.045" numOctaves="2" seed="1" result="n" />
+              <feDisplacementMap data-hf-id="hf-dpzd" in="SourceGraphic" in2="n" scale="4.5" xChannelSelector="R" yChannelSelector="G" />
+            </filter>
+            <clipPath data-hf-id="hf-z5l3" id="bl-sky"><rect data-hf-id="hf-7c72" x="0" y="0" width="1920" height="471" /></clipPath>
+          </defs>
+          <rect data-hf-id="hf-mygu" width="1920" height="1080" fill="#F4EEE2" />
+          <rect data-hf-id="hf-0tkp" width="1920" height="1080" filter="url(#bl-paper)" />
+          <g data-hf-id="hf-kt3o" id="bl-wash" class="wash" filter="url(#bl-wet)"></g>
+          <g data-hf-id="hf-vpnq" id="bl-ink"></g>
+          <g data-hf-id="hf-j73n" id="bl-type" filter="url(#bl-boil)">
+            <text data-hf-id="hf-pujg" id="bl-title" x="140" y="250" opacity="0">Music</text>
+            <text data-hf-id="hf-a87d" id="bl-sub" x="146" y="318" opacity="0">piano, ocean, made with Suno</text>
+            <text data-hf-id="hf-lteb" id="bl-url" x="148" y="378"></text>
+          </g>
+        </svg>
+      </div>
+
+      <audio data-hf-id="hf-okh7" id="bl-score" src="assets/bgm/score.wav" data-start="0" data-duration="26" data-track-index="7" data-volume="0.58"></audio>
+    </div>
+
+    <script>
+      (function () {
+        const DUR = 26, FPS_DRAW = 12;
+        const URL_TEXT = "visions.joaoqueiros.com/music";
+        const HORIZON = 470, SHORE = 790;
+
+        // ---- one timing table (score/compose.py mirrors these, including NOTES)
+        const T = {
+          horizon: [0.4, 1.8], sun: [1.4, 2.6], rays: [2.4, 3.4],
+          waves: [4.0, 0.45], shore: [5.6, 6.6], birds: [6.0, 14.0],
+          piano: [9.8, 12.4], sunset: [16.0, 21.0], wash: [16.4, 19.6], sea: [17.2, 20.4],
+          title: 21.4, sub: 22.2, url: [22.8, 23.8],
+        };
+        // the piano melody: [time, white key 0..13]; the keys press on these notes
+        const NOTES = [[12.7, 4], [13.1, 6], [13.5, 7], [13.9, 9], [14.5, 8], [14.9, 7], [15.3, 6], [15.9, 4],
+          [16.4, 7], [16.8, 9], [17.2, 11], [17.8, 9], [18.6, 7], [19.4, 4], [20.4, 7]];
+        window.BL_T = T; window.BL_NOTES = NOTES;
+
+        // ---- deterministic noise
+        const hash = (a, b, c, d) => {
+          let h = Math.imul(a | 0, 374761393) ^ Math.imul(b | 0, 668265263) ^ Math.imul(c | 0, 2246822519) ^ Math.imul(d | 0, 3266489917);
+          h = Math.imul(h ^ (h >>> 13), 1274126177); h ^= h >>> 16;
+          return (h >>> 0) / 4294967296;
+        };
+        const clamp = (v) => Math.max(0, Math.min(1, v));
+        const lin = (t, a, b) => clamp((t - a) / (b - a));
+        const io = (x) => 0.5 - 0.5 * Math.cos(Math.PI * x);
+        const out3 = (x) => 1 - Math.pow(1 - x, 3);
+
+        // ---- the strokes: each is a point list, a draw-on window and a weight
+        const NS = "http://www.w3.org/2000/svg";
+        const ink = document.getElementById("bl-ink");
+        const strokes = [];
+        function stroke(id, w = 2.6) {
+          const g = document.createElementNS(NS, "g");
+          const a = document.createElementNS(NS, "path"), b = document.createElementNS(NS, "path");
+          for (const [p, sw, op] of [[a, w, 0.92], [b, w * 0.55, 0.55]]) {
+            p.setAttribute("class", "ink"); p.setAttribute("stroke-width", sw); p.setAttribute("opacity", op);
+            p.setAttribute("pathLength", "1"); g.appendChild(p);
+          }
+          ink.appendChild(g);
+          const s = { id, g, a, b }; strokes.push(s); return s;
+        }
+        // a polyline -> two hand passes with a wobble that is new on every drawing step
+        function draw(s, pts, step, reveal, amp = 1.5, clip = null) {
+          if (reveal <= 0 || pts.length < 2) { s.g.style.display = "none"; return; }
+          s.g.style.display = "";
+          if (clip) s.g.setAttribute("clip-path", clip); else s.g.removeAttribute("clip-path");
+          [s.a, s.b].forEach((p, pass) => {
+            let d = "";
+            for (let i = 0; i < pts.length; i++) {
+              const jx = (hash(step, s.id, pass * 2, i) - 0.5) * 2 * amp + (pass ? 1.1 : 0);
+              const jy = (hash(step, s.id, pass * 2 + 1, i) - 0.5) * 2 * amp + (pass ? -0.7 : 0);
+              d += (i ? "L" : "M") + (pts[i][0] + jx).toFixed(1) + " " + (pts[i][1] + jy).toFixed(1);
+            }
+            p.setAttribute("d", d);
+            p.setAttribute("stroke-dasharray", `${reveal.toFixed(4)} 2`);
+          });
+        }
+
+        // ---- shapes
+        const line = (x0, y0, x1, y1, n = 24, sag = 0, seed = 0) => Array.from({ length: n + 1 }, (_, i) => {
+          const u = i / n;
+          return [x0 + (x1 - x0) * u, y0 + (y1 - y0) * u + Math.sin(u * Math.PI) * sag + (hash(seed, i, 7, 7) - 0.5) * 3];
+        });
+        const circle = (cx, cy, r, n = 56) => Array.from({ length: n + 1 }, (_, i) => {
+          const a = -Math.PI / 2 + (i / n) * Math.PI * 2.04;
+          return [cx + Math.cos(a) * r, cy + Math.sin(a) * r];
+        });
+        const arc = (x, y, w, h, n = 10) => Array.from({ length: n + 1 }, (_, i) => { const u = i / n; return [x + u * w, y - Math.sin(u * Math.PI) * h]; });
+        const rect = (x, y, w, h) => [[x, y], [x + w, y], [x + w, y + h], [x, y + h], [x, y - 1]];
+        const dense = (pts, per = 18) => {
+          const out = [];
+          for (let i = 0; i < pts.length - 1; i++) {
+            const [ax, ay] = pts[i], [bx, by] = pts[i + 1];
+            const n = Math.max(1, Math.round(Math.hypot(bx - ax, by - ay) / per));
+            for (let k = 0; k < n; k++) out.push([ax + (bx - ax) * k / n, ay + (by - ay) * k / n]);
+          }
+          out.push(pts[pts.length - 1]);
+          return out;
+        };
+
+        const sHorizon = stroke(1, 2.8);
+        const sSun = stroke(2, 2.8);
+        const sRays = Array.from({ length: 9 }, (_, i) => stroke(10 + i, 2.2));
+        const sShore = stroke(3, 2.8);
+        const sFoam = Array.from({ length: 6 }, (_, i) => stroke(30 + i, 2));
+        // five rows of waves, smaller and denser toward the horizon
+        const ROWS = [0, 1, 2, 3, 4].map((r) => ({ y: 505 + r * 58 + r * r * 4, gap: 70 + r * 46, w: 26 + r * 20, h: 4 + r * 3.2, speed: 10 + r * 9 }));
+        const waveStrokes = ROWS.map((row, r) => Array.from({ length: Math.ceil(1920 / row.gap) + 2 }, (_, k) => stroke(100 + r * 40 + k, 1.6 + r * 0.35)));
+        const sBirds = Array.from({ length: 3 }, (_, i) => stroke(60 + i, 2.2));
+        // the piano: an upright, front view, on the sand
+        const PX = 1240, PY = 640, PW = 430, PH = 300;
+        const KEYS = 14, KW = (PW - 40) / KEYS, KY = PY + 168, KH = 58;
+        const pianoFill = document.createElementNS(NS, "path");
+        pianoFill.setAttribute("fill", "#F4EEE2"); ink.appendChild(pianoFill);
+        const keyFills = Array.from({ length: 14 }, () => { const p = document.createElementNS(NS, "rect"); p.setAttribute("fill", "#2B2420"); ink.appendChild(p); return p; });
+        const sPiano = [
+          stroke(70, 3), stroke(71, 2.6), stroke(72, 2.6), stroke(73, 2.6), stroke(74, 2.6), stroke(75, 2.2), stroke(76, 2.2),
+        ];
+        const sKeys = Array.from({ length: KEYS }, (_, k) => stroke(80 + k, 1.6));
+        const BLACK = [0, 1, 3, 4, 5, 7, 8, 10, 11, 12];       // a black key after these white keys
+        const sBlack = BLACK.map((k, i) => stroke(200 + i, 1.4));
+
+        // ---- the wash: sky, a sun path on the sea, a cool sea; boiled by the filter
+        const washG = document.getElementById("bl-wash");
+        const mk = (fill) => { const p = document.createElementNS(NS, "path"); p.setAttribute("fill", fill); washG.appendChild(p); return p; };
+        const wSea = mk("url(#bl-g-sea)"), wSky = mk("url(#bl-g-sky)"), wSun = mk("#F0A46C"), wDisc = mk("#E8894A");
+        wSky.setAttribute("clip-path", "url(#bl-sky)"); wSea.setAttribute("clip-path", "url(#bl-sea)"); wSun.setAttribute("clip-path", "url(#bl-sea)");
+        const blob = (cx, cy, rx, ry, step, id, n = 40) => {
+          let d = "";
+          for (let i = 0; i <= n; i++) {
+            const a = (i / n) * Math.PI * 2, r = 1 + (hash(step, id, i, 3) - 0.5) * 0.08;
+            d += (i ? "L" : "M") + (cx + Math.cos(a) * rx * r).toFixed(1) + " " + (cy + Math.sin(a) * ry * r).toFixed(1);
+          }
+          return d + "Z";
+        };
+        const boilN = document.getElementById("bl-boil-n"), wetN = document.getElementById("bl-wet-n");
+        const title = document.getElementById("bl-title"), sub = document.getElementById("bl-sub"), url = document.getElementById("bl-url");
+
+        function paint(t) {
+          const step = Math.floor(t * FPS_DRAW);                // a new drawing 12 times a second
+          const ts = step / FPS_DRAW;                           // motion moves on the same steps
+          boilN.setAttribute("seed", String(step % 97 + 1));
+          wetN.setAttribute("seed", String((step >> 1) % 53 + 1));
+
+          // horizon and sun
+          draw(sHorizon, line(110, HORIZON, 1810, HORIZON - 4, 60, 0, 1), step, io(lin(t, T.horizon[0], T.horizon[1])));
+          const sink = io(lin(ts, T.sunset[0], T.sunset[1]));
+          const SX = 1100, SY = 300 + sink * 260, SR = 78;
+          draw(sSun, circle(SX, SY, SR), step, io(lin(t, T.sun[0], T.sun[1])), 1.6, "url(#bl-sky)");
+          sRays.forEach((s, i) => {
+            const a = -Math.PI * 0.95 + (i / 8) * Math.PI * 0.9;
+            const r0 = SR + 22, r1 = SR + 52 + (i % 2) * 14;
+            const pts = [[SX + Math.cos(a) * r0, SY + Math.sin(a) * r0], [SX + Math.cos(a) * r1, SY + Math.sin(a) * r1]];
+            const rev = io(lin(t, T.rays[0] + i * 0.08, T.rays[0] + i * 0.08 + 0.3)) * (1 - lin(ts, T.sunset[0], T.sunset[0] + 1.5));
+            draw(s, dense(pts, 10), step, rev, 1.4, "url(#bl-sky)");
+          });
+
+          // waves: short strokes rolling toward the shore, each row drawn on in turn
+          ROWS.forEach((row, r) => {
+            const shift = (ts * row.speed) % row.gap;
+            const rowRev = io(lin(t, T.waves[0] + r * T.waves[1], T.waves[0] + r * T.waves[1] + 0.8));
+            waveStrokes[r].forEach((s, k) => {
+              const x = -row.gap + k * row.gap - shift + (r % 2) * row.gap * 0.5 + (hash(k, r, 9, 9) - 0.5) * row.gap * 0.3;
+              const y = row.y + (hash(k, r, 5, 5) - 0.5) * 10 + Math.sin(ts * 1.4 + k + r) * 2;
+              draw(s, arc(x, y, row.w, row.h), step, rowRev, 1.1 + r * 0.15);
+            });
+          });
+          // shore and foam
+          draw(sShore, line(0, SHORE + 30, 1920, SHORE - 10, 64, -14, 3), step, io(lin(t, T.shore[0], T.shore[1])));
+          sFoam.forEach((s, i) => {
+            const x = 120 + i * 300 + Math.sin(ts * 0.9 + i) * 26;
+            draw(s, arc(x, SHORE + 18 - i * 6, 90, 8, 12), step, io(lin(t, T.shore[0] + 0.2 + i * 0.1, T.shore[0] + 0.8 + i * 0.1)), 1.2);
+          });
+
+          // birds tick across the sky
+          sBirds.forEach((s, i) => {
+            const u = lin(ts, T.birds[0] + i * 0.7, T.birds[1] + i * 0.7);
+            if (u <= 0 || u >= 1) { draw(s, [], step, 0); return; }
+            const x = 1700 - u * 1500 + i * 60, y = 190 + i * 46 + Math.sin(u * 9 + i) * 10;
+            const flap = (step + i) % 4 < 2 ? 12 : 4, w = 22 - i * 3;
+            draw(s, [[x - w, y - flap], [x - w * 0.45, y - flap * 0.3], [x, y], [x + w * 0.45, y - flap * 0.3], [x + w, y - flap]], step, 1, 1);
+          });
+
+          // the piano, sketched part by part
+          const pr = (k, n) => io(lin(t, T.piano[0] + k * ((T.piano[1] - T.piano[0]) / n), T.piano[0] + (k + 1.6) * ((T.piano[1] - T.piano[0]) / n)));
+          const parts = [
+            dense(rect(PX, PY, PW, PH - 40), 16),                                   // body
+            dense([[PX - 12, PY], [PX + PW + 12, PY]], 16),                         // lid
+            dense(rect(PX + 30, PY + 26, PW - 60, 110), 16),                         // front panel
+            dense([[PX + 8, KY - 6], [PX + PW - 8, KY - 6]], 16),                   // key slip
+            dense([[PX + 30, PY + PH - 40], [PX + 22, PY + PH + 6]], 10),           // legs
+            dense([[PX + PW - 30, PY + PH - 40], [PX + PW - 22, PY + PH + 6]], 10),
+            dense([[PX + 60, PY + 60], [PX + 140, PY + 60], [PX + 140, PY + 104], [PX + 60, PY + 104], [PX + 60, PY + 60]], 10), // music desk
+          ];
+          // paper inside the piano, so the sea doesn't show through it
+          const fillA = pr(0, 9);
+          let fd = "";
+          rect(PX - 12, PY, PW + 24, PH - 40).forEach(([x, y], i) => { fd += (i ? "L" : "M") + (x + (hash(step, 77, i, 1) - 0.5) * 2).toFixed(1) + " " + (y + (hash(step, 77, i, 2) - 0.5) * 2).toFixed(1); });
+          pianoFill.setAttribute("d", fd + "Z");
+          pianoFill.setAttribute("opacity", fillA.toFixed(3));
+          sPiano.forEach((s, k) => draw(s, parts[k], step, pr(k, 9), 1.4));
+          // keys: press on the melody's notes
+          const press = (k) => NOTES.reduce((m, [nt, key]) => (key === k ? Math.max(m, t >= nt ? Math.exp(-(t - nt) * 6) : 0) : m), 0);
+          for (let k = 0; k < KEYS; k++) {
+            const x = PX + 20 + k * KW, dy = press(k) * 5;
+            draw(sKeys[k], dense([[x, KY], [x, KY + KH + dy], [x + KW, KY + KH + dy]], 12), step, pr(7 + k / KEYS, 9), 1.0);
+            sKeys[k].a.setAttribute("stroke-width", "1.6");
+            const pk = press(k);
+            keyFills[k].setAttribute("x", (x + 3).toFixed(1)); keyFills[k].setAttribute("y", (KY + KH * 0.62).toFixed(1));
+            keyFills[k].setAttribute("width", (KW - 6).toFixed(1)); keyFills[k].setAttribute("height", (KH * 0.36 + pk * 5).toFixed(1));
+            keyFills[k].setAttribute("opacity", (0.55 * pk).toFixed(3));
+          }
+          BLACK.forEach((k, i) => {
+            const x = PX + 20 + (k + 1) * KW - KW * 0.3;
+            draw(sBlack[i], dense(rect(x, KY, KW * 0.6, KH * 0.58), 8), step, pr(8 + i / BLACK.length, 9), 0.9);
+          });
+
+          // the wash: the sun's disc, the sky, the sun path on the water, then the cool sea
+          const wa = io(lin(t, T.wash[0], T.wash[1])), sa = io(lin(t, T.sea[0], T.sea[1]));
+          wDisc.setAttribute("d", blob(SX, SY, SR * 0.9, SR * 0.9, step >> 1, 1));
+          wDisc.setAttribute("clip-path", "url(#bl-sky)");
+          wDisc.setAttribute("opacity", (0.25 + 0.5 * wa).toFixed(3));
+          wDisc.style.display = t > T.sun[1] ? "" : "none";
+          // the sky wash spreads from the sun; the sea wash fills from the horizon down
+          wSky.setAttribute("d", blob(SX, HORIZON - 60, 1300 * (0.35 + 0.65 * wa), 420 * (0.35 + 0.65 * wa), step >> 1, 2));
+          wSky.setAttribute("opacity", (0.85 * wa).toFixed(3));
+          wSea.setAttribute("d", blob(960, HORIZON, 1250, 40 + 320 * sa, step >> 1, 4));
+          wSea.setAttribute("opacity", (0.7 * sa).toFixed(3));
+          wSun.setAttribute("d", blob(SX, HORIZON + 120, 46 + 26 * wa, 130 * wa + 1, step >> 1, 3));
+          wSun.setAttribute("opacity", (0.38 * wa).toFixed(3));
+
+          // title, boiling with the lines
+          const ti = out3(lin(t, T.title, T.title + 0.8)), su = out3(lin(t, T.sub, T.sub + 0.8));
+          title.setAttribute("opacity", ti.toFixed(3));
+          sub.setAttribute("opacity", su.toFixed(3));
+          url.textContent = URL_TEXT.slice(0, Math.round(lin(t, T.url[0], T.url[1]) * URL_TEXT.length));
+        }
+
+        const tl = gsap.timeline({ paused: true });
+        const clock = { t: 0 };
+        tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+        paint(0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+      })();
+    </script>
+  </body>
+</html>
