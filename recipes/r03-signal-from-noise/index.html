@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <!--
+      R03 · Signal from Noise. AI News Curator, JQ AI SYSTEMS.
+      One take, Canvas 2D. About 6,000 fragments drift as noise, line up along a field like iron filings, gather
+      around six real themes, and the strongest six become one reviewed daily brief. Every frame is computed from
+      time: seeded noise, field lines traced once at load, and one painter.
+    -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <style>
+      @font-face { font-family: "Geist"; src: url("assets/fonts/Geist-latin.woff2") format("woff2"); font-weight: 100 900; }
+      @font-face { font-family: "Geist Mono"; src: url("assets/fonts/GeistMono-latin.woff2") format("woff2"); font-weight: 100 900; }
+      @font-face { font-family: "Instrument Serif"; src: url("assets/fonts/InstrumentSerif-Regular.ttf") format("truetype"); font-style: normal; }
+      @font-face { font-family: "Instrument Serif"; src: url("assets/fonts/InstrumentSerif-Italic.ttf") format("truetype"); font-style: italic; }
+
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #111110; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #111110; }
+
+      #sn-field { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; z-index: 1; }
+      #sn-canvas { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+
+      /* opening line over the noise */
+      #sn-open { position: absolute; inset: 0; width: 1920px; height: 1080px; z-index: 2; }
+      #sn-open-glow { position: absolute; left: 460px; top: 330px; width: 1000px; height: 420px; border-radius: 50%;
+        background: radial-gradient(closest-side, rgba(17, 17, 16, 0.85), rgba(17, 17, 16, 0.5) 60%, rgba(17, 17, 16, 0) 100%); }
+      #sn-open-line { position: absolute; left: 0; top: 478px; width: 1920px; text-align: center; white-space: pre;
+        font: 400 120px/1 "Instrument Serif", serif; letter-spacing: -0.01em; color: #F5F5F0; }
+
+      /* six real themes, one per pole */
+      #sn-themes { position: absolute; inset: 0; width: 1920px; height: 1080px; z-index: 3; }
+      .sn-theme { position: absolute; width: 360px; margin-left: -180px; text-align: center; white-space: nowrap;
+        font: 500 19px/1 "Geist Mono", monospace; letter-spacing: 0.14em; text-transform: uppercase; color: #D6D6D0; opacity: 0;
+        text-shadow: 0 0 6px #111110, 0 0 12px #111110, 0 0 18px #111110; }
+      .sn-theme b { color: #3CC8BC; font-weight: 500; }
+
+      /* the daily brief */
+      #sn-brief { position: absolute; inset: 0; width: 1920px; height: 1080px; z-index: 4; }
+      #sn-card { position: absolute; left: 540px; top: 318px; width: 840px; height: 444px; border-radius: 14px;
+        background: #191918; border: 1px solid #34342F; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55); opacity: 0; transform-origin: 50% 50%; }
+      #sn-card-head { position: absolute; left: 36px; right: 36px; top: 28px; display: flex; align-items: baseline;
+        font: 500 17px/1 "Geist Mono", monospace; letter-spacing: 0.12em; text-transform: uppercase; color: #ABABA6; }
+      #sn-card-head span:first-child { font: 600 30px/1 "Geist", sans-serif; letter-spacing: -0.02em; text-transform: none; color: #F5F5F0; }
+      #sn-card-head span:last-child { margin-left: auto; }
+      #sn-card-rule { position: absolute; left: 36px; right: 36px; top: 76px; height: 1px; background: #34342F; }
+      #sn-foot { position: absolute; left: 36px; top: 404px; font: 500 17px/1 "Geist Mono", monospace; color: #3CC8BC; white-space: pre; }
+      #sn-gate { position: absolute; left: 20px; width: 800px; top: 0; height: 2px; background: #00A89D; opacity: 0;
+        box-shadow: 0 0 18px rgba(0, 168, 157, 0.8); }
+      .sn-row { position: absolute; left: 576px; top: 0; width: 768px; height: 46px; display: flex; align-items: center; gap: 14px;
+        padding: 0 16px; border-radius: 8px; background: #22221F; white-space: nowrap; transform-origin: 50% 50%; opacity: 0;
+        font: 400 19px/1 "Geist Mono", monospace; color: #ABABA6; }
+      .sn-row span { flex: none; }
+      .sn-row .sn-n { color: #3CC8BC; width: 30px; }
+      .sn-row .sn-t { color: #F5F5F0; font: 500 21px/1 "Geist", sans-serif; width: 250px; }
+      .sn-row .sn-s { width: 200px; }
+      .sn-row .sn-o { margin-left: auto; color: #3CC8BC; opacity: 0; }
+
+      /* archive ledger labels */
+      #sn-archive { position: absolute; inset: 0; width: 1920px; height: 1080px; z-index: 2; }
+      .sn-day { position: absolute; left: 1240px; font: 500 16px/1 "Geist Mono", monospace; letter-spacing: 0.12em; text-transform: uppercase; color: #ABABA6; opacity: 0; white-space: nowrap; }
+
+      /* HUD */
+      #sn-hud { position: absolute; inset: 0; width: 1920px; height: 1080px; z-index: 5; }
+      .sn-fade { position: absolute; left: 0; width: 1920px; height: 150px; }
+      #sn-fade-t { top: 0; background: linear-gradient(#111110 40%, rgba(17, 17, 16, 0)); }
+      #sn-fade-b { bottom: 0; background: linear-gradient(rgba(17, 17, 16, 0), #111110 60%); }
+      #sn-rule { position: absolute; left: 96px; top: 92px; width: 1728px; height: 2px; background: #2E2E2B; transform-origin: 0 50%; }
+      .sn-hl { position: absolute; font: 500 21px/1 "Geist Mono", monospace; letter-spacing: 0.16em; text-transform: uppercase; color: #ABABA6; white-space: nowrap; }
+      #sn-hl-a { left: 96px; top: 56px; }
+      #sn-hl-b { right: 96px; top: 56px; }
+      #sn-status { left: 96px; bottom: 64px; }
+      #sn-status b { color: #3CC8BC; font-weight: 500; }
+      #sn-hl-c { right: 96px; bottom: 64px; }
+
+      /* lockup */
+      #sn-lock { position: absolute; inset: 0; width: 1920px; height: 1080px; z-index: 6; }
+      #sn-scrim { position: absolute; left: -300px; top: 60px; width: 1700px; height: 980px; border-radius: 50%;
+        background: radial-gradient(closest-side, rgba(17, 17, 16, 0.94), rgba(17, 17, 16, 0.75) 60%, rgba(17, 17, 16, 0) 100%); opacity: 0; }
+      #sn-logo { position: absolute; left: 180px; top: 236px; height: 70px; width: auto; clip-path: inset(0 100% 0 0); }
+      #sn-line { position: absolute; left: 180px; top: 352px; font: 400 112px/1.02 "Instrument Serif", serif; letter-spacing: -0.01em; color: #F5F5F0; white-space: nowrap; }
+      #sn-line .sn-lw { display: inline-block; opacity: 0; }
+      #sn-line em { color: #3CC8BC; }
+      #sn-sub { position: absolute; left: 180px; top: 618px; font: 600 40px/1 "Geist", sans-serif; letter-spacing: -0.02em; color: #F5F5F0; opacity: 0; white-space: nowrap; }
+      #sn-url { position: absolute; left: 180px; top: 684px; font: 500 28px/1 "Geist Mono", monospace; color: #3CC8BC; white-space: pre; }
+    </style>
+  </head>
+  <body>
+    <div data-hf-id="hf-3x1a" id="root" data-composition-id="main" data-start="0" data-duration="26" data-width="1920" data-height="1080">
+      <div data-hf-id="hf-foh0" id="sn-field" class="clip" data-start="0" data-duration="26" data-track-index="0"><canvas data-hf-id="hf-23ts" id="sn-canvas" width="1920" height="1080"></canvas></div>
+
+      <div data-hf-id="hf-4cur" id="sn-archive" class="clip" data-start="0" data-duration="26" data-track-index="1"></div>
+
+      <div data-hf-id="hf-awrx" id="sn-open" class="clip" data-start="0" data-duration="5.2" data-track-index="2">
+        <div data-hf-id="hf-8mar" id="sn-open-glow"></div>
+        <h1 data-hf-id="hf-k9pi" id="sn-open-line" data-layout-allow-occlusion></h1>
+      </div>
+
+      <div data-hf-id="hf-4rbn" id="sn-themes" class="clip" data-start="0" data-duration="26" data-track-index="3"></div>
+
+      <div data-hf-id="hf-r5to" id="sn-brief" class="clip" data-start="0" data-duration="26" data-track-index="4">
+        <div data-hf-id="hf-37sf" id="sn-card" data-layout-allow-occlusion>
+          <div data-hf-id="hf-ux9y" id="sn-card-head" data-layout-allow-occlusion><span data-hf-id="hf-swly">Daily brief</span><span data-hf-id="hf-ubms">6 signals · today</span></div>
+          <div data-hf-id="hf-8jas" id="sn-card-rule"></div>
+          <div data-hf-id="hf-oz16" id="sn-gate"></div>
+          <p data-hf-id="hf-vwpc" id="sn-foot" data-layout-allow-occlusion></p>
+        </div>
+      </div>
+
+      <div data-hf-id="hf-7suq" id="sn-hud" class="clip" data-start="0" data-duration="26" data-track-index="5">
+        <div data-hf-id="hf-0p65" class="sn-fade" id="sn-fade-t"></div><div data-hf-id="hf-2c6z" class="sn-fade" id="sn-fade-b"></div>
+        <div data-hf-id="hf-374d" id="sn-rule"></div>
+        <div data-hf-id="hf-ecds" class="sn-hl" id="sn-hl-a" data-layout-allow-occlusion>R03 · Signal from Noise</div>
+        <div data-hf-id="hf-wh26" class="sn-hl" id="sn-hl-b" data-layout-allow-occlusion>AI News Curator</div>
+        <div data-hf-id="hf-sglk" class="sn-hl" id="sn-status" data-layout-allow-occlusion></div>
+        <div data-hf-id="hf-la0d" class="sn-hl" id="sn-hl-c" data-layout-allow-occlusion>JQ AI Systems</div>
+      </div>
+
+      <div data-hf-id="hf-9rrp" id="sn-lock" class="clip" data-start="21" data-duration="5" data-track-index="6">
+        <div data-hf-id="hf-se5r" id="sn-scrim"></div>
+        <img data-hf-id="hf-fmjs" id="sn-logo" src="assets/img/jqai-logo-nav.png" alt="JQ AI SYSTEMS" />
+        <h2 data-hf-id="hf-6h3u" id="sn-line" data-layout-allow-occlusion><span data-hf-id="hf-ft6n" class="sn-lw">Scattered</span> <span data-hf-id="hf-oduj" class="sn-lw">signals,</span><br data-hf-id="hf-x5px" /><span data-hf-id="hf-c08g" class="sn-lw"><em data-hf-id="hf-befg">daily</em></span> <span data-hf-id="hf-ekg8" class="sn-lw"><em data-hf-id="hf-bkke">briefings.</em></span></h2>
+        <p data-hf-id="hf-yrfk" id="sn-sub" data-layout-allow-occlusion>AI News Curator · research briefing workflow</p>
+        <p data-hf-id="hf-bedb" id="sn-url" data-layout-allow-occlusion></p>
+      </div>
+
+      <audio data-hf-id="hf-x8x8" id="sn-score" src="assets/bgm/score.wav" data-start="0" data-duration="26" data-track-index="7" data-volume="0.58"></audio>
+    </div>
+
+    <script>
+      (function () {
+        const DUR = 26, W = 1920, H = 1080;
+        // ---- the one timing table (score/compose.py mirrors these)
+        const T = {
+          rule: [0.1, 0.9],
+          open: [0.6, 1.9],
+          openOut: [4.0, 4.7],
+          normalize: [4.0, 7.4], // field on, filings turn and gather on the dipole lines
+          classify: [9.0, 12.2], // six poles, filings flow into six themes
+          themes: [10.2, 11.7],
+          pick: [13.4, 13.9], // the brightest fragment of each theme lights up
+          card: [13.8, 14.4],
+          fly: [14.0, 15.6], // staggered: one row every 0.2 s
+          gate: [18.9, 20.1], // human review, row by row
+          foot: [20.2, 20.9],
+          archive: [21.2, 22.6],
+          recede: [21.0, 22.0],
+          logo: [22.2, 22.9],
+          words: [22.5, 23.4],
+          sub: 23.7,
+          url: [24.0, 25.0],
+        };
+        const OPEN = "Scattered signals,";
+        const URL_TEXT = "ai.joaoqueiros.com/systems/ai-news-curator";
+        // the six real themes from the case study, each with a public-safe source type and its review outcome
+        const THEMES = [
+          { name: "AI tooling", src: "github · release", out: "public content" },
+          { name: "Coding workflows", src: "docs update", out: "private research" },
+          { name: "Design systems", src: "newsletter", out: "archived note" },
+          { name: "Automation patterns", src: "community note", out: "client context" },
+          { name: "Public GitHub work", src: "saved link", out: "public content" },
+          { name: "Client research", src: "social post", out: "client context" },
+        ];
+        const SOURCES = ["github · release", "newsletter", "docs update", "saved link", "community note", "social post"];
+        // poles: a hexagon of alternating magnets around the frame centre
+        const POLES = [
+          { x: 560, y: 330, q: 1, lab: "up" }, { x: 960, y: 262, q: -1, lab: "up" }, { x: 1360, y: 330, q: 1, lab: "up" },
+          { x: 560, y: 750, q: -1, lab: "down" }, { x: 960, y: 818, q: 1, lab: "down" }, { x: 1360, y: 750, q: -1, lab: "down" },
+        ];
+        const DIPOLE = [{ x: 700, y: 540, q: 1 }, { x: 1220, y: 540, q: -1 }];
+
+        const clamp01 = (v) => Math.min(1, Math.max(0, v));
+        const lin = (t, a, b) => clamp01((t - a) / (b - a));
+        const inOut = (p) => (p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2);
+        const out3 = (p) => 1 - Math.pow(1 - p, 3);
+        const out4 = (p) => 1 - Math.pow(1 - p, 4);
+        const mix = (a, b, k) => a + (b - a) * k;
+        // undirected segments: blend angles modulo pi along the shortest turn
+        const mixAng = (a, b, k) => { let d = (b - a) % Math.PI; if (d > Math.PI / 2) d -= Math.PI; if (d < -Math.PI / 2) d += Math.PI; return a + d * k; };
+        function rng(seed) { return () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let r = Math.imul(seed ^ (seed >>> 15), 1 | seed); r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r; return ((r ^ (r >>> 14)) >>> 0) / 4294967296; }; }
+        const R = rng(20261022);
+
+        // ---- field lines, traced once: 2D charges, E = q (r - ri) / |r - ri|^2
+        function field(ch, x, y) {
+          let ex = 0, ey = 0;
+          for (const c of ch) { const dx = x - c.x, dy = y - c.y, d2 = dx * dx + dy * dy + 40; ex += (c.q * dx) / d2; ey += (c.q * dy) / d2; }
+          return [ex, ey];
+        }
+        function trace(ch, lines, box) {
+          const pts = [];
+          ch.forEach((c, ci) => {
+            for (let l = 0; l < lines; l++) {
+              const a = ((l + 0.5) / lines) * Math.PI * 2;
+              let x = c.x + Math.cos(a) * 14, y = c.y + Math.sin(a) * 14, len = 0;
+              while (len < 1500) {
+                let [ex, ey] = field(ch, x, y);
+                const m = Math.hypot(ex, ey) || 1; ex = (ex / m) * c.q; ey = (ey / m) * c.q;
+                // midpoint step for smooth lines
+                let [mx, my] = field(ch, x + ex * 2, y + ey * 2);
+                const mm = Math.hypot(mx, my) || 1; mx = (mx / mm) * c.q; my = (my / mm) * c.q;
+                x += mx * 4; y += my * 4; len += 4;
+                if (x < box[0] || x > box[2] || y < box[1] || y > box[3]) break;
+                if (ch.some((o, oi) => oi !== ci && Math.hypot(x - o.x, y - o.y) < 16)) break;
+                pts.push({ x, y, a: Math.atan2(my, mx), from: ci });
+              }
+            }
+          });
+          return pts;
+        }
+        const dipPts = trace(DIPOLE, 46, [60, 150, 1860, 930]);
+        const hexPts = trace(POLES, 30, [80, 160, 1840, 920]);
+        const nearestPole = (x, y) => { let bi = 0, bd = 1e9; POLES.forEach((p, i) => { const d = Math.hypot(x - p.x, y - p.y); if (d < bd) { bd = d; bi = i; } }); return [bi, bd]; };
+
+        // ---- particles: every one has a noise state, a dipole state, a theme state and an archive state
+        const N = 6000;
+        const DAYS = 5, AX0 = 1240, AX1 = 1780, AY0 = 330, AGY = 104;
+        const P = [];
+        for (let i = 0; i < N; i++) {
+          const dp = dipPts[Math.floor(R() * dipPts.length)], hp = hexPts[Math.floor(R() * hexPts.length)];
+          const jd = (R() - 0.5) * 6, jh = (R() - 0.5) * 6;
+          const [pole, pd] = nearestPole(hp.x, hp.y);
+          const day = Math.min(DAYS - 1, Math.floor(Math.pow(R(), 1.6) * DAYS));
+          P.push({
+            bx: 40 + R() * (W - 80), by: 40 + R() * (H - 80), a0: R() * Math.PI, spin: (R() - 0.5) * 1.6,
+            w1: 0.25 + R() * 0.5, w2: 0.4 + R() * 0.7, f1: R() * 6.28, f2: R() * 6.28, amp: 26 + R() * 34,
+            dx: dp.x - Math.sin(dp.a) * jd, dy: dp.y + Math.cos(dp.a) * jd, da: dp.a,
+            hx: hp.x - Math.sin(hp.a) * jh, hy: hp.y + Math.cos(hp.a) * jh, ha: hp.a, pole, pd,
+            ax: AX0 + R() * (AX1 - AX0), ay: AY0 + day * AGY + (R() - 0.5) * 14,
+            len: 6 + R() * 7, dD: 0, dH: R(), dA: R(), sw: (R() - 0.5) * 90,
+          });
+        }
+        for (const p of P) p.dD = clamp01(Math.hypot(p.dx - 960, p.dy - 540) / 760);
+        // a few fragments carry their source label while they are noise
+        const LABELED = [];
+        for (let k = 0; k < 20; k++) {
+          const gx = 200 + (k % 5) * 360 + (R() - 0.5) * 140, gy = 190 + Math.floor(k / 5) * 200 + (R() - 0.5) * 80;
+          let bi = 0, bd = 1e9;
+          P.forEach((p, i) => { const d = Math.hypot(p.bx - gx, p.by - gy); if (d < bd) { bd = d; bi = i; } });
+          LABELED.push({ i: bi, s: SOURCES[(k * 5) % SOURCES.length] });
+        }
+
+        const $ = (id) => document.getElementById(id);
+        const ctx = $("sn-canvas").getContext("2d");
+
+        // theme labels at the poles
+        const themeEls = THEMES.map((th, i) => {
+          const el = document.createElement("div");
+          el.className = "sn-theme";
+          el.setAttribute("data-layout-allow-occlusion", "");
+          el.innerHTML = `<b>0${i + 1}</b> ${th.name}`;
+          const p = POLES[i];
+          el.style.left = `${p.x}px`;
+          el.style.top = `${p.lab === "up" ? p.y - 62 : p.y + 44}px`;
+          $("sn-themes").appendChild(el);
+          return el;
+        });
+        // brief rows: each starts at its pole as the brightest fragment, flies to its slot on the card
+        const ROW0 = 318 + 98, ROWG = 50;
+        const rows = THEMES.map((th, i) => {
+          const el = document.createElement("div");
+          el.className = "sn-row";
+          el.setAttribute("data-layout-allow-occlusion", "");
+          el.innerHTML = `<span class="sn-n">0${i + 1}</span><span class="sn-t">${th.name}</span><span class="sn-s">${th.src}</span><span class="sn-o">→ ${th.out}</span>`;
+          $("sn-brief").appendChild(el);
+          return { el, o: el.querySelector(".sn-o"), y: ROW0 + i * ROWG };
+        });
+        // archive day labels
+        const dayEls = ["today", "yesterday", "2 days ago", "3 days ago", "last week"].map((s, d) => {
+          const el = document.createElement("div");
+          el.className = "sn-day";
+          el.textContent = s;
+          el.style.top = `${AY0 + d * AGY - 36}px`;
+          $("sn-archive").appendChild(el);
+          return el;
+        });
+
+        const els = {
+          open: $("sn-open-line"), card: $("sn-card"), gate: $("sn-gate"), foot: $("sn-foot"), status: $("sn-status"), rule: $("sn-rule"),
+          hls: [...document.querySelectorAll(".sn-hl")], hlc: $("sn-hl-c"),
+          logo: $("sn-logo"), words: [...document.querySelectorAll(".sn-lw")], sub: $("sn-sub"), url: $("sn-url"), scrim: $("sn-scrim"),
+        };
+
+        // colour ramp: iron grey -> bone -> teal
+        const C0 = [110, 110, 104], C1 = [245, 245, 240], C2 = [60, 200, 188];
+        const LV = 10, AV = 6;
+        const ramp = [];
+        for (let c = 0; c <= LV * 2; c++) {
+          const k = c / LV, a = k <= 1 ? C0 : C1, b = k <= 1 ? C1 : C2, u = k <= 1 ? k : k - 1;
+          ramp.push(a.map((v, j) => Math.round(mix(v, b[j], u))));
+        }
+        const buckets = Array.from({ length: (LV * 2 + 1) * AV }, () => []);
+
+        function paint(t) {
+          // ---- phases
+          const noiseCalm = 1 - 0.85 * inOut(lin(t, T.normalize[0], T.normalize[1]));
+          const dim = mix(1, 0.32, inOut(lin(t, T.pick[0], T.card[1]))) * mix(1, 1.15, lin(t, T.archive[0], T.archive[1]));
+          for (const b of buckets) b.length = 0;
+          const nspan = T.normalize[1] - T.normalize[0] - 1.6, hspan = T.classify[1] - T.classify[0] - 1.6, aspan = T.archive[1] - T.archive[0] - 0.9;
+          const pos = new Float32Array(N * 2);
+          for (let i = 0; i < N; i++) {
+            const p = P[i];
+            // noise
+            const nx = p.bx + noiseCalm * p.amp * Math.sin(t * p.w1 + p.f1) + 0.5 * p.amp * Math.sin(t * p.w2 * 1.7 + p.f2);
+            const ny = p.by + noiseCalm * p.amp * Math.cos(t * p.w2 + p.f2) + 0.5 * p.amp * Math.sin(t * p.w1 * 1.3 + p.f1);
+            const na = p.a0 + p.spin * t;
+            // field on: angle turns first, then the fragment slides onto its line (rippling out from the centre)
+            const s0 = T.normalize[0] + p.dD * nspan;
+            const kDa = inOut(lin(t, s0, s0 + 0.9)), kD = inOut(lin(t, s0 + 0.3, s0 + 1.6));
+            const s1 = T.classify[0] + p.dH * hspan;
+            const kH = inOut(lin(t, s1, s1 + 1.6));
+            const s2 = T.archive[0] + p.dA * aspan;
+            const kA = inOut(lin(t, s2, s2 + 0.9));
+            const br = 1.4 * (1 - kD); // breathing on the line
+            let x = mix(nx, p.dx + br * Math.sin(t * 2 + p.f1), kD), y = mix(ny, p.dy + br * Math.cos(t * 2 + p.f2), kD);
+            const sw = Math.sin(Math.PI * kH) * p.sw;
+            x = mix(x, p.hx, kH) + sw * 0.4; y = mix(y, p.hy, kH) + sw * 0.25;
+            x = mix(x, p.ax, kA); y = mix(y, p.ay, kA);
+            let a = mixAng(na, p.da, kDa);
+            a = mixAng(a, p.ha, inOut(lin(t, s1 - 0.2, s1 + 1.2)));
+            a = mixAng(a, 0, kA);
+            // colour level and alpha
+            const near = clamp01(1 - (p.pd - 24) / 90);
+            let lv = mix(0, 1, kD);
+            lv = mix(lv, 1 + near, kH);
+            lv = mix(lv, 0.55, kA);
+            let al = mix(0.5, 0.6, kD) * mix(1, mix(0.55, 1, near), kH);
+            al *= kA > 0 ? mix(dim, 0.42, kA) : dim;
+            const len = p.len * mix(1, 1.25, kD) * mix(1, 0.7, kA);
+            const bi = Math.round(clamp01(lv / 2) * LV * 2) * AV + Math.min(AV - 1, Math.round(clamp01(al) * (AV - 1)));
+            const c = Math.cos(a) * len * 0.5, s = Math.sin(a) * len * 0.5;
+            buckets[bi].push(x - c, y - s, x + c, y + s);
+            pos[i * 2] = x; pos[i * 2 + 1] = y;
+          }
+
+          ctx.clearRect(0, 0, W, H);
+          // faint poles: the dipole while normalizing, then the six themes
+          const dipOn = lin(t, T.normalize[0], T.normalize[0] + 1) * (1 - lin(t, T.classify[0], T.classify[0] + 1));
+          const hexOn = lin(t, T.classify[0] + 0.8, T.classify[1]) * mix(1, 0.4, lin(t, T.pick[0], T.card[1])) * (1 - lin(t, T.archive[0], T.archive[0] + 0.6));
+          const glow = (x, y, r, a) => {
+            if (a <= 0.001) return;
+            const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+            g.addColorStop(0, `rgba(60,200,188,${(0.55 * a).toFixed(3)})`); g.addColorStop(1, "rgba(60,200,188,0)");
+            ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+          };
+          for (const d of DIPOLE) glow(d.x, d.y, 70, dipOn * 0.5);
+          for (const p of POLES) glow(p.x, p.y, 90, hexOn);
+
+          ctx.lineCap = "round";
+          ctx.lineWidth = 1.5;
+          for (let b = 0; b < buckets.length; b++) {
+            const seg = buckets[b];
+            if (!seg.length) continue;
+            const c = ramp[Math.floor(b / AV)], al = (b % AV) / (AV - 1);
+            if (al <= 0) continue;
+            ctx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${al.toFixed(3)})`;
+            ctx.beginPath();
+            for (let k = 0; k < seg.length; k += 4) { ctx.moveTo(seg[k], seg[k + 1]); ctx.lineTo(seg[k + 2], seg[k + 3]); }
+            ctx.stroke();
+          }
+          for (const p of POLES) { if (hexOn > 0.01) { ctx.fillStyle = `rgba(60,200,188,${hexOn.toFixed(3)})`; ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, Math.PI * 2); ctx.fill(); } }
+
+          // source labels on a few noise fragments
+          const labA = 0.55 * lin(t, 0.2, 0.9) * (1 - lin(t, T.normalize[0], T.normalize[0] + 0.8));
+          if (labA > 0.001) {
+            ctx.font = '500 15px "Geist Mono", monospace';
+            ctx.fillStyle = `rgba(171,171,166,${labA.toFixed(3)})`;
+            for (const L of LABELED) ctx.fillText(L.s, pos[L.i * 2] + 8, pos[L.i * 2 + 1] - 6);
+          }
+
+          // the six picked signals: a teal streak from the pole to the row while it flies
+          rows.forEach((r, i) => {
+            const pl = POLES[i];
+            const a0 = T.fly[0] + i * 0.2, fp = inOut(lin(t, a0, a0 + 0.8));
+            const pk = out3(lin(t, T.pick[0] + i * 0.05, T.pick[1] + i * 0.05));
+            const tx = 960, ty = r.y + 23;
+            const x = mix(pl.x, tx, fp), y = mix(pl.y, ty, fp);
+            if (pk > 0 && fp < 1) {
+              glow(x, y, 40, pk * (1 - fp * 0.6));
+              ctx.strokeStyle = `rgba(60,200,188,${(0.8 * pk * (1 - fp)).toFixed(3)})`;
+              ctx.lineWidth = 2.5;
+              ctx.beginPath(); ctx.moveTo(mix(pl.x, tx, Math.max(0, fp - 0.25)), mix(pl.y, ty, Math.max(0, fp - 0.25))); ctx.lineTo(x, y); ctx.stroke();
+            }
+            // the row grows out of the fragment
+            const k = mix(0.18, 1, fp);
+            const op = fp <= 0 ? 0 : out3(clamp01(fp * 1.6));
+            r.el.style.opacity = (op * (1 - lin(t, T.archive[0], T.archive[0] + 0.3))).toFixed(3);
+            r.el.style.transform = `translate(${(x - 960).toFixed(2)}px, ${(y - 23).toFixed(2)}px) scale(${k.toFixed(4)})`;
+            // review gate assigns the outcome as it passes the row
+            const passY = ROW0 + i * ROWG + 23;
+            const gy = mix(ROW0 - 12, ROW0 + 6 * ROWG, lin(t, T.gate[0], T.gate[1]));
+            const ok = out3(clamp01((gy - passY) / 30));
+            r.o.style.opacity = ok.toFixed(3);
+            r.o.style.transform = `translateX(${((1 - ok) * 12).toFixed(2)}px)`;
+          });
+
+          // ---- opening line
+          const on = Math.round(lin(t, T.open[0], T.open[1]) * OPEN.length);
+          els.open.textContent = OPEN.slice(0, on);
+          const oo = 1 - inOut(lin(t, T.openOut[0], T.openOut[1]));
+          els.open.parentElement.style.opacity = oo.toFixed(3);
+
+          // ---- themes
+          themeEls.forEach((el, i) => {
+            const p = out3(lin(t, T.themes[0] + i * 0.22, T.themes[0] + i * 0.22 + 0.6));
+            el.style.opacity = (p * mix(1, 0.45, lin(t, T.pick[0], T.card[1])) * (1 - lin(t, T.archive[0], T.archive[0] + 0.5))).toFixed(3);
+            el.style.transform = `translateY(${((1 - p) * 10).toFixed(2)}px)`;
+          });
+
+          // ---- card
+          const cp = out3(lin(t, T.card[0], T.card[1]));
+          const ar = inOut(lin(t, T.archive[0], T.archive[1]));
+          const CTX = 1510 - 960, CTY = AY0 - 540;
+          els.card.style.opacity = (cp * (1 - lin(t, T.archive[0] + 0.15, T.archive[0] + 0.7))).toFixed(3);
+          els.card.style.transform = `translate(${(ar * CTX).toFixed(1)}px, ${(ar * CTY).toFixed(1)}px) scale(${(mix(0.96, 1, cp) * mix(1, 0.1, ar)).toFixed(4)}, ${(mix(0.96, 1, cp) * mix(1, 0.02, ar)).toFixed(4)})`;
+          const gp = lin(t, T.gate[0], T.gate[1]);
+          els.gate.style.opacity = String(gp > 0 && gp < 1 ? 1 : 0);
+          els.gate.style.top = `${(mix(ROW0 - 12, ROW0 + 6 * ROWG, gp) - 318).toFixed(1)}px`;
+          const FOOT = "Nothing is published automatically.";
+          els.foot.textContent = FOOT.slice(0, Math.round(lin(t, T.foot[0], T.foot[1]) * FOOT.length));
+
+          // ---- archive labels
+          dayEls.forEach((el, d) => { el.style.opacity = (out3(lin(t, T.archive[0] + 0.9 + d * 0.1, T.archive[0] + 1.5 + d * 0.1)) * mix(1, 0.6, lin(t, T.recede[1], T.logo[1]))).toFixed(3); });
+
+          // ---- HUD
+          els.rule.style.transform = `scaleX(${out3(lin(t, T.rule[0], T.rule[1])).toFixed(4)})`;
+          const hudIn = lin(t, 0.25, 0.75);
+          for (const h of els.hls) h.style.opacity = String(hudIn * (h === els.hlc ? 1 - lin(t, T.recede[0], T.recede[0] + 0.4) : 1));
+
+          // ---- lockup
+          els.scrim.style.opacity = String(out3(lin(t, T.recede[0], T.recede[1])));
+          els.logo.style.clipPath = `inset(0 ${((1 - inOut(lin(t, T.logo[0], T.logo[1]))) * 100).toFixed(2)}% 0 0)`;
+          els.words.forEach((w, i) => {
+            const p = out4(lin(t, T.words[0] + i * 0.14, T.words[0] + i * 0.14 + 0.5));
+            w.style.opacity = p > 0 ? "1" : "0";
+            w.style.transform = `translateY(${((1 - p) * 40).toFixed(2)}px)`;
+            w.style.clipPath = `inset(0 0 ${((1 - p) * 100).toFixed(1)}% 0)`;
+          });
+          const sp = out3(lin(t, T.sub, T.sub + 0.5));
+          els.sub.style.opacity = sp.toFixed(3);
+          els.sub.style.transform = `translateY(${((1 - sp) * 16).toFixed(2)}px)`;
+          els.url.textContent = URL_TEXT.slice(0, Math.round(lin(t, T.url[0], T.url[1]) * URL_TEXT.length));
+
+          // ---- status line: the workflow's real steps
+          let s;
+          if (t < T.normalize[0]) s = "import · <b>scattered signals</b>";
+          else if (t < T.classify[0]) s = "normalize · <b>one record shape</b>";
+          else if (t < T.pick[0]) s = "classify · <b>6</b> themes";
+          else if (t < T.gate[0]) s = "brief · <b>6</b> signals worth a look";
+          else if (t < T.archive[0]) s = "review · <b>a person decides</b>";
+          else if (t < T.recede[1]) s = "archive · <b>grouped by day</b>";
+          else s = "";
+          if (s !== els.status._s) { els.status.innerHTML = s; els.status._s = s; }
+        }
+
+        const tl = gsap.timeline({ paused: true });
+        const clock = { t: 0 };
+        tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+        paint(0);
+        // repaint once the canvas fonts are ready (labels are drawn with Geist Mono)
+        if (document.fonts && document.fonts.load) document.fonts.load('500 15px "Geist Mono"').then(() => paint(clock.t));
+        window.SN_T = T;
+        window.__timelines["main"] = tl;
+      })();
+    </script>
+  </body>
+</html>
