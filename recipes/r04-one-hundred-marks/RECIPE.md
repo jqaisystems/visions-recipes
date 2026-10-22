@@ -61,8 +61,10 @@ on the map, a product range (bottles, chairs, shoes) as silhouettes, a typeface'
 
 ## Gotchas worth knowing
 
-- Logos are their owners' trademarks. The source on GitHub ships the tracer, twelve demo shapes and the film; the
-  100 client outlines stay out. Trace your own images with the tools in the folder.
-- An out-and-back loop draws as a line: make the opening line a closed loop with the same point count as every
-  outline, and the first morph is just another morph.
-- Threshold on the darkest channel (255 minus min of R, G and B), not on brightness, or pale coloured logos vanish.
+- Logos are their owners' trademarks. The source on GitHub ships the tracer and twelve demo shapes; the client
+  outlines stay out. Trace your own images with the tools in the folder.
+- Threshold on the darkest channel (255 minus the minimum of R, G and B), not on brightness, or pale coloured
+  logos vanish.
+- Keep plain circles and badges out of the set: as silhouettes they all look the same and the morph stalls.
+- Make the opening line a closed loop that goes out and comes back, with the same point count as every outline,
+  and the first morph is just another morph.
