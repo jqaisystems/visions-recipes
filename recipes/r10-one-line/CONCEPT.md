@@ -1,6 +1,6 @@
 # R10 · One Line · concept card (approved by João 2026-10-23: back catalogue, price chip kept)
 
-The first back-catalogue recipe. The film already exists: /code 012 `productfilms-oneline` (40 s, live since
+The first back-catalogue recipe. The film already exists: /code 012 `productfilms-reel` (40 s, live since
 2026-10-18, also the film on the Product Films service page). Gates 2 and 3 (look, Studio preview) were passed when
 it was made, so this card covers what the recipe adds and what the open source leaves out.
 

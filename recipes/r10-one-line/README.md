@@ -7,7 +7,7 @@ as it becomes an easing curve, a baseline for type, a chart, a product screen, a
 and three formats; then a pull-back shows the whole journey was one stroke, and the line signs off as a mark.
 Made for Product Films, the video service of JQ AI SYSTEMS.
 
-**Watch it:** [visions.joaoqueiros.com/recipes/productfilms-oneline](https://visions.joaoqueiros.com/recipes/productfilms-oneline/?utm_source=github&utm_medium=referral&utm_campaign=recipes)
+**Watch it:** [visions.joaoqueiros.com/recipes/productfilms-reel](https://visions.joaoqueiros.com/recipes/productfilms-reel/?utm_source=github&utm_medium=referral&utm_campaign=recipes)
 · **Prompt, remix template and breakdown:** [RECIPE.md](RECIPE.md)
 
 40 s · 1920×1080 · 30 fps · HTML, SVG and GSAP · one take, no cuts · score composed in code · €0 to make
