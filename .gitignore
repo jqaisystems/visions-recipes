@@ -14,3 +14,6 @@ node_modules/
 *.pem
 .DS_Store
 Thumbs.db
+
+# R10 placeholder clips: six small colour cards made with ffmpeg so the timeline scene runs, not renders
+!recipes/r10-one-line/assets/clips/clip-*.mp4
