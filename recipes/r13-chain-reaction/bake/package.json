@@ -1,0 +1,12 @@
+{
+  "name": "chain-reaction-bake",
+  "private": true,
+  "license": "MIT",
+  "description": "Runs the Chain Reaction machine once with Matter.js and writes every body's position per frame to ../assets/bake.js.",
+  "scripts": {
+    "bake": "node bake.mjs"
+  },
+  "dependencies": {
+    "matter-js": "0.20.0"
+  }
+}
