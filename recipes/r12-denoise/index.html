@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width">
+    <script src="assets/vendor/gsap.min.js"></script>
+    <style>
+      @font-face { font-family: "Fraunces"; src: url("assets/fonts/fraunces.woff2") format("woff2"); font-weight: 100 900; }
+      @font-face { font-family: "Instrument"; src: url("assets/fonts/instrument.woff2") format("woff2"); font-weight: 400 700; }
+      @font-face { font-family: "Plex"; src: url("assets/fonts/plexmono-400.woff2") format("woff2"); font-weight: 400; }
+      @font-face { font-family: "Plex"; src: url("assets/fonts/plexmono-500.woff2") format("woff2"); font-weight: 500; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 100%; height: 100%; overflow: hidden; background: #0b0a09; }
+      #root { position: relative; width: 100%; height: 100%; overflow: hidden; background: #0b0a09; color: #ece7dd; font-family: "Instrument", sans-serif; }
+      .layer { position: absolute; inset: 0; }
+
+      /* 1 prompt */
+      #prompt { position: absolute; left: 0; right: 0; top: 500px; text-align: center; font: 500 46px "Plex", monospace; letter-spacing: 0.02em; white-space: nowrap; }
+      #prompt .flag { color: #99927f; }
+      .caret { display: inline-block; width: 0.55em; height: 1.05em; margin-left: 0.08em; vertical-align: -0.16em; background: #ff6d3b; }
+
+      /* 2 denoise + dive */
+      #eye-cv { position: absolute; left: 0; top: 0; }
+      #eye-img { position: absolute; transform-origin: 0 0; }
+
+      /* 3 the page renders */
+      #page { position: absolute; left: 0; top: 0; width: 1px; height: 1px; transform-origin: 0 0; }
+      #page canvas { position: absolute; }
+
+      /* 4 the wall */
+      #wall { position: absolute; left: 0; top: 0; width: 1px; height: 1px; transform-origin: 0 0; }
+      #wall img, #wall .cell { position: absolute; width: 480px; height: 320px; }
+      #wall .cell { border: 3px solid rgba(236, 231, 221, 0.14); display: flex; align-items: center; justify-content: center; font: 500 40px "Plex", monospace; color: #99927f; }
+
+      /* HUD */
+      #hud-l, #hud-r { position: absolute; top: 46px; font: 500 22px "Plex", monospace; letter-spacing: 0.04em; white-space: nowrap; }
+      #hud-l { left: 60px; color: #ece7dd; }
+      #hud-r { right: 60px; color: #99927f; }
+      #hud-r b { color: #ff6d3b; font-weight: 500; }
+      #scrim { background: radial-gradient(ellipse 34% 30% at 50% 53%, rgba(11, 10, 9, 0.78) 0%, rgba(11, 10, 9, 0.5) 55%, rgba(11, 10, 9, 0) 100%); }
+      #vig { background: radial-gradient(ellipse 80% 75% at 50% 50%, rgba(11, 10, 9, 0) 55%, rgba(11, 10, 9, 0.7) 100%); }
+
+      /* 5 the title */
+      #t-prompt { position: absolute; left: 0; right: 0; top: 388px; text-align: center; font: 500 30px "Plex", monospace; color: #99927f; letter-spacing: 0.04em; white-space: nowrap; }
+      #t-title { position: absolute; left: 0; right: 0; top: 430px; text-align: center; font: 380 250px/1 "Fraunces", serif; letter-spacing: -0.02em; white-space: nowrap; }
+      #t-sub { position: absolute; left: 0; right: 0; top: 724px; text-align: center; font: 400 30px "Instrument", sans-serif; color: rgba(236, 231, 221, 0.75); white-space: nowrap; }
+    </style>
+  </head>
+  <body>
+    <div data-hf-id="hf-t2gj" id="root" data-composition-id="main" data-start="0" data-duration="10.0" data-width="1920" data-height="1080">
+      <!-- R12 · Denoise. One take, 10 s. The page's own prompt renders the page: the eye denoises, the camera dives into
+           the pupil, the Stills page renders row by row, and its last card turns out to be one tile of the wall.
+           The images in assets/img and assets/tiles are not licensed: swap in your own (same file names), then change
+           PROMPT, #t-prompt, #t-title and #t-sub. -->
+      <!-- the portfolio cut plays this score; the page copy is encoded without audio -->
+      <audio data-hf-id="hf-jks2" id="score" src="assets/bgm/score.wav" data-start="0" data-duration="10.0" data-track-index="10" data-volume="0.84"></audio>
+      <div data-hf-id="hf-271o" id="wall" data-layout-allow-overflow=""></div>
+      <div data-hf-id="hf-80m9" id="page" data-layout-allow-overflow=""></div>
+      <canvas data-hf-id="hf-iurx" id="eye-cv"></canvas>
+      <img data-hf-id="hf-6w6f" id="eye-img" src="assets/img/w-eye.jpg" alt="">
+      <div data-hf-id="hf-tou5" class="layer" id="vig"></div>
+      <div data-hf-id="hf-l7fr" id="prompt"><span data-hf-id="hf-sdmx" id="p-txt"></span><span data-hf-id="hf-l5xu" class="caret" id="p-caret"></span></div>
+      <div data-hf-id="hf-6nen" id="hud-l"></div>
+      <div data-hf-id="hf-nvkx" id="hud-r"></div>
+      <div data-hf-id="hf-pf6t" class="layer" id="scrim"></div>
+      <div data-hf-id="hf-1k36" id="t-prompt">/imagine stills --curated --upscaled</div>
+      <div data-hf-id="hf-c821" id="t-title">Stills</div>
+      <div data-hf-id="hf-b8sl" id="t-sub">Hand-picked from thousands of generations.</div>
+    </div>
+
+    <script>
+      const load = (src) => new Promise((ok) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ok(i); i.src = src; });
+
+      Promise.all([document.fonts.ready, load("assets/img/w-eye.jpg"),
+        ...["aurora-over-crystal-lake-borealis", "beautiful-colorful-fantasy-beta-fish-black", "colorful-mushroom-forest-filled", "kaleidoscopic-journey-through-wormhole", "mystical-lantern-festival", "radical-expressive-portrait-woman-her-face", "sailing-among-giant-floating-flowers"].map((n) => load(`assets/img/${n}.jpg`))
+      ]).then(([, eyeImg, ...cardImgs]) => {
+        const DUR = 10;
+        const $ = (s) => document.querySelector(s);
+        // One source for every format: layout reads the frame size (16:9 master, 4:5 phone cut).
+        const W = +$("#root").dataset.width, H = +$("#root").dataset.height, PORT = W < H;
+        const E = (n) => gsap.parseEase(n);
+        const cl = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+        const r = (t, a, b) => cl((t - a) / (b - a));
+        const lerp = (a, b, u) => a + (b - a) * u;
+        const eOut = E("power3.out"), eBack = E("back.out(1.7)");
+
+        // ---------- seeded noise tiles (the "latent" grain) ----------
+        let seed = 7;
+        const rnd = () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let x = Math.imul(seed ^ (seed >>> 15), 1 | seed); x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x; return ((x ^ (x >>> 14)) >>> 0) / 4294967296; };
+        const NOISE = [];
+        for (let k = 0; k < 6; k++) {
+          const c = document.createElement("canvas"); c.width = 240; c.height = 135;
+          const x = c.getContext("2d"), d = x.createImageData(240, 135);
+          for (let i = 0; i < d.data.length; i += 4) {
+            const g = rnd() * 255, tint = rnd();
+            d.data[i] = g * (0.85 + 0.3 * tint); d.data[i + 1] = g * (0.8 + 0.2 * rnd()); d.data[i + 2] = g * (0.9 + 0.3 * (1 - tint)); d.data[i + 3] = 255;
+          }
+          x.putImageData(d, 0, 0); NOISE.push(c);
+        }
+        const small = document.createElement("canvas"), sctx = small.getContext("2d");
+
+        // Draw `img` (cover-fit into w x h, optional zoom about a focus point) as a diffusion preview at progress p (0 noise -> 1 clean).
+        // Progress is quantised into 40 visible steps, like a generation preview.
+        const denoise = (ctx, img, p, w, h, salt = 0) => {
+          const q = Math.floor(cl(p) * 40) / 40;
+          ctx.save();
+          ctx.clearRect(0, 0, w, h);
+          if (q <= 0) { ctx.imageSmoothingEnabled = false; ctx.drawImage(NOISE[salt % 6], 0, 0, w, h); ctx.restore(); return; }
+          const ir = img.naturalWidth / img.naturalHeight, cr = w / h;
+          const sw = ir > cr ? img.naturalHeight * cr : img.naturalWidth, sh = ir > cr ? img.naturalHeight : img.naturalWidth / cr;
+          const sx = (img.naturalWidth - sw) / 2, sy = (img.naturalHeight - sh) / 2;
+          const block = Math.max(1, Math.round(56 * Math.pow(1 - q, 2.4)));
+          const blur = 22 * Math.pow(1 - q, 1.6);
+          const sat = 20 + 80 * q;
+          if (block > 1) {
+            small.width = Math.max(2, Math.round(w / block)); small.height = Math.max(2, Math.round(h / block));
+            sctx.filter = `blur(${(blur / block).toFixed(2)}px) saturate(${sat}%)`;
+            sctx.drawImage(img, sx, sy, sw, sh, 0, 0, small.width, small.height);
+            ctx.imageSmoothingEnabled = q > 0.55;
+            ctx.drawImage(small, 0, 0, w, h);
+          } else {
+            ctx.filter = blur > 0.3 ? `blur(${blur.toFixed(2)}px) saturate(${sat}%)` : "none";
+            ctx.drawImage(img, sx, sy, sw, sh, 0, 0, w, h);
+            ctx.filter = "none";
+          }
+          const na = Math.pow(1 - q, 2.1);
+          if (na > 0.01) {
+            ctx.imageSmoothingEnabled = false;
+            ctx.globalAlpha = na; ctx.globalCompositeOperation = q < 0.12 ? "source-over" : "overlay";
+            ctx.drawImage(NOISE[(Math.floor(q * 40) + salt) % 6], 0, 0, w, h);
+          }
+          ctx.restore();
+        };
+
+        // ---------- 1 prompt ----------
+        const PROMPT = "/imagine stills --curated --upscaled";   // no count: the collection grows without re-rendering
+        const T_TYPE = [0.25, 1.45], T_ENTER = 1.6;
+        const promptHtml = (n) => { const s = PROMPT.slice(0, n); const i = s.indexOf(" --"); return i < 0 ? s : s.slice(0, i) + `<span class="flag">${s.slice(i)}</span>`; };
+
+        // ---------- 2 the eye ----------
+        const eyeCv = $("#eye-cv"), ectx = eyeCv.getContext("2d");
+        eyeCv.width = W; eyeCv.height = H;
+        const T_EYE = [1.7, 4.0];
+        // the eye image cover-fits the frame (as the canvas draws it); F is the pupil on screen
+        const ES = Math.max(W / 1920, H / 1280), EW = 1920 * ES, EH = 1280 * ES, EL = (W - EW) / 2, ET = (H - EH) / 2;
+        const F = [EL + 0.458 * EW, ET + 0.461 * EH];
+        const eyeImgEl = $("#eye-img");
+        Object.assign(eyeImgEl.style, { left: `${EL}px`, top: `${ET}px`, width: `${EW}px`, height: `${EH}px` });
+
+        // ---------- 3 the Stills page renders (its real 1 / 2 / 3 rhythm) ----------
+        const page = $("#page");
+        const CARDS = [
+          // [x, y, w, h, image index, render start]
+          [260, 0, 1400, 933, 0, 5.0],
+          [260, 993, 680, 453, 1, 5.6], [980, 993, 680, 453, 2, 5.75],
+          [260, 1506, 440, 293, 3, 6.15], [740, 1506, 440, 293, 4, 6.27], [1220, 1506, 440, 293, 5, 6.39],
+          [260, 1859, 1400, 933, 6, 6.55],
+        ];
+        const cards = CARDS.map(([x, y, w, h, k, t0], i) => {
+          const c = document.createElement("canvas"); c.width = w; c.height = h;
+          c.style.cssText = `left:${x}px;top:${y}px;width:${w}px;height:${h}px;`;
+          page.appendChild(c);
+          return { c, ctx: c.getContext("2d"), img: cardImgs[k], w, h, t0, i };
+        });
+        const M = Math.min(W / 1600, 1);   // the 1400px page column fits any frame width
+        const CAM_A = [[5.0, 960, 466, 1.12, "sine.inOut"], [5.9, 960, 930, 0.95, "sine.inOut"], [6.6, 960, 1480, 0.93, "power2.inOut"], [7.45, 960, 2325, 0.9, "none"]].map(([t, x, y, z, e]) => [t, x, y, z * M, e]);
+
+        // ---------- 4 the wall of 43 (8 x 6, or 5 x 10 upright: 43 worlds, unrendered cells, and the next prompt last) ----------
+        const wall = $("#wall");
+        const COLS = PORT ? 5 : 8, ROWS = PORT ? 10 : 6, TW = 480, TH = 320, G = 24;
+        const tiles = [];
+        for (let n = 0; n < COLS * ROWS; n++) {
+          const col = n % COLS, row = Math.floor(n / COLS), x = col * (TW + G), y = row * (TH + G);
+          let el;
+          // 43 tiles in assets/tiles (01.jpg to 43.jpg); the rest of the grid are empty cells
+          if (n < 43) { el = document.createElement("img"); el.src = `assets/tiles/${String(n + 1).padStart(2, "0")}.jpg`; }
+          else if (n < COLS * ROWS - 1) { el = document.createElement("div"); el.className = "cell"; el.style.borderStyle = "dashed"; }
+          else { el = document.createElement("div"); el.className = "cell"; el.innerHTML = '/imagine<span class="caret" style="margin-left:.3em"></span>'; }
+          el.style.left = `${x}px`; el.style.top = `${y}px`;
+          wall.appendChild(el); tiles.push({ el, cx: x + TW / 2, cy: y + TH / 2 });
+        }
+        const SEA = tiles[17];                              // "Sea of Blooms" is still 18: the last card becomes this tile
+        const WALL_W = COLS * TW + (COLS - 1) * G, WALL_H = ROWS * TH + (ROWS - 1) * G;
+        const T_SWAP = 7.45, sB0 = (1400 * 0.9 * M) / TW;       // same screen size as the last card at the swap
+        const ZE = Math.max(W / WALL_W, H / WALL_H) * 1.04;   // the wall fills the frame; the corner with the next prompt stays in view
+        const CAM_B = [[T_SWAP, SEA.cx, SEA.cy, sB0, "expo.inOut"], [8.9, WALL_W - W / 1.07, WALL_H - H / 1.07, ZE * 0.973, "sine.out"], [10, WALL_W - W / 2 / ZE - 30, WALL_H - H / 2 / ZE - 20, ZE, "none"]];
+
+        const cam = (keys, t) => {
+          const K = keys.map(([t, x, y, z, e]) => ({ t, x, y, z, e: E(e) }));
+          let i = 0; while (i < K.length - 2 && t >= K[i + 1].t) i++;
+          const a = K[i], b = K[i + 1], u = a.e(r(t, a.t, b.t));
+          return { x: lerp(a.x, b.x, u), y: lerp(a.y, b.y, u), z: Math.exp(lerp(Math.log(a.z), Math.log(b.z), u)) };
+        };
+        const place = (el, C) => { el.style.transform = `translate(${W / 2 - C.x * C.z}px, ${H / 2 - C.y * C.z}px) scale(${C.z})`; };
+        // type sits on the frame's centre line in every format
+        $("#prompt").style.top = `${H / 2 - 40}px`; if (PORT) $("#prompt").style.fontSize = "34px";
+        $("#t-prompt").style.top = `${H / 2 - 170}px`; $("#t-title").style.top = `${H / 2 - 110}px`; $("#t-sub").style.top = `${H / 2 + 184}px`;
+        const tc = (t) => { const f = Math.floor(t * 30 + 1e-6); return `00:00:${String(Math.floor(f / 30)).padStart(2, "0")}:${String(f % 30).padStart(2, "0")}`; };
+
+        const clock = { t: 0 };
+        const paint = () => {
+          const t = clock.t;
+
+          // ---- prompt ----
+          const n = Math.round(PROMPT.length * r(t, T_TYPE[0], T_TYPE[1]));
+          $("#p-txt").innerHTML = promptHtml(n);
+          const blink = t < T_TYPE[0] || t > T_TYPE[1] ? (Math.floor(t * 2.5) % 2 === 0 ? 1 : 0) : 1;
+          $("#p-caret").style.opacity = blink;
+          const pe = E("power3.inOut")(r(t, T_ENTER, T_ENTER + 0.45));
+          $("#prompt").style.opacity = 1 - r(t, T_ENTER + 0.25, T_ENTER + 0.45);
+          $("#prompt").style.transform = `translateY(${-30 * pe}px) scale(${1 - 0.08 * pe})`;
+
+          // ---- the eye: denoise, then the dive ----
+          const ep = E("power1.inOut")(r(t, T_EYE[0], T_EYE[1]));
+          const push = 1 + 0.06 * E("sine.inOut")(r(t, T_EYE[0], 4.2));
+          const dive = E("expo.in")(r(t, 4.2, 5.05));
+          const z = push * Math.exp(Math.log(26) * dive);
+          if (t < 4.0) {
+            eyeCv.style.display = "block"; eyeImgEl.style.opacity = 0;
+            denoise(ectx, eyeImg, ep, W, H);
+            eyeCv.style.opacity = r(t, T_ENTER, T_ENTER + 0.15);
+            eyeCv.style.transformOrigin = `${F[0]}px ${F[1]}px`;
+            eyeCv.style.transform = `scale(${push})`;
+          } else {
+            eyeCv.style.display = "none";
+            // the clean 3840 image takes over for the dive (same framing as the canvas: cover-fit, centred), zooming about the pupil
+            const ox = F[0] - EL, oy = F[1] - ET;
+            eyeImgEl.style.opacity = 1 - r(t, 4.95, 5.08);
+            eyeImgEl.style.transform = `translate(${ox}px, ${oy}px) scale(${z}) translate(${-ox}px, ${-oy}px)`;
+          }
+          if (t >= 5.08) eyeImgEl.style.opacity = 0;
+
+          // ---- the page ----
+          const inPage = t >= 4.95 && t < T_SWAP;
+          page.style.display = inPage ? "block" : "none";
+          if (inPage) {
+            place(page, cam(CAM_A, t));
+            page.style.opacity = r(t, 4.95, 5.1);
+            cards.forEach((k) => { const p = E("power1.out")(r(t, k.t0, k.t0 + 0.85)); denoise(k.ctx, k.img, p, k.w, k.h, k.i + 1); k.c.style.opacity = t >= k.t0 ? 1 : 0; });
+          }
+
+          // ---- the wall ----
+          const inWall = t >= T_SWAP;
+          wall.style.display = inWall ? "block" : "none";
+          if (inWall) {
+            const C = cam(CAM_B, t);
+            place(wall, C);
+            tiles.forEach((tl, i) => {
+              if (tl === SEA) { tl.el.style.opacity = 1; tl.el.style.filter = "none"; return; }
+              const d = Math.hypot(tl.cx - SEA.cx, (tl.cy - SEA.cy) * 1.4) / 3000;
+              const u = r(t, 7.6 + d * 0.9, 8.15 + d * 0.9);
+              tl.el.style.opacity = u > 0 ? 0.25 + 0.75 * u : 0;
+              tl.el.style.filter = u < 1 ? `blur(${(14 * (1 - u)).toFixed(1)}px) saturate(${(30 + 70 * u).toFixed(0)}%)` : "none";
+            });
+            const dim = 1 - 0.68 * E("power2.inOut")(r(t, 8.75, 9.35));
+            wall.style.filter = dim < 1 ? `brightness(${dim.toFixed(3)})` : "none";
+          }
+
+          // ---- HUD ----
+          const hudO = r(t, T_ENTER + 0.2, T_ENTER + 0.5) * (1 - r(t, 8.75, 9.1));
+          $("#hud-l").style.opacity = hudO; $("#hud-r").style.opacity = hudO;
+          $("#hud-l").textContent = PROMPT;
+          let stat;
+          if (t < 4.0) stat = `step <b>${String(Math.floor(ep * 40)).padStart(2, "0")}</b> / 40`;
+          else if (t < T_SWAP) stat = `rendering <b>${cards.filter((k) => t >= k.t0 + 0.85).length}</b> / 7`;
+          else stat = `collection <b>${Math.round(100 * r(t, 7.6, 8.9))}%</b>`;
+          $("#hud-r").innerHTML = stat;
+
+          // ---- title ----
+          const tt = r(t, 9.0, 9.6);
+          $("#t-title").style.opacity = tt; $("#t-title").style.transform = `translateY(${60 * (1 - eOut(tt))}px)`;
+          $("#t-prompt").style.opacity = r(t, 8.9, 9.3);
+          $("#scrim").style.opacity = r(t, 8.75, 9.35);
+          $("#t-sub").style.opacity = r(t, 9.35, 9.8); $("#t-sub").style.transform = `translateY(${20 * (1 - eOut(r(t, 9.35, 9.8)))}px)`;
+        };
+
+        const tl = gsap.timeline({ paused: true });
+        tl.fromTo(clock, { t: 0 }, { t: DUR, duration: DUR, ease: "none", onUpdate: paint }, 0);
+        paint();
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+      });
+    </script>
+  </body>
+</html>
