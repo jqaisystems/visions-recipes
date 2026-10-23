@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width">
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/data.js"></script>
+    <style>
+      @font-face { font-family: "Fraunces"; src: url("assets/fonts/fraunces.woff2") format("woff2"); font-weight: 100 900; }
+      @font-face { font-family: "FrauncesItalic"; src: url("assets/fonts/fraunces-italic.ttf") format("truetype"); font-weight: 100 900; }
+      @font-face { font-family: "Instrument"; src: url("assets/fonts/instrument.woff2") format("woff2"); font-weight: 400 700; }
+      @font-face { font-family: "Plex"; src: url("assets/fonts/plexmono-400.woff2") format("woff2"); font-weight: 400; }
+      @font-face { font-family: "Plex"; src: url("assets/fonts/plexmono-500.woff2") format("woff2"); font-weight: 500; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 100%; height: 100%; overflow: hidden; background: #0b0a09; }
+      #root { position: relative; width: 100%; height: 100%; overflow: hidden; background: #0b0a09; color: #ece7dd; font-family: "Instrument", sans-serif; }
+      .layer { position: absolute; inset: 0; }
+      .caret { display: inline-block; width: 0.55em; height: 1.05em; margin-left: 0.08em; vertical-align: -0.16em; background: #ff6d3b; }
+      #prompt { position: absolute; left: 0; right: 0; text-align: center; font: 500 46px "Plex", monospace; letter-spacing: 0.02em; white-space: nowrap; }
+      #prompt .flag { color: #99927f; }
+
+      #river { position: absolute; inset: 0; transform-origin: 50% 70%; }
+      .row { position: absolute; left: 0; white-space: nowrap; font-family: "Fraunces", serif; font-weight: 380; letter-spacing: -0.01em; }
+      .row .sep { color: #ff6d3b; opacity: 0.45; padding: 0 0.55em; }
+      .row b { font-weight: inherit; border-bottom: 0.06em solid transparent; }
+
+      #search { position: absolute; display: flex; align-items: center; gap: 22px; background: rgba(11, 10, 9, 0.94); border: 1px solid rgba(236, 231, 221, 0.2); box-shadow: 0 30px 80px rgba(0, 0, 0, 0.7); padding: 0 30px; font: 500 40px "Plex", monospace; white-space: nowrap; }
+      #search .lbl { color: #99927f; font-size: 24px; letter-spacing: 0.08em; }
+      #s-line { position: absolute; left: 0; bottom: -1px; height: 3px; background: #ff6d3b; box-shadow: 0 0 16px rgba(255, 109, 59, 0.7); transform-origin: 0 50%; }
+
+      #hud-l, #hud-r { position: absolute; top: 46px; font: 500 22px "Plex", monospace; letter-spacing: 0.04em; white-space: nowrap; text-shadow: 0 1px 10px rgba(11, 10, 9, 0.9); }
+      #hud-l { left: 60px; }
+      #hud-r { right: 60px; color: #cfc8b8; }
+      #hud-r b { color: #ff6d3b; font-weight: 500; }
+      #band { position: absolute; left: 0; right: 0; top: 0; height: 150px; background: linear-gradient(rgba(11, 10, 9, 0.92), rgba(11, 10, 9, 0)); }
+      #vig { background: radial-gradient(ellipse 80% 75% at 50% 50%, rgba(11, 10, 9, 0) 50%, rgba(11, 10, 9, 0.75) 100%); }
+      #scrim { background: radial-gradient(ellipse 46% 36% at 50% 50%, rgba(11, 10, 9, 0.92) 0%, rgba(11, 10, 9, 0.6) 60%, rgba(11, 10, 9, 0) 100%); opacity: 0; }
+      #t-prompt { position: absolute; left: 0; right: 0; text-align: center; font: 500 30px "Plex", monospace; color: #99927f; letter-spacing: 0.04em; white-space: nowrap; }
+      #t-title { position: absolute; left: 0; right: 0; text-align: center; font: 380 150px/1.02 "Fraunces", serif; letter-spacing: -0.02em; white-space: nowrap; }
+      #t-title .w { display: inline-block; }
+      #t-title em { color: #ff6d3b; font-family: "FrauncesItalic", serif; font-style: normal; }
+      #t-sub { position: absolute; left: 0; right: 0; text-align: center; font: 400 30px "Instrument", sans-serif; color: rgba(236, 231, 221, 0.78); white-space: nowrap; }
+    </style>
+  </head>
+  <body>
+    <div data-hf-id="hf-t2gj" id="root" data-composition-id="main" data-start="0" data-duration="10.0" data-width="1920" data-height="1080">
+      <!-- R11 · Kinetic Index. One take, 10 s. The index searches itself: the titles stream past in rows, a live search
+           types three queries and the matches light up on the beat, then the river tilts away under the headline.
+           make-data.py writes assets/data.js from titles.txt (demo titles). To make it yours, change titles.txt, the
+           three words in Q, PROMPT, and the headline in #t-prompt, #t-title and #t-sub below. -->
+      <audio data-hf-id="hf-3jm3" id="score" src="assets/bgm/score.wav" data-start="0" data-duration="10.0" data-track-index="10" data-volume="0.85"></audio>
+
+      <div data-hf-id="hf-g38e" id="river" data-layout-ignore=""></div>
+      <div data-hf-id="hf-tou5" class="layer" id="vig"></div>
+      <div data-hf-id="hf-36fc" id="band"></div>
+      <div data-hf-id="hf-ipkz" id="search" data-layout-allow-occlusion=""><span data-hf-id="hf-cuft" class="lbl">search</span><span data-hf-id="hf-kzc3" id="s-q"></span><span data-hf-id="hf-yfop" class="caret" id="s-caret"></span><div data-hf-id="hf-xua3" id="s-line"></div></div>
+      <div data-hf-id="hf-f69e" id="prompt" data-layout-allow-overflow=""><span data-hf-id="hf-sdmx" id="p-txt"></span><span data-hf-id="hf-l5xu" class="caret" id="p-caret"></span></div>
+      <div data-hf-id="hf-6nen" id="hud-l"></div>
+      <div data-hf-id="hf-nvkx" id="hud-r"></div>
+      <div data-hf-id="hf-pf6t" class="layer" id="scrim"></div>
+      <div data-hf-id="hf-qabs" id="t-prompt">/index visions --searchable --field-notes</div>
+      <div data-hf-id="hf-p7rq" id="t-title"><span data-hf-id="hf-jlec" class="w">Field</span> <span data-hf-id="hf-kov9" class="w">notes</span> <span data-hf-id="hf-eyfb" class="w">for</span><br data-hf-id="hf-x5px"><em data-hf-id="hf-2lav"><span data-hf-id="hf-x9sk" class="w">imagined</span> <span data-hf-id="hf-5wjd" class="w">worlds.</span></em></div>
+      <div data-hf-id="hf-7pdb" id="t-sub">Practical research on AI image and video tools.</div>
+    </div>
+
+    <script>
+      Promise.all(["380 40px Fraunces", "380 40px FrauncesItalic", "500 40px Plex"].map((q) => document.fonts.load(q))).then(() => document.fonts.ready).then(() => {
+        const DUR = 10;
+        const $ = (s) => document.querySelector(s);
+        const E = (n) => gsap.parseEase(n);
+        const cl = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+        const r = (t, a, b) => cl((t - a) / (b - a));
+        const lerp = (a, b, u) => a + (b - a) * u;
+        const eOut = E("power3.out"), eIO = E("power2.inOut");
+        const hash = (n) => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };   // seeded, seek-safe
+        const W = +$("#root").dataset.width, H = +$("#root").dataset.height, PORT = W < H;
+
+        const PROMPT = "/index visions --searchable --field-notes";
+        const T_TYPE = [0.25, 1.45], T_ENTER = 1.6;
+        // three searches, each lands on the beat (100 BPM, 0.6 s); the matches light up as it lands
+        const Q = [{ q: "colour", t0: 2.6, land: 3.0 }, { q: "motion", t0: 4.3, land: 4.8 }, { q: "light", t0: 6.1, land: 6.6 }];   // words from your titles, lowercase
+        const DEL = 0.22, T_CLEAR = [7.25, 7.45], T_TILT = [7.2, 8.9], TITLE = 9.0;
+        const TITLES = window.BLOG_TITLES;
+        const promptHtml = (n) => { const s = PROMPT.slice(0, n); const i = s.indexOf(" --"); return i < 0 ? s : s.slice(0, i) + `<span class="flag">${s.slice(i)}</span>`; };
+        $("#prompt").style.top = `${H / 2 - 40}px`;
+        if (PORT) $("#prompt").style.fontSize = "30px";
+
+        // ---------- the river: rows of titles at several sizes, each drifting at its own speed ----------
+        const SIZES = PORT ? [26, 36, 52, 72] : [30, 44, 62, 92];
+        const river = $("#river"), rows = [];
+        let y = -40, k = 0;
+        while (y < H + 60) {
+          const sz = SIZES[Math.floor(hash(k * 3.1) * SIZES.length)];
+          const el = document.createElement("div"); el.className = "row";
+          el.style.fontSize = `${sz}px`; el.style.top = `${y}px`;
+          const order = TITLES.map((_, i) => TITLES[(i * 7 + k * 11) % TITLES.length]);
+          const depth = (sz - SIZES[0]) / (SIZES[SIZES.length - 1] - SIZES[0]);
+          rows.push({ el, sz, y, order, base: 0.2 + 0.4 * depth, dir: k % 2 ? 1 : -1, speed: (34 + 50 * hash(k + 9)) * (0.6 + 0.8 * depth), x0: 900 * hash(k + 3) });
+          river.appendChild(el);
+          y += sz * 1.22; k++;
+        }
+        const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+        const mark = (s, q) => { if (!q) return esc(s); const i = s.toLowerCase().indexOf(q); return i < 0 ? esc(s) : esc(s.slice(0, i)) + `<b>${esc(s.slice(i, i + q.length))}</b>` + esc(s.slice(i + q.length)); };
+        // every row's markup for each search is built up front; the underline adds no width, so one measure per row
+        rows.forEach((R) => {
+          R.html = {};
+          ["", ...Q.map((x) => x.q)].forEach((q) => {
+            const one = R.order.map((s) => `<span class="ti${q && s.toLowerCase().includes(q) ? " hit" : ""}">${mark(s, q)}</span>`).join('<span class="sep">·</span>') + '<span class="sep">·</span>';
+            R.html[q] = `<span class="cp">${one}</span><span class="cp">${one}</span>`;
+          });
+          R.el.innerHTML = R.html[""];
+          R.w = R.el.firstChild.getBoundingClientRect().width;
+        });
+        const fill = (q) => rows.forEach((R) => {
+          R.el.innerHTML = R.html[q];
+          R.spans = [...R.el.querySelectorAll(".ti")]; R.hits = [...R.el.querySelectorAll(".hit")]; R.bs = [...R.el.querySelectorAll("b")];
+        });
+        fill("");
+        let filled = "";
+
+        // speed over time: drift, slow while searching, rush as the river tilts away, settle under the title
+        const speedAt = (t) => t < 2.6 ? 1 : t < 7.2 ? lerp(1, 0.45, r(t, 2.6, 3.0)) : t < 8.6 ? lerp(0.45, 7, E("power2.in")(r(t, 7.2, 8.6))) : lerp(7, 0.3, eOut(r(t, 8.6, 9.4)));
+        const STEP = 1 / 120;
+        const dist = (t) => { let d = 0; for (let s = 0; s < t; s += STEP) d += speedAt(s) * Math.min(STEP, t - s); return d; };
+
+        // ---------- search box ----------
+        const SB_W = PORT ? 860 : 780, SB_H = PORT ? 92 : 104;
+        const sb = $("#search");
+        sb.style.width = `${SB_W}px`; sb.style.height = `${SB_H}px`; sb.style.left = `${(W - SB_W) / 2}px`; sb.style.top = `${H / 2 - SB_H / 2}px`;
+        $("#s-line").style.width = `${SB_W}px`;
+        const queryAt = (t) => {
+          for (let i = Q.length - 1; i >= 0; i--) {
+            const A = Q[i];
+            if (t >= A.t0) return { i, txt: A.q.slice(0, Math.round(A.q.length * r(t, A.t0, A.land - 0.06))) };
+            if (t >= A.t0 - DEL && i > 0) return { i: i - 1, txt: Q[i - 1].q.slice(0, Math.round(Q[i - 1].q.length * (1 - r(t, A.t0 - DEL, A.t0)))) };
+          }
+          return { i: -1, txt: "" };
+        };
+
+        // ---------- title ----------
+        const TS = PORT ? 108 : 150;
+        $("#t-title").style.fontSize = `${TS}px`;
+        $("#t-prompt").style.top = `${H / 2 - TS * 1.02 - 80}px`; $("#t-title").style.top = `${H / 2 - TS * 1.02}px`; $("#t-sub").style.top = `${H / 2 + TS * 1.02 + 36}px`;
+        if (PORT) { $("#t-sub").style.fontSize = "26px"; $("#t-prompt").style.fontSize = "24px"; }
+        const words = [...document.querySelectorAll("#t-title .w")];
+
+        const clock = { t: 0 };
+        const paint = () => {
+          const t = clock.t;
+
+          // ---- prompt; on Enter it lifts into the HUD and the river pours out of its line ----
+          const n = Math.round(PROMPT.length * r(t, T_TYPE[0], T_TYPE[1]));
+          $("#p-txt").innerHTML = promptHtml(n);
+          $("#p-caret").style.opacity = t < T_TYPE[0] || t > T_TYPE[1] ? (Math.floor(t * 2.5) % 2 === 0 ? 1 : 0) : 1;
+          const pe = eOut(r(t, T_ENTER, T_ENTER + 0.35));
+          $("#prompt").style.opacity = 1 - r(t, T_ENTER + 0.1, T_ENTER + 0.35);
+          $("#prompt").style.transform = `translateY(${-(H / 2 - 60) * pe}px) scale(${1 - 0.5 * pe})`;
+
+          // ---- which search is live ----
+          const Qa = queryAt(t);
+          const land = Qa.i >= 0 ? Q[Qa.i].land : 99;
+          const nextDel = Qa.i >= 0 && Qa.i < Q.length - 1 ? Q[Qa.i + 1].t0 - DEL : T_CLEAR[0];
+          const h = Qa.i >= 0 ? r(t, land, land + 0.18) * (1 - r(t, nextDel, nextDel + 0.18)) : 0;
+          const key = h > 0 ? Q[Qa.i].q : "";
+          if (key !== filled) { fill(key); filled = key; }
+
+          // ---- the river ----
+          const d = dist(t);
+          rows.forEach((R, i) => {
+            const fromC = Math.abs(R.y + R.sz / 2 - H / 2) / (H / 2);
+            const a = r(t, T_ENTER + 0.05 + 0.55 * fromC, T_ENTER + 0.45 + 0.55 * fromC);
+            let x = (R.x0 + R.speed * d) % R.w; x = R.dir > 0 ? x - R.w : -x;
+            R.el.style.transform = `translateX(${x.toFixed(2)}px)`;
+            R.el.style.opacity = a;
+            R.el.style.filter = t > 7.6 && t < 9.2 ? `blur(${(2.2 * Math.sin(Math.PI * r(t, 7.6, 9.2))).toFixed(2)}px)` : "none";
+            R.spans.forEach((s) => { s.style.opacity = R.base * (1 - 0.72 * h); s.style.color = ""; });
+            R.hits.forEach((s) => { s.style.opacity = lerp(R.base, 1, h); s.style.color = h > 0 ? `rgb(${Math.round(lerp(236, 255, h))},${Math.round(lerp(231, 109, h))},${Math.round(lerp(221, 59, h))})` : ""; });
+            R.bs.forEach((b) => { b.style.borderBottomColor = `rgba(255,109,59,${h.toFixed(3)})`; });
+          });
+          const tilt = E("power2.inOut")(r(t, T_TILT[0], T_TILT[1]));
+          river.style.transform = tilt > 0 ? `perspective(${PORT ? 900 : 1100}px) translateY(${(PORT ? 260 : 200) * tilt}px) rotateX(${58 * tilt}deg) scale(${1 + 0.5 * tilt})` : "none";
+          river.style.filter = t > 8.75 ? `brightness(${(1 - 0.55 * eIO(r(t, 8.75, 9.35))).toFixed(3)})` : "none";
+
+          // ---- search box ----
+          const sbIn = eOut(r(t, 2.25, 2.6)), sbOut = E("power2.in")(r(t, T_CLEAR[0], T_CLEAR[1] + 0.1));
+          sb.style.opacity = sbIn * (1 - sbOut);
+          sb.style.transform = `scale(${(0.92 + 0.08 * sbIn) * (1 - 0.1 * sbOut)})`;
+          $("#s-q").textContent = t < T_CLEAR[0] ? Qa.txt : "";
+          $("#s-caret").style.opacity = Math.floor(t * 2.5) % 2 === 0 || (Qa.i >= 0 && t < land) ? 1 : 0;
+          const pulse = Qa.i >= 0 ? r(t, land, land + 0.4) : 1;
+          $("#s-line").style.transform = `scaleX(${Qa.i >= 0 && t >= land ? 1 : 0.06 + 0.94 * r(t, Qa.i >= 0 ? Q[Qa.i].t0 : 0, land)})`;
+          $("#s-line").style.opacity = Qa.i >= 0 ? 1 - 0.5 * pulse : 0.4;
+
+          // ---- HUD ----
+          const hudO = r(t, T_ENTER + 0.3, T_ENTER + 0.6) * (1 - r(t, 8.75, 9.1));
+          $("#band").style.opacity = hudO; $("#hud-l").style.opacity = hudO; $("#hud-r").style.opacity = hudO;
+          $("#hud-l").textContent = PORT ? "/index visions" : PROMPT;
+          $("#hud-r").innerHTML = h > 0.5 ? `match <b>${Q[Qa.i].q}</b>` : t < Q[0].t0 ? `index <b>●</b>` : t < T_CLEAR[0] ? `search <b>●</b>` : `field notes <b>●</b>`;
+
+          // ---- title: the words drop out of the river into the headline ----
+          $("#scrim").style.opacity = r(t, 8.75, 9.35);
+          words.forEach((w, i) => {
+            const u = r(t, TITLE + 0.07 * i, TITLE + 0.07 * i + 0.5);
+            w.style.opacity = u; w.style.transform = `translateY(${-50 * (1 - eOut(u))}px)`;
+            w.style.filter = u < 1 ? `blur(${(6 * (1 - u)).toFixed(2)}px)` : "none";
+          });
+          $("#t-prompt").style.opacity = r(t, 8.9, 9.3);
+          $("#t-sub").style.opacity = r(t, 9.45, 9.85); $("#t-sub").style.transform = `translateY(${20 * (1 - eOut(r(t, 9.45, 9.85)))}px)`;
+        };
+
+        const tl = gsap.timeline({ paused: true });
+        tl.fromTo(clock, { t: 0 }, { t: DUR, duration: DUR, ease: "none", onUpdate: paint }, 0);
+        paint();
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+      });
+    </script>
+  </body>
+</html>
