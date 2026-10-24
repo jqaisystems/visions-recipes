@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <!--
+      R14 · Orrery. One take, 32 s, Three.js (WebGPURenderer, WebGL2 backend, TSL bloom).
+      A multi-agent system as a brass-and-glass orrery: the orchestrator is the sun, each agent a glass planet on its own
+      gimballed ring, with a moon (its memory) and satellites (its skills). Work travels as light. Every ring is an
+      Object3D nested in its parent with one angle each, and every angle is a function of time, so any frame renders on
+      its own. The timing table T is mirrored by score/compose.py.
+    -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/word.js"></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "./assets/vendor/three.webgpu.js",
+          "three/webgpu": "./assets/vendor/three.webgpu.js",
+          "three/tsl": "./assets/vendor/three.tsl.js"
+        }
+      }
+    </script>
+    <style>
+      @font-face { font-family: "Inter"; src: url("assets/fonts/inter-400.woff2") format("woff2"); font-weight: 400; }
+      @font-face { font-family: "Inter"; src: url("assets/fonts/inter-500.woff2") format("woff2"); font-weight: 500; }
+      @font-face { font-family: "Inter"; src: url("assets/fonts/inter-600.woff2") format("woff2"); font-weight: 600; }
+      @font-face { font-family: "Baskerville"; src: url("assets/fonts/libre-baskerville-400.woff2") format("woff2"); font-weight: 400; }
+      @font-face { font-family: "Baskerville"; src: url("assets/fonts/libre-baskerville-700.woff2") format("woff2"); font-weight: 700; }
+      @font-face { font-family: "JBM"; src: url("assets/fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 100 800; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #08080a; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #08080a; color: #f5f5f0; font-family: "Inter", sans-serif; }
+      #or-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #or-gl { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #or-ui { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+
+      .hud { position: absolute; top: 48px; font: 500 19px "JBM", monospace; letter-spacing: 0.1em; white-space: nowrap; color: #a3a39f; }
+      #hud-l { left: 64px; color: #f5f5f0; font: 600 19px "Inter", sans-serif; letter-spacing: 0.18em; }
+      #hud-l span { font: 500 19px "JBM", monospace; letter-spacing: 0.1em; color: #00BFB4; margin-left: 16px; }
+      #hud-r { right: 64px; }
+      #hud-r b { font-weight: 500; color: #00BFB4; margin-right: 26px; }
+
+      #brief { position: absolute; left: 0; right: 0; top: 500px; text-align: center; font: 500 46px "JBM", monospace; letter-spacing: 0.02em; white-space: nowrap; color: #f5f5f0; }
+      #brief i { font-style: normal; color: #8f8f8a; }
+      #brief .caret { display: inline-block; width: 0.55em; height: 1.05em; margin-left: 0.08em; vertical-align: -0.16em; background: #00BFB4; }
+
+      .st { position: absolute; left: 92px; bottom: 96px; opacity: 0; }
+      .st i { display: block; font: 600 22px "JBM", monospace; font-style: normal; letter-spacing: 0.24em; color: #00BFB4; }
+      .st b { display: block; margin-top: 8px; font: 700 104px/1 "Baskerville", serif; letter-spacing: -0.02em; color: #f5f5f0; white-space: nowrap; }
+      .st span { display: block; margin-top: 16px; font: 400 28px "Inter", sans-serif; color: #c8c8c2; white-space: nowrap; }
+      #st-shade { position: absolute; left: 0; bottom: 0; width: 1200px; height: 420px; opacity: 0;
+        background: radial-gradient(ellipse 70% 90% at 0% 100%, rgba(8, 8, 10, 0.85) 0%, rgba(8, 8, 10, 0.5) 50%, rgba(8, 8, 10, 0) 100%); }
+
+      #rv { position: absolute; left: 0; top: 0; opacity: 0; }
+      #rv-card { position: absolute; left: 0; top: 0; width: 330px; padding: 18px 22px; border-radius: 16px; background: rgba(12, 12, 14, 0.82); border: 2px solid #e9c46a; }
+      #rv-card i { display: block; font: 600 17px "JBM", monospace; font-style: normal; letter-spacing: 0.16em; color: #e9c46a; }
+      #rv-row { display: flex; align-items: center; gap: 16px; margin-top: 12px; }
+      #rv-box { width: 44px; height: 44px; border-radius: 10px; border: 3px solid #f5f5f0; position: relative; }
+      #rv-svg { position: absolute; left: -3px; top: -3px; overflow: visible; }
+      #rv-lab { font: 500 26px "Inter", sans-serif; color: #f5f5f0; white-space: nowrap; }
+      #cursor { position: absolute; left: 0; top: 0; opacity: 0; }
+      #flash { position: absolute; inset: 0; background: #e8fffd; opacity: 0; }
+
+      #z-title { position: absolute; left: 0; right: 0; top: 664px; text-align: center; opacity: 0; font: 700 78px/1.1 "Baskerville", serif; letter-spacing: -0.02em; white-space: nowrap; }
+      #z-sub { position: absolute; left: 0; right: 0; top: 768px; text-align: center; opacity: 0; font: 400 30px/1.45 "Inter", sans-serif; color: #c8c8c2; }
+      #z-url { position: absolute; left: 0; right: 0; top: 884px; text-align: center; font: 500 30px "JBM", monospace; color: #f5f5f0; white-space: nowrap; }
+      #z-rule { position: absolute; left: 610px; top: 936px; width: 700px; height: 4px; border-radius: 2px; background: #00BFB4; transform: scaleX(0); }
+      #z-note { position: absolute; left: 0; right: 0; top: 970px; text-align: center; opacity: 0; font: 500 19px "JBM", monospace; letter-spacing: 0.3em; color: #a3a39f; }
+    </style>
+  </head>
+  <body>
+    <div data-hf-id="hf-or01" id="root" data-composition-id="main" data-start="0" data-duration="32" data-width="1920" data-height="1080">
+      <div data-hf-id="hf-or02" id="or-stage" class="clip" data-start="0" data-duration="32" data-track-index="0">
+        <canvas data-hf-id="hf-or03" id="or-gl" width="1920" height="1080"></canvas>
+      </div>
+      <div data-hf-id="hf-or04" id="or-ui" class="clip" data-start="0" data-duration="32" data-track-index="1">
+        <div data-hf-id="hf-or05" id="brief" data-layout-allow-occlusion><i data-hf-id="hf-or06">brief:</i> <span data-hf-id="hf-or07" id="brief-t"></span><span data-hf-id="hf-or08" class="caret" id="brief-c"></span></div>
+        <div data-hf-id="hf-or09" id="st-shade" data-layout-allow-occlusion></div>
+        <div data-hf-id="hf-or10" class="st" id="st-0" data-layout-allow-occlusion><i data-hf-id="hf-or11">01 · ORCHESTRATE</i><b data-hf-id="hf-or12">Orchestrate</b><span data-hf-id="hf-or13">One brief, split into roles.</span></div>
+        <div data-hf-id="hf-or14" class="st" id="st-1" data-layout-allow-occlusion><i data-hf-id="hf-or15">02 · RESEARCH</i><b data-hf-id="hf-or16">Research</b><span data-hf-id="hf-or17">Sources gathered, and remembered.</span></div>
+        <div data-hf-id="hf-or18" class="st" id="st-2" data-layout-allow-occlusion><i data-hf-id="hf-or19">03 · WRITE</i><b data-hf-id="hf-or20">Write</b><span data-hf-id="hf-or21">Drafted in a defined voice.</span></div>
+        <div data-hf-id="hf-or22" class="st" id="st-3" data-layout-allow-occlusion><i data-hf-id="hf-or23">04 · REVIEW</i><b data-hf-id="hf-or24">Review</b><span data-hf-id="hf-or25">Checked against the rules. A person decides the edge cases.</span></div>
+        <div data-hf-id="hf-or26" class="st" id="st-4" data-layout-allow-occlusion><i data-hf-id="hf-or27">05 · DELIVER</i><b data-hf-id="hf-or28">Deliver</b><span data-hf-id="hf-or29">Every agent aligned. One result.</span></div>
+        <div data-hf-id="hf-or30" id="rv" data-layout-allow-occlusion>
+          <div data-hf-id="hf-or31" id="rv-card"><i data-hf-id="hf-or32">ESCALATED TO A PERSON</i>
+            <div data-hf-id="hf-or33" id="rv-row"><div data-hf-id="hf-or34" id="rv-box"><svg data-hf-id="hf-or35" id="rv-svg" width="44" height="44"><path data-hf-id="hf-or36" id="rv-tick" d="M10,23 L19,32 L35,13" fill="none" stroke="#00BFB4" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" /></svg></div><div data-hf-id="hf-or37" id="rv-lab">Approve</div></div>
+          </div>
+        </div>
+        <svg data-hf-id="hf-or38" id="cursor" width="44" height="56" viewBox="0 0 44 56" data-layout-allow-occlusion><path data-hf-id="hf-or39" d="M3,3 L3,45 L14,35 L22,53 L30,49 L22,32 L37,32 Z" fill="#f5f5f0" stroke="#08080a" stroke-width="3" stroke-linejoin="round" /></svg>
+        <div data-hf-id="hf-or40" class="hud" id="hud-l" data-layout-allow-occlusion>JQ AI SYSTEMS<span data-hf-id="hf-or41">ai agents</span></div>
+        <div data-hf-id="hf-or42" class="hud" id="hud-r" data-layout-allow-occlusion><b data-hf-id="hf-or43" id="hud-st">orchestrator · idle</b><span data-hf-id="hf-or44" id="hud-tc">00:00:00:00</span></div>
+        <div data-hf-id="hf-or45" id="flash" data-layout-allow-occlusion></div>
+        <div data-hf-id="hf-or46" id="z-title" data-layout-allow-occlusion>AI Agent Architecture</div>
+        <div data-hf-id="hf-or47" id="z-sub" data-layout-allow-occlusion>Multi-agent systems where each agent has<br data-hf-id="hf-or48">a specific role, memory, and set of skills.</div>
+        <div data-hf-id="hf-or49" id="z-url" data-layout-allow-occlusion></div>
+        <div data-hf-id="hf-or50" id="z-rule" data-layout-allow-occlusion></div>
+        <div data-hf-id="hf-or51" id="z-note" data-layout-allow-occlusion>FILM AND SCORE BUILT IN CODE</div>
+      </div>
+      <audio data-hf-id="hf-or52" id="score" src="assets/bgm/score.wav" data-start="0" data-duration="32" data-track-index="7" data-volume="0.7"></audio>
+    </div>
+
+    <script type="module">
+      import * as THREE from "three/webgpu";
+      import { pass } from "three/tsl";
+      import { bloom } from "./assets/vendor/BloomNode.js";
+      import { RoomEnvironment } from "./assets/vendor/RoomEnvironment.js";
+
+      const W = 1920, H = 1080, DUR = 32;
+      // ---- one timing table (score/compose.py mirrors it)
+      const T = {
+        type: [0.4, 1.9], ignite: 2.2, hit: 3.3,
+        wake: [3.4, 4.2, 5.0],                       // each ring wakes (inner to outer)
+        research: 7.0, thread: [7.0, 8.8], frags: [7.6, 11.2],
+        write: 12.0, stream: [12.0, 13.8], ribbon: [12.8, 16.4],
+        review: 17.0, tiles: [17.0, 18.4], scan: [18.4, 19.4], red: 19.3, back: [19.5, 20.4], fixed: [21.0, 21.7],
+        gold: 19.6, rise: [19.8, 20.3], click: 20.85, down: [21.2, 21.7], merge: [21.9, 22.4],
+        conj: 22.0, beam: 25.0, beads: [25.3, 27.6], end: 27.8,
+      };
+      window.OR_T = T;
+      const cl = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+      const r = (t, a, b) => cl((t - a) / (b - a));
+      const lerp = (a, b, u) => a + (b - a) * u;
+      const E = (n) => gsap.parseEase(n);
+      const eOut = E("power3.out"), eIO = E("power2.inOut"), eBack = E("back.out(1.6)");
+      function rng(seed) { return () => { seed |= 0; seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+      const TEAL = new THREE.Color(0x00bfb4);
+
+      // ================= DOM painter =================
+      const $ = (s) => document.querySelector(s);
+      const STS = [[$("#st-0"), T.hit], [$("#st-1"), T.research], [$("#st-2"), T.write], [$("#st-3"), T.review], [$("#st-4"), T.conj]];
+      const STATE = [[0, "orchestrator · idle"], [T.hit, "orchestrator · splitting the brief"], [T.research, "research · gathering sources"], [T.write, "writer · drafting"], [T.review, "reviewer · checking"], [T.red, "reviewer · 1 sent back"], [T.gold, "reviewer · 1 escalated to a person"], [T.click, "reviewer · approved"], [T.conj, "all agents · aligning"], [T.beam, "delivered"]];
+      const tc = (t) => { const f = Math.floor(t * 30 + 1e-6); return `00:00:${String(Math.floor(f / 30)).padStart(2, "0")}:${String(f % 30).padStart(2, "0")}`; };
+      const BRIEF = "launch report for Q4", URL_TEXT = "ai.joaoqueiros.com/services/agent-architecture";
+      let glRender = null, ui3 = null;
+      function paint(t) {
+        if (glRender) glRender(t);
+        // the brief types, then collapses into the comet
+        const n = Math.round(BRIEF.length * r(t, T.type[0], T.type[1]));
+        $("#brief-t").textContent = BRIEF.slice(0, n);
+        $("#brief-c").style.opacity = t < T.ignite && (t < T.type[1] || Math.floor(t * 2.5) % 2 === 0) ? 1 : 0;
+        const ig = E("power3.in")(r(t, T.ignite, T.ignite + 0.35));
+        $("#brief").style.opacity = 1 - ig; $("#brief").style.transform = `scale(${(1 - 0.85 * ig).toFixed(3)})`; $("#brief").style.filter = `brightness(${(1 + 3 * ig).toFixed(2)})`;
+        const hudO = r(t, 0.4, 0.9) * (1 - r(t, T.beam - 0.4, T.beam));
+        $("#hud-l").style.opacity = hudO; $("#hud-r").style.opacity = hudO;
+        let st = STATE[0][1]; for (const [a, s] of STATE) if (t >= a) st = s;
+        $("#hud-st").textContent = st; $("#hud-tc").textContent = tc(t);
+        let shade = 0;
+        STS.forEach(([el, t0], i) => {
+          const t1 = i + 1 < STS.length ? STS[i + 1][0] - 0.35 : T.beam - 0.4;
+          const a = eOut(r(t, t0, t0 + 0.55)), b = r(t, t1, t1 + 0.35);
+          el.style.opacity = a * (1 - b);
+          el.style.clipPath = `inset(0 ${(100 * (1 - a)).toFixed(1)}% 0 0)`;
+          el.style.transform = `translateX(${(-40 * (1 - a) - 60 * eIO(b)).toFixed(1)}px)`;
+          shade = Math.max(shade, a * (1 - b));
+        });
+        $("#st-shade").style.opacity = shade;
+        $("#flash").style.opacity = (0.9 * E("power2.out")(r(t, T.beam, T.beam + 0.1)) * (1 - E("power2.out")(r(t, T.beam + 0.1, T.beam + 0.6)))).toFixed(3);
+        if (ui3) ui3(t);
+        const show = (s, a, b, y) => { const u = r(t, a, b); $(s).style.opacity = u; $(s).style.transform = `translateY(${(y * (1 - eOut(u))).toFixed(1)}px)`; };
+        show("#z-title", T.end, T.end + 0.7, 40);
+        show("#z-sub", T.end + 0.45, T.end + 1.1, 20);
+        $("#z-url").textContent = URL_TEXT.slice(0, Math.round(URL_TEXT.length * r(t, T.end + 1.0, T.end + 2.0)));
+        $("#z-rule").style.transform = `scaleX(${E("expo.inOut")(r(t, T.end + 1.8, T.end + 2.6)).toFixed(3)})`;
+        show("#z-note", T.end + 2.4, T.end + 2.9, 0);
+      }
+      const tl = gsap.timeline({ paused: true });
+      const clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+
+      // ================= the 3D film =================
+      async function build() {
+        await Promise.all([document.fonts.load('700 104px "Baskerville"'), document.fonts.load('500 46px "JBM"'), document.fonts.load('500 30px "Inter"')]);
+        const canvas = $("#or-gl");
+        // Hide KHR_parallel_shader_compile so every program links before its first draw (see R01, R07, R13).
+        const gl = canvas.getContext("webgl2", { antialias: true, alpha: false, depth: true, stencil: false, preserveDrawingBuffer: true });
+        const getExt = gl.getExtension.bind(gl), getSup = gl.getSupportedExtensions.bind(gl);
+        gl.getExtension = (name) => (name === "KHR_parallel_shader_compile" ? null : getExt(name));
+        gl.getSupportedExtensions = () => getSup().filter((n) => n !== "KHR_parallel_shader_compile");
+        const renderer = new THREE.WebGPURenderer({ canvas, context: gl, antialias: true, forceWebGL: true });
+        renderer.setPixelRatio(1); renderer.setSize(W, H, false);
+        renderer.setClearColor(0x08080a, 1);
+        renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+        await renderer.init();
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x08080a);
+        scene.fog = new THREE.Fog(0x08080a, 30, 110);
+        const pmrem = new THREE.PMREMGenerator(renderer);
+        scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+        scene.environmentIntensity = 0.6;
+        const camera = new THREE.PerspectiveCamera(30, W / H, 0.05, 500);
+        const key = new THREE.DirectionalLight(0xfff1dc, 1.6); key.position.set(-12, 20, 18); scene.add(key);
+        const rim = new THREE.DirectionalLight(0x8a7cff, 1.1); rim.position.set(14, 6, -20); scene.add(rim);
+        const sunLight = new THREE.PointLight(0x9ff5ee, 0, 0, 1.6); scene.add(sunLight);
+
+        // ---- materials ----
+        const matBrass = new THREE.MeshStandardMaterial({ color: 0xc9a14a, metalness: 1, roughness: 0.24 });
+        const matBrassDark = new THREE.MeshStandardMaterial({ color: 0x5a4a2a, metalness: 1, roughness: 0.4 });
+        const matBlack = new THREE.MeshStandardMaterial({ color: 0x121214, metalness: 0.5, roughness: 0.5 });
+        const glassOf = (c) => new THREE.MeshPhysicalMaterial({ color: c, metalness: 0, roughness: 0.05, clearcoat: 1, clearcoatRoughness: 0.03, transparent: true, opacity: 0.28, depthWrite: false });
+        const matStand = new THREE.MeshStandardMaterial({ color: 0xc9a14a, metalness: 1, roughness: 0.24 }), matBase = new THREE.MeshStandardMaterial({ color: 0x121214, metalness: 0.5, roughness: 0.5 });
+        const fadeMats = [matBrass, matBrassDark, matBlack];
+
+        // ---- a glow sprite texture, shared ----
+        const glowTex = (() => { const c = document.createElement("canvas"); c.width = c.height = 256; const g = c.getContext("2d"); const gr = g.createRadialGradient(128, 128, 0, 128, 128, 128); gr.addColorStop(0, "rgba(255,255,255,1)"); gr.addColorStop(0.18, "rgba(255,255,255,0.55)"); gr.addColorStop(0.5, "rgba(255,255,255,0.12)"); gr.addColorStop(1, "rgba(255,255,255,0)"); g.fillStyle = gr; g.fillRect(0, 0, 256, 256); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
+        const glow = (color, s) => { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })); sp.scale.setScalar(s); return sp; };
+
+        // ---- stars ----
+        const R0 = rng(5), NSTAR = 1800, stars = new THREE.InstancedMesh(new THREE.SphereGeometry(0.05, 6, 4), new THREE.MeshBasicMaterial({ color: 0xcfd6ff, fog: false }), NSTAR);
+        { const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(); for (let i = 0; i < NSTAR; i++) { const th = R0() * Math.PI * 2, ph = Math.acos(2 * R0() - 1), rr = lerp(45, 90, R0()); p.set(rr * Math.sin(ph) * Math.cos(th), rr * Math.cos(ph) * 0.7, rr * Math.sin(ph) * Math.sin(th)); s.setScalar(lerp(0.4, 1.6, R0() ** 3)); m.compose(p, q, s); stars.setMatrixAt(i, m); } }
+        scene.add(stars);
+
+        // ---- the orrery ----
+        const orrery = new THREE.Group(); scene.add(orrery);
+        // the sun: the orchestrator
+        const sunCore = new THREE.Mesh(new THREE.SphereGeometry(0.85, 64, 48), new THREE.MeshBasicMaterial({ color: 0xd9fffb }));
+        orrery.add(sunCore);
+        const sunGlow = glow(0x5ff0e4, 7); orrery.add(sunGlow);
+        // an armillary around the sun
+        const arms = [0, 1].map((k) => { const m = new THREE.Mesh(new THREE.TorusGeometry(1.35 + k * 0.25, 0.022, 12, 128), matBrass); orrery.add(m); return m; });
+        // the stand: a pillar and an engraved base
+        const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.14, 6.2, 24), matStand); pillar.position.y = -4.0; orrery.add(pillar);
+        const base = new THREE.Mesh(new THREE.CylinderGeometry(4.2, 4.6, 0.35, 96), matBase); base.position.y = -7.2; orrery.add(base);
+        const baseRing = new THREE.Mesh(new THREE.TorusGeometry(4.25, 0.04, 12, 160), matStand); baseRing.rotation.x = Math.PI / 2; baseRing.position.y = -7.0; orrery.add(baseRing);
+        for (let k = 0; k < 72; k++) { const tk = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.02, k % 6 === 0 ? 0.32 : 0.16), matStand); const a = (k / 72) * Math.PI * 2; tk.position.set(Math.cos(a) * 3.9, -7.0, Math.sin(a) * 3.9); tk.rotation.y = -a; orrery.add(tk); }
+
+        // the agents: a glass planet on its own gimballed ring, with a moon (memory) and satellites (skills)
+        const AG = [
+          { name: "research", R: 3.6, w: 0.34, ph: 0.6, tilt: [0.32, 0, 0.18], color: 0x00bfb4 },
+          { name: "writer", R: 5.9, w: 0.23, ph: 2.6, tilt: [-0.22, 0, 0.3], color: 0xf2a541 },
+          { name: "reviewer", R: 8.2, w: 0.16, ph: 4.4, tilt: [0.42, 0, -0.2], color: 0x8a7cff },
+        ];
+        AG.forEach((a, i) => {
+          a.Q = new THREE.Quaternion().setFromEuler(new THREE.Euler(...a.tilt));
+          a.gimbal = new THREE.Group(); orrery.add(a.gimbal);
+          a.ring = new THREE.Mesh(new THREE.TorusGeometry(a.R, 0.035, 12, 220), matBrass); a.ring.rotation.x = Math.PI / 2; a.gimbal.add(a.ring);
+          // two small pivots where the ring meets its frame
+          for (const s of [-1, 1]) { const pv = new THREE.Mesh(new THREE.SphereGeometry(0.08, 16, 12), matBrass); pv.position.set(0, 0, s * a.R); a.gimbal.add(pv); }
+          a.spin = new THREE.Group(); a.gimbal.add(a.spin);
+          const armM = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, a.R, 8), matBrassDark); armM.rotation.z = Math.PI / 2; armM.position.x = a.R / 2; a.spin.add(armM);
+          a.body = new THREE.Group(); a.body.position.x = a.R; a.spin.add(a.body);
+          const gm = glassOf(a.color); fadeMats.push(gm);
+          a.glass = new THREE.Mesh(new THREE.SphereGeometry(0.52, 64, 48), gm); a.body.add(a.glass);
+          a.coreM = new THREE.MeshBasicMaterial({ color: a.color, transparent: true, opacity: 1 }); fadeMats.push(a.coreM);
+          a.core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.26, 2), a.coreM); a.body.add(a.core);
+          a.halo = glow(a.color, 2.6); a.body.add(a.halo);
+          // memory: a moon on a thin ring
+          a.moonPivot = new THREE.Group(); a.body.add(a.moonPivot);
+          const mr = new THREE.Mesh(new THREE.TorusGeometry(0.95, 0.008, 6, 96), matBrassDark); mr.rotation.x = Math.PI / 2; a.moonPivot.add(mr);
+          a.moonM = new THREE.MeshStandardMaterial({ color: 0xdedbd2, metalness: 0.2, roughness: 0.5, emissive: new THREE.Color(a.color), emissiveIntensity: 0 }); fadeMats.push(a.moonM);
+          a.moon = new THREE.Mesh(new THREE.SphereGeometry(0.11, 24, 16), a.moonM); a.moon.position.x = 0.95; a.moonPivot.add(a.moon);
+          // skills: three small satellites
+          a.sats = [0, 1, 2].map((k) => { const s = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.07), matBrass); a.body.add(s); return s; });
+          a.wake = T.wake[i];
+        });
+        const Z_ALIGN = -Math.PI / 2;   // the spin angle that puts a planet on +z, toward the final camera
+
+        // ---- light in motion: streams, fragments, the comet ----
+        const beadGeo = new THREE.SphereGeometry(0.045, 8, 6);
+        const pool = (n, color) => { const m = new THREE.InstancedMesh(beadGeo, new THREE.MeshBasicMaterial({ color, transparent: true, fog: false }), n); m.frustumCulled = false; scene.add(m); return m; };
+        const m4 = new THREE.Matrix4(), q4 = new THREE.Quaternion(), v3 = new THREE.Vector3(), s3 = new THREE.Vector3();
+        const hide = (mesh, k) => { s3.setScalar(0); m4.compose(v3.set(0, 0, 0), q4.identity(), s3); mesh.setMatrixAt(k, m4); };
+        const put = (mesh, k, p, s) => { m4.compose(p, q4.identity(), s3.setScalar(s)); mesh.setMatrixAt(k, m4); };
+        const bez = (a, c, b, u, out) => out.set((1 - u) * (1 - u) * a.x + 2 * (1 - u) * u * c.x + u * u * b.x, (1 - u) * (1 - u) * a.y + 2 * (1 - u) * u * c.y + u * u * b.y, (1 - u) * (1 - u) * a.z + 2 * (1 - u) * u * c.z + u * u * b.z);
+        const stream1 = pool(40, 0x7ff5ec), stream2 = pool(40, 0xffc778), comet = pool(90, 0xe8fffd);
+        const cometHead = glow(0xbffcf6, 3.2); scene.add(cometHead);
+        const NF = 48, frags = pool(NF, 0x9ff8f0);
+        const R1 = rng(17), fragFrom = Array.from({ length: NF }, () => { const th = R1() * Math.PI * 2, ph = lerp(0.6, 2.4, R1()), rr = lerp(13, 19, R1()); return new THREE.Vector3(rr * Math.sin(ph) * Math.cos(th), rr * Math.cos(ph) * 0.6, rr * Math.sin(ph) * Math.sin(th)); });
+
+        // ---- the writer's ribbon of text ----
+        const ribC = document.createElement("canvas"); ribC.width = 2048; ribC.height = 96; {
+          const g = ribC.getContext("2d"); g.fillStyle = "rgba(0,0,0,0)"; g.clearRect(0, 0, 2048, 96);
+          g.font = '500 54px "JBM", monospace'; g.fillStyle = "#ffd28a"; g.textBaseline = "middle";
+          g.fillText("Q4 launch report · draft 1 · key results · what changed · next steps · ", 20, 50);
+        }
+        const ribT = new THREE.CanvasTexture(ribC); ribT.colorSpace = THREE.SRGBColorSpace;
+        const ribbon = new THREE.Mesh(new THREE.CylinderGeometry(0.82, 0.82, 0.2, 128, 1, true), new THREE.MeshBasicMaterial({ map: ribT, transparent: true, side: THREE.DoubleSide, depthWrite: false, fog: false }));
+        AG[1].body.add(ribbon); ribbon.rotation.x = 0.28;
+
+        // ---- the reviewer's tiles: pieces of the draft, checked one by one ----
+        const PH = ["Revenue", "Launches", "Customers", "Q4 outlook", "Pricing", "Next steps"];
+        const tiles = PH.map((txt, j) => {
+          const c = document.createElement("canvas"); c.width = 512; c.height = 160; const g = c.getContext("2d");
+          g.fillStyle = "rgba(14,14,16,0.85)"; g.beginPath(); g.roundRect(4, 4, 504, 152, 26); g.fill();
+          g.strokeStyle = "#ffd28a"; g.lineWidth = 6; g.stroke();
+          g.font = '600 50px "Inter", sans-serif'; g.fillStyle = "#f5f5f0"; g.textBaseline = "middle"; g.fillText(txt, 32, 82);
+          const tx = new THREE.CanvasTexture(c); tx.colorSpace = THREE.SRGBColorSpace;
+          const mat = new THREE.MeshBasicMaterial({ map: tx, transparent: true, opacity: 0, depthWrite: false, fog: false, toneMapped: true });
+          const m = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.34), mat); scene.add(m); m.renderOrder = 5;
+          return { m, mat, j };
+        });
+        const scanRing = new THREE.Mesh(new THREE.TorusGeometry(1.0, 0.02, 8, 96), new THREE.MeshBasicMaterial({ color: 0xb9b0ff, transparent: true, opacity: 0, depthWrite: false, fog: false }));
+        scene.add(scanRing);
+        const goldBeam = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1, 12), new THREE.MeshBasicMaterial({ color: 0xffd28a, transparent: true, opacity: 0, depthWrite: false, fog: false }));
+        scene.add(goldBeam);
+
+        // ---- the conjunction beam ----
+        const beam = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 48, 1, true), new THREE.MeshBasicMaterial({ color: 0xc8fffa, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, fog: false }));
+        beam.rotation.x = Math.PI / 2; scene.add(beam);
+
+        // ---- the word: beads from the beam land on "agents" ----
+        const svgNS = "http://www.w3.org/2000/svg", host = document.createElementNS(svgNS, "svg");
+        host.setAttribute("width", "0"); host.setAttribute("height", "0"); host.style.position = "absolute"; document.body.appendChild(host);
+        const WS = 0.0085, WZ = 9;   // word units -> scene, and its plane
+        const wp = window.WORD.contours.map((d) => { const p = document.createElementNS(svgNS, "path"); p.setAttribute("d", d); host.appendChild(p); return p; });
+        const wl = wp.map((p) => p.getTotalLength()), wtot = wl.reduce((a, b) => a + b, 0);
+        const tgt = [];
+        wp.forEach((p, ci) => { const n = Math.max(12, Math.round((1500 * wl[ci]) / wtot)); for (let i = 0; i < n; i++) { const q = p.getPointAtLength((wl[ci] * i) / n); tgt.push(new THREE.Vector3(q.x * WS, -q.y * WS, WZ)); } });
+        const NT = tgt.length, R3 = rng(101);
+        const beadFrom = Array.from({ length: NT }, () => new THREE.Vector3(lerp(-0.25, 0.25, R3()), lerp(-0.25, 0.25, R3()), lerp(0.5, 12, R3())));
+        const beadD = Array.from({ length: NT }, () => R3() * 0.9);
+        const beads = pool(NT, 0x8ff7ee);
+        let wx0 = Infinity, wx1 = -Infinity, wy0 = Infinity, wy1 = -Infinity;
+        tgt.forEach((v) => { wx0 = Math.min(wx0, v.x); wx1 = Math.max(wx1, v.x); wy0 = Math.min(wy0, v.y); wy1 = Math.max(wy1, v.y); });
+        const PAD = 24, kpx = 3000 / ((wx1 - wx0) / WS), wordC = document.createElement("canvas");
+        wordC.width = 3000 + PAD * 2; wordC.height = Math.round(((wy1 - wy0) / WS) * kpx) + PAD * 2; {
+          const g = wordC.getContext("2d"); g.setTransform(kpx, 0, 0, kpx, PAD - (wx0 / WS) * kpx, PAD + (wy1 / WS) * kpx);
+          g.fillStyle = "#3fe6d9"; g.fill(new Path2D(window.WORD.contours.join(" ")), "evenodd");
+        }
+        const wordT = new THREE.CanvasTexture(wordC); wordT.colorSpace = THREE.SRGBColorSpace;
+        const padU = (PAD / kpx) * WS;
+        const wordM = new THREE.Mesh(new THREE.PlaneGeometry(wx1 - wx0 + 2 * padU, wy1 - wy0 + 2 * padU), new THREE.MeshBasicMaterial({ map: wordT, transparent: true, opacity: 0, depthWrite: false, fog: false }));
+        wordM.position.set((wx0 + wx1) / 2, (wy0 + wy1) / 2, WZ); scene.add(wordM);
+        const WORD_C = new THREE.Vector3((wx0 + wx1) / 2, (wy0 + wy1) / 2, WZ);
+
+        // ================= the clockwork, as a function of time =================
+        const slerpTo = new THREE.Quaternion(), swing = new THREE.Quaternion(), axisY = new THREE.Vector3(0, 1, 0), axisX = new THREE.Vector3(1, 0, 0);
+        const conjU = (i, t) => E("power3.inOut")(r(t, T.conj + 0.45 * (2 - i), T.conj + 1.7 + 0.45 * (2 - i)));
+        const pose = (t) => {
+          arms[0].rotation.set(t * 0.4, t * 0.25, 0); arms[1].rotation.set(-t * 0.3, 0, t * 0.35);
+          arms.forEach((m, k) => m.scale.setScalar(Math.max(0.0001, eBack(r(t, T.hit + 0.1 * k, T.hit + 0.6 + 0.1 * k)))));
+          AG.forEach((a, i) => {
+            const w = eBack(r(t, a.wake, a.wake + 1.1));
+            const c = conjU(i, t);
+            swing.setFromAxisAngle(axisX, (1 - w) * 1.4);
+            slerpTo.copy(a.Q).slerp(new THREE.Quaternion(), c).multiply(swing);
+            a.gimbal.quaternion.copy(slerpTo);
+            a.gimbal.scale.setScalar(Math.max(0.0001, w));
+            const run = a.ph + a.w * t, al = Z_ALIGN + Math.PI * 2 * Math.round((run - Z_ALIGN) / (Math.PI * 2));
+            a.spin.rotation.y = lerp(run, al, c);
+            a.moonPivot.rotation.y = t * 1.2 + i; a.moonPivot.rotation.x = 0.3;
+            a.sats.forEach((s, k) => { const ang = t * (1.6 + k * 0.4) + k * 2.1; s.position.set(Math.cos(ang) * (0.7 + 0.08 * k), Math.sin(ang * 0.7) * 0.25, Math.sin(ang) * (0.7 + 0.08 * k)); s.rotation.set(ang, ang * 0.5, 0); });
+            a.core.rotation.set(t * 0.5, t * 0.8, 0);
+          });
+          orrery.updateMatrixWorld(true);
+        };
+        const planetPos = (i) => AG[i].body.getWorldPosition(new THREE.Vector3());
+
+        // ================= camera =================
+        // [film t, look target ("sun", "p0".."p2", "word"), distance, azimuth°, elevation°, fov°]
+        const KF = [
+          [0, "sun", 34, 0, 3, 30], [T.ignite, "sun", 30, 6, 4, 30], [T.hit, "sun", 24, 18, 14, 30],
+          [T.research, "sun", 17, 42, 22, 32], [T.research + 1.2, "p0", 6.2, 70, 14, 32], [T.write - 0.3, "p0", 5.6, 98, 9, 32],
+          [T.write + 0.6, "p1", 6.0, 124, 12, 32], [T.review - 0.4, "p1", 5.2, 160, 7, 32],
+          [T.review + 0.5, "p2", 7.4, 188, 12, 32], [T.merge[0], "p2", 6.6, 222, 9, 32],
+          [T.conj + 0.6, "sun", 25, 250, 26, 32], [T.beam - 0.5, "sun", 23, 276, 6, 32], [T.beam + 0.3, "sun", 27, 360, 0, 32],
+          [T.beads[1], "word", 15.5, 360, 0, 30], [DUR, "word", 14.8, 360, 0, 30],
+        ];
+        const targetOf = (spec) => spec === "sun" ? new THREE.Vector3() : spec === "word" ? WORD_C.clone().add(new THREE.Vector3(0, -1.55, 0)) : planetPos(+spec[1]);
+        const camAt = (t) => {
+          let i = 0; while (i < KF.length - 2 && t >= KF[i + 1][0]) i++;
+          const a = KF[i], b = KF[i + 1], u = eIO(r(t, a[0], b[0]));
+          const look = targetOf(a[1]).lerp(targetOf(b[1]), u);
+          const d = Math.exp(lerp(Math.log(a[2]), Math.log(b[2]), u)), az = THREE.MathUtils.degToRad(lerp(a[3], b[3], u)), el = THREE.MathUtils.degToRad(lerp(a[4], b[4], u));
+          const pos = look.clone().add(new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el)).multiplyScalar(d));
+          pos.x += 0.04 * Math.sin(t * 0.9); pos.y += 0.03 * Math.sin(t * 1.3 + 1);
+          return { pos, look, fov: lerp(a[5], b[5], u) };
+        };
+        const setCam = (C) => { camera.position.copy(C.pos); camera.lookAt(C.look); camera.fov = C.fov; camera.updateProjectionMatrix(); camera.updateMatrixWorld(); };
+
+        // ================= post =================
+        const post = new THREE.PostProcessing(renderer);
+        const sceneColor = pass(scene, camera).getTextureNode("output");
+        post.outputNode = sceneColor.add(bloom(sceneColor, 0.75, 0.45, 0.82));
+        fadeMats.forEach((m) => { m.userData.o = m.opacity; });
+
+        function renderAt(t) {
+          pose(t);
+          const C = camAt(t); setCam(C);
+          const sun = new THREE.Vector3(), P = [0, 1, 2].map(planetPos);
+
+          // the sun: dark until the comet strikes, a flare, then a steady pulse; it swells into the conjunction
+          const lit = r(t, T.hit - 0.05, T.hit + 0.25), flare = Math.exp(-Math.max(0, t - T.hit) * 2.2) * (t >= T.hit ? 1 : 0);
+          const conjSw = E("power2.in")(r(t, T.conj + 1.5, T.beam));
+          sunCore.scale.setScalar(Math.max(0.0001, 0.15 + 0.85 * lit + 0.25 * conjSw));
+          sunGlow.scale.setScalar(2 + 6 * lit + 10 * flare + 9 * conjSw);
+          sunGlow.material.opacity = lit * (0.85 + 0.15 * Math.sin(t * 3));
+          sunLight.intensity = 90 * lit + 160 * flare + 120 * conjSw;
+
+          // the comet: the brief becomes light and strikes the sun
+          // it is born where the typed brief collapses, swings out in a wide arc and strikes the sun
+          const cFrom = camAt(T.ignite).pos.clone().lerp(sun, 0.6).add(new THREE.Vector3(0, 0.9, 0)), cCtrl = new THREE.Vector3(-14, 9, 9);
+          for (let k = 0; k < 90; k++) {
+            const tk = t - k * 0.007, u = E("power1.inOut")(r(tk, T.ignite + 0.25, T.hit));
+            if (t < T.ignite + 0.25 || tk > T.hit || tk < T.ignite + 0.25) { hide(comet, k); continue; }
+            put(comet, k, bez(cFrom, cCtrl, sun, u, v3), (1 - k / 90) ** 1.5 * 4.5);
+          }
+          const hu = E("power1.inOut")(r(t, T.ignite + 0.25, T.hit));
+          cometHead.position.copy(bez(cFrom, cCtrl, sun, hu, new THREE.Vector3()));
+          cometHead.material.opacity = r(t, T.ignite + 0.2, T.ignite + 0.35) * (1 - r(t, T.hit - 0.05, T.hit + 0.05));
+          comet.instanceMatrix.needsUpdate = true;
+
+          // planets ignite as their ring wakes; their halos breathe
+          AG.forEach((a, i) => {
+            const on = r(t, a.wake + 0.5, a.wake + 1.0);
+            a.core.scale.setScalar(Math.max(0.0001, on));
+            a.halo.material.opacity = on * (0.55 + 0.1 * Math.sin(t * 2 + i));
+          });
+
+          // research: a thread from the sun, then sources fly in from the starfield; the memory moon notes each one
+          const s1 = r(t, T.thread[0], T.thread[0] + 0.4) * (1 - r(t, T.thread[1] - 0.4, T.thread[1]));
+          for (let k = 0; k < 40; k++) {
+            if (s1 <= 0) { hide(stream1, k); continue; }
+            const u = ((k / 40) + (t - T.thread[0]) * 0.7) % 1, c = sun.clone().lerp(P[0], 0.5).add(new THREE.Vector3(0, 1.2, 0));
+            put(stream1, k, bez(sun, c, P[0], u, v3), s1 * (0.7 + 0.6 * Math.sin(u * Math.PI)));
+          }
+          stream1.instanceMatrix.needsUpdate = true;
+          let lastArrive = -9;
+          for (let k = 0; k < NF; k++) {
+            const ta = lerp(T.frags[0] + 1.0, T.frags[1], k / (NF - 1)), ts = ta - 1.1;
+            if (t < ts - 0.6 || t > ta) { hide(frags, k); if (t > ta) lastArrive = Math.max(lastArrive, ta); continue; }
+            const u = E("power2.in")(r(t, ts, ta)), a = fragFrom[k], c = a.clone().lerp(P[0], 0.4).add(new THREE.Vector3(0, 2, 0));
+            put(frags, k, bez(a, c, P[0], u, v3), lerp(0.6, 1.4, r(t, ts - 0.6, ts)) * (1 - 0.5 * u));
+          }
+          frags.instanceMatrix.needsUpdate = true;
+          AG[0].moonM.emissiveIntensity = 3 * Math.exp(-Math.max(0, t - lastArrive) * 6) * (lastArrive > 0 ? 1 : 0);
+
+          // write: the sources stream on to the writer, who spins them into a ribbon of text
+          const s2 = r(t, T.stream[0], T.stream[0] + 0.4) * (1 - r(t, T.stream[1] - 0.4, T.stream[1]));
+          for (let k = 0; k < 40; k++) {
+            if (s2 <= 0) { hide(stream2, k); continue; }
+            const u = ((k / 40) + (t - T.stream[0]) * 0.6) % 1, c = P[0].clone().lerp(P[1], 0.5).add(new THREE.Vector3(0, 1.6, 0));
+            put(stream2, k, bez(P[0], c, P[1], u, v3), s2 * (0.7 + 0.6 * Math.sin(u * Math.PI)));
+          }
+          stream2.instanceMatrix.needsUpdate = true;
+          const rp = E("power1.inOut")(r(t, T.ribbon[0], T.ribbon[1]));
+          ribbon.geometry.setDrawRange(0, Math.floor(rp * 128) * 6);
+          ribbon.rotation.y = t * 0.6;
+          ribbon.material.opacity = (rp > 0 ? 1 : 0) * (1 - r(t, T.tiles[0], T.tiles[0] + 0.8));
+
+          // review: pieces of the draft fly to the reviewer, a scan ring checks them; one is sent back, one goes to a person
+          const camQ = camera.quaternion;
+          tiles.forEach((tl, j) => {
+            const slotA = (j / 6) * Math.PI * 2 + 0.4;
+            const slot = P[2].clone().add(new THREE.Vector3(Math.cos(slotA) * 1.55, 0.35 * Math.sin(slotA * 2), Math.sin(slotA) * 1.55));
+            const ta = lerp(T.tiles[0] + 0.3, T.tiles[1], j / 5), u = E("power2.inOut")(r(t, ta - 1.0, ta));
+            const c = P[1].clone().lerp(slot, 0.5).add(new THREE.Vector3(0, 1.8, 0));
+            let p = bez(P[1], c, slot, u, new THREE.Vector3());
+            let col = new THREE.Color(1, 1, 1);
+            if (j === 2) {   // flagged by a rule: back to the writer, then returns fixed
+              const red = r(t, T.red, T.red + 0.1) * (1 - r(t, T.fixed[1] - 0.2, T.fixed[1]));
+              col.lerp(new THREE.Color(1, 0.35, 0.3), red);
+              const bu = E("power2.inOut")(r(t, T.back[0], T.back[1])), fu = E("power2.inOut")(r(t, T.fixed[0], T.fixed[1]));
+              const away = slot.clone().lerp(P[1], bu), cc = slot.clone().lerp(P[1], 0.5).add(new THREE.Vector3(0, -1.4, 0));
+              if (bu > 0) p = bez(slot, cc, P[1], bu, new THREE.Vector3());
+              if (fu > 0) p = bez(P[1], cc, slot, fu, new THREE.Vector3());
+              if (bu >= 1 && fu <= 0) p = away;
+            }
+            if (j === 4) {   // uncertain: escalated to a person on a gold beam, approved, back down
+              const gold = r(t, T.gold, T.gold + 0.15) * (1 - r(t, T.click + 0.2, T.click + 0.5));
+              col.lerp(new THREE.Color(1, 0.82, 0.45), gold);
+              const up = E("power2.inOut")(r(t, T.rise[0], T.rise[1])) - E("power2.inOut")(r(t, T.down[0], T.down[1]));
+              p.add(new THREE.Vector3(0, 2.6 * up, 0));
+              goldBeam.position.copy(slot).add(new THREE.Vector3(0, 1.3 * up, 0)); goldBeam.scale.set(1, Math.max(0.0001, 2.6 * up), 1);
+              goldBeam.material.opacity = 0.8 * r(t, T.rise[0], T.rise[0] + 0.15) * (1 - r(t, T.down[1] - 0.15, T.down[1]));
+              tl.escalated = p.clone();
+            }
+            const mg = E("power2.in")(r(t, T.merge[0], T.merge[1]));
+            p.lerp(P[2], mg);
+            tl.m.position.copy(p); tl.m.quaternion.copy(camQ); tl.m.scale.setScalar(Math.max(0.0001, 1 - mg));
+            tl.mat.color.copy(col); tl.mat.opacity = r(t, ta - 1.0, ta - 0.8) * (1 - r(t, T.merge[1] - 0.15, T.merge[1]));
+          });
+          const su = r(t, T.scan[0], T.scan[1]);
+          scanRing.position.copy(P[2]).add(new THREE.Vector3(0, lerp(-0.6, 0.6, Math.sin(su * Math.PI * 2) * 0.5 + 0.5), 0));
+          scanRing.scale.setScalar(1.7); scanRing.rotation.x = Math.PI / 2;
+          scanRing.material.opacity = su > 0 && su < 1 ? 0.9 : 0;
+          AG[2].moonM.emissiveIntensity = 2.5 * Math.exp(-Math.max(0, t - T.click) * 4) * (t >= T.click ? 1 : 0);
+
+          // the conjunction beam: from the sun along the line of aligned planets, straight at the camera
+          const bu = E("expo.out")(r(t, T.beam - 0.1, T.beam + 0.4)), bf = 1 - r(t, T.beam + 0.4, T.beam + 1.1);
+          beam.position.set(0, 0, 8 * bu); beam.scale.set(0.12 + 0.3 * bu, Math.max(0.0001, 16 * bu), 0.12 + 0.3 * bu);
+          beam.material.opacity = 0.9 * r(t, T.beam - 0.1, T.beam) * bf; beam.visible = bf > 0.01 && t > T.beam - 0.12;
+
+          // the orrery steps back into the dark as the word forms
+          const fade = 1 - 0.9 * r(t, T.beam + 0.3, T.beads[1]);
+          fadeMats.forEach((m) => { m.transparent = true; m.opacity = m.userData.o * fade; });
+          sunGlow.material.opacity *= fade; AG.forEach((a) => (a.halo.material.opacity *= fade));
+          // the stand and the sun clear out of the way of the word and the end card
+          const gone = 1 - r(t, T.beam + 0.3, T.beads[1] - 0.6);
+          [matStand, matBase].forEach((m) => { m.transparent = true; m.opacity = gone; });
+          sunCore.material.transparent = true; sunCore.material.opacity = 0.15 + 0.85 * gone; sunGlow.material.opacity *= 0.25 + 0.75 * gone;
+
+          // beads: the beam breaks into light that lands on "agents"
+          const bOn = t >= T.beads[0];
+          for (let i = 0; i < NT; i++) {
+            if (!bOn) { hide(beads, i); continue; }
+            const u = E("power3.inOut")(r(t, T.beads[0] + beadD[i], T.beads[0] + beadD[i] + 1.3));
+            v3.copy(beadFrom[i]).lerp(tgt[i], u); v3.z += Math.sin(Math.PI * u) * 1.5;
+            put(beads, i, v3, 1.1 - 0.6 * r(t, T.beads[1] - 0.2, T.beads[1] + 0.5));
+          }
+          beads.instanceMatrix.needsUpdate = true;
+          beads.material.opacity = 1 - r(t, T.beads[1] - 0.1, T.beads[1] + 0.6);
+          beads.visible = bOn && t < T.beads[1] + 0.7;
+          wordM.material.opacity = r(t, T.beads[1] - 0.4, T.beads[1] + 0.4);
+
+          post.render();
+        }
+
+        // the escalation card: a 3D point projected to the screen each frame, so it rides the camera
+        ui3 = (t) => {
+          pose(t); setCam(camAt(t));
+          const tile = tiles[4], p = (tile.escalated || tile.m.position).clone().add(new THREE.Vector3(0, 0.45, 0)).project(camera);
+          const x = cl((p.x * 0.5 + 0.5) * W - 165, 120, W - 460), y = cl((-p.y * 0.5 + 0.5) * H - 150, 130, H - 330);
+          const o = r(t, T.rise[1] - 0.1, T.rise[1] + 0.2) * (1 - r(t, T.down[0], T.down[0] + 0.3));
+          const rv = $("#rv"); rv.style.opacity = o; rv.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+          const tick = $("#rv-tick"), L = 46, tk = r(t, T.click, T.click + 0.22);
+          tick.style.strokeDasharray = `${L} ${L}`; tick.style.strokeDashoffset = `${(L * (1 - tk)).toFixed(1)}`;
+          $("#rv-lab").textContent = tk >= 1 ? "Approved" : "Approve";
+          const bx = x + 22 + 22, by = y + 18 + 30 + 12 + 22;   // the tick box's centre inside the card
+          const cu = E("power3.inOut")(r(t, T.click - 0.75, T.click - 0.1)), press = r(t, T.click - 0.1, T.click + 0.05), out = E("power2.in")(r(t, T.click + 0.3, T.click + 0.9));
+          const cx = lerp(bx + 420, bx, cu) + 360 * out, cy = lerp(by + 260, by, cu) + 240 * out;
+          const cur = $("#cursor"); cur.style.opacity = r(t, T.click - 0.75, T.click - 0.55) * (1 - out);
+          cur.style.transform = `translate(${cx.toFixed(1)}px, ${cy.toFixed(1)}px) scale(${(1 - 0.18 * Math.sin(Math.PI * press)).toFixed(3)})`;
+        };
+
+        for (const tt of [0, T.hit + 0.4, T.research + 2, T.write + 2, T.review + 3, T.conj + 2, T.beam + 0.2, T.beads[1], DUR - 0.5]) renderAt(tt);   // warm every pipeline
+        let last = -1;
+        glRender = (t) => { if (t !== last) { last = t; renderAt(t); } };
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(window.__hfThreeTime || 0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = window.__hf.buildReady || {};
+      window.__hf.buildReady["orrery"] = build();
+    </script>
+  </body>
+</html>
