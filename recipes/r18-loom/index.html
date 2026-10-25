@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <!--
+      R18 · Loom. One take, 32 s, Three.js (WebGPURenderer, WebGL2 backend, TSL bloom and a reflector floor).
+      Research and briefing as a Jacquard loom: every source is a thread of light, what you know is the punched card the
+      loom reads first, the threads it doesn't lift fall away as noise, and the woven cloth is the briefing, cut and
+      folded on schedule, every Monday at 09:00. Every thread, headline, rule, pick and story is one row of a baked table
+      (assets/loom.js, from bake/loom.py); score/compose.py reads the same table. Any frame renders on its own.
+    -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/word.js"></script>
+    <script src="assets/loom.js"></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "./assets/vendor/three.webgpu.js",
+          "three/webgpu": "./assets/vendor/three.webgpu.js",
+          "three/tsl": "./assets/vendor/three.tsl.js"
+        }
+      }
+    </script>
+    <style>
+      @font-face { font-family: "Inter"; src: url("assets/fonts/inter-400.woff2") format("woff2"); font-weight: 400; }
+      @font-face { font-family: "Inter"; src: url("assets/fonts/inter-500.woff2") format("woff2"); font-weight: 500; }
+      @font-face { font-family: "Inter"; src: url("assets/fonts/inter-600.woff2") format("woff2"); font-weight: 600; }
+      @font-face { font-family: "Baskerville"; src: url("assets/fonts/libre-baskerville-400.woff2") format("woff2"); font-weight: 400; }
+      @font-face { font-family: "Baskerville"; src: url("assets/fonts/libre-baskerville-700.woff2") format("woff2"); font-weight: 700; }
+      @font-face { font-family: "JBM"; src: url("assets/fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 100 800; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #050404; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #050404; color: #f5f2ea; font-family: "Inter", sans-serif; }
+      #lm-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #lm-gl { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #lm-ui { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+
+      .hud { position: absolute; top: 48px; font: 500 19px "JBM", monospace; letter-spacing: 0.1em; white-space: nowrap; color: #a8a49b; }
+      #hud-l { left: 64px; color: #f5f2ea; font: 600 19px "Inter", sans-serif; letter-spacing: 0.18em; }
+      #hud-l span { font: 500 19px "JBM", monospace; letter-spacing: 0.1em; color: #00BFB4; margin-left: 16px; }
+      #hud-r { right: 64px; }
+      #hud-r b { font-weight: 500; color: #00BFB4; margin-right: 26px; }
+      #hud-band { position: absolute; left: 0; right: 0; top: 0; height: 170px; background: linear-gradient(rgba(5, 4, 4, 0.9), rgba(5, 4, 4, 0.7) 55%, rgba(5, 4, 4, 0)); }
+
+      .st { position: absolute; left: 92px; bottom: 96px; opacity: 0; }
+      .st i { display: block; font: 600 22px "JBM", monospace; font-style: normal; letter-spacing: 0.24em; color: #00BFB4; }
+      .st b { display: block; margin-top: 8px; font: 700 104px/1 "Baskerville", serif; letter-spacing: -0.02em; color: #f5f2ea; white-space: nowrap; }
+      .st span { display: block; margin-top: 16px; font: 400 28px "Inter", sans-serif; color: #d8d3c8; white-space: nowrap; }
+      #st-shade { position: absolute; left: 0; bottom: 0; width: 1400px; height: 460px; opacity: 0;
+        background: radial-gradient(ellipse 70% 90% at 0% 100%, rgba(5, 4, 4, 0.9) 0%, rgba(5, 4, 4, 0.6) 50%, rgba(5, 4, 4, 0) 100%); }
+
+      #z-shade { position: absolute; left: 0; right: 0; bottom: 0; height: 560px; opacity: 0; background: linear-gradient(rgba(5, 4, 4, 0), rgba(5, 4, 4, 0.86) 45%, rgba(5, 4, 4, 0.94)); }
+      #z-title { position: absolute; left: 0; right: 0; top: 664px; text-align: center; opacity: 0; font: 700 78px/1.1 "Baskerville", serif; letter-spacing: -0.02em; white-space: nowrap; }
+      #z-sub { position: absolute; left: 0; right: 0; top: 768px; text-align: center; opacity: 0; font: 400 30px/1.45 "Inter", sans-serif; color: #d8d3c8; }
+      #z-url { position: absolute; left: 0; right: 0; top: 884px; text-align: center; font: 500 30px "JBM", monospace; color: #f5f2ea; white-space: nowrap; }
+      #z-rule { position: absolute; left: 610px; top: 936px; width: 700px; height: 4px; border-radius: 2px; background: #00BFB4; transform: scaleX(0); }
+      #z-note { position: absolute; left: 0; right: 0; top: 970px; text-align: center; opacity: 0; font: 500 19px "JBM", monospace; letter-spacing: 0.3em; color: #a8a49b; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="32" data-width="1920" data-height="1080">
+      <div id="lm-stage" class="clip" data-start="0" data-duration="32" data-track-index="0">
+        <canvas id="lm-gl" width="1920" height="1080"></canvas>
+      </div>
+      <div id="lm-ui" class="clip" data-start="0" data-duration="32" data-track-index="1">
+        <div id="st-shade" data-layout-allow-occlusion></div>
+        <div class="st" id="st-0" data-layout-allow-occlusion><i>01 · SOURCES</i><b>Your sources</b><span>Read for you, overnight.</span></div>
+        <div class="st" id="st-1" data-layout-allow-occlusion><i>02 · KNOWLEDGE</i><b>What you know</b><span>Read before the news.</span></div>
+        <div class="st" id="st-2" data-layout-allow-occlusion><i>03 · FILTER</i><b>Only what matters</b><span>The rest falls away.</span></div>
+        <div class="st" id="st-3" data-layout-allow-occlusion><i>04 · BRIEFING</i><b>The briefing</b><span>Every story, with the why.</span></div>
+        <div class="st" id="st-4" data-layout-allow-occlusion><i>05 · SCHEDULE</i><b>On schedule</b><span>Ready before the meeting.</span></div>
+        <div id="hud-band" data-layout-allow-occlusion></div>
+        <div class="hud" id="hud-l" data-layout-allow-occlusion>JQ AI SYSTEMS<span>ai research &amp; briefing</span></div>
+        <div class="hud" id="hud-r" data-layout-allow-occlusion><b id="hud-st">reading sources · overnight</b><span id="hud-tc">00:00:00:00</span></div>
+        <div id="z-shade" data-layout-allow-occlusion></div>
+        <div id="z-title" data-layout-allow-occlusion>AI Research &amp; Briefing Systems</div>
+        <div id="z-sub" data-layout-allow-occlusion>Your sources, read for you,<br>briefed on schedule.</div>
+        <div id="z-url" data-layout-allow-occlusion></div>
+        <div id="z-rule" data-layout-allow-occlusion></div>
+        <div id="z-note" data-layout-allow-occlusion>FILM AND SCORE BUILT IN CODE</div>
+      </div>
+      <audio id="score" src="assets/bgm/score.wav" data-start="0" data-duration="32" data-track-index="7" data-volume="0.48"></audio>
+    </div>
+
+    <script type="module">
+      import * as THREE from "three/webgpu";
+      import { pass, reflector, normalWorld, uv, uniform, color, float, texture, step, abs, exp, mix, frontFacing } from "three/tsl";
+      import { bloom } from "./assets/vendor/BloomNode.js";
+      import { RoomEnvironment } from "./assets/vendor/RoomEnvironment.js";
+
+      const W = 1920, H = 1080, DUR = 32;
+      // ---- the one table (bake/loom.py): threads, headlines, rules, picks and stories; score/compose.py reads it too
+      const { T, threads: TH, headlines: HL, rules: RULES, picks: PICKS, picks2: PICKS2, stories: STORIES } = window.TABLE;
+      const N = TH.length;
+
+      const cl = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+      const r = (t, a, b) => cl((t - a) / (b - a));
+      const lerp = (a, b, u) => a + (b - a) * u;
+      const E = (n) => gsap.parseEase(n);
+      const eOut = E("power3.out"), eIO = E("power2.inOut"), eIn = E("power2.in"), e2Out = E("power2.out");
+      const hash = (n) => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+      const D2R = Math.PI / 180;
+      const V3 = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
+
+      // ---- the loom: threads run from the back beam, through the heddle eyes, to the fell where the cloth is made
+      const BEAM_Y = 4.6, BEAM_Z = -6, EYE_Y = 4.0, EYE_Z = -1.8, FELL_Y = 3.62, FELL_Z = 1.05, COMB_Y = 8.4;
+      const SHED = 0.34, LMAX = 7.2, CW = 8.4;
+      const CARD = V3(0, 10.4, -0.97), CARD_W = 6.4, CARD_H = 1.68;
+      const CLOCK_PIV = V3(0, 13.8, 10.6), CLOCK_DROP = 6.4;
+      const SPOT = V3(0, 3.62, 9.9), FS = 0.55;                                   // where the briefing lands, and its scale
+      const WORD_C = V3(0, 10.4, 8.6), WS = 0.0098;
+      const KEPT = TH.map((th, i) => (th.story >= 0 ? i : -1)).filter((i) => i >= 0);
+      const isKept = TH.map((th) => th.story >= 0);
+
+      // picks: how many have been made by t, and the beat-up pulse of the nearest one
+      const ALLP = PICKS.concat(PICKS2);
+      const picksBy = (list, t) => { let n = 0; for (const p of list) if (t >= p) n++; return n; };
+      const woven = (list, t) => { let n = 0; for (const p of list) n += eOut(r(t, p, p + 0.14)); return n; };
+
+      // ================= DOM painter =================
+      const $ = (s) => document.querySelector(s);
+      const STS = [[$("#st-0"), 1.0, 3.75], [$("#st-1"), 4.9, 7.9], [$("#st-2"), 9.7, 13.6], [$("#st-3"), 14.2, 15.4], [$("#st-4"), 22.8, 25.7]];
+      const nRead = (t) => TH.filter((th) => t >= th.arrive + 0.6).length;
+      const nKept = (t) => TH.filter((th) => !(th.reject !== undefined && t >= th.reject)).length;
+      const STATE = [[0, (t) => `reading sources · ${nRead(t)}`], [T.card, () => "knowledge document · 8 rules"], [T.read, () => "knowledge document · read first"],
+        [T.weave, (t) => `${N} read · ${nKept(t)} kept`], [12.7, () => `${N} read · 9 that matter`], [T.resolve[0], () => "briefing · 3 stories · with the why"],
+        [T.clock, () => "scheduled · mondays 09:00"], [T.nine, () => "delivered · mon 09:00"], [T.stack[0], () => "every monday · on schedule"]];
+      const tc = (t) => { const f = Math.floor(t * 30 + 1e-6); return `00:00:${String(Math.floor(f / 30)).padStart(2, "0")}:${String(f % 30).padStart(2, "0")}`; };
+      const URL_TEXT = "ai.joaoqueiros.com/services/research-briefing";
+      let glRender = null;
+      function paint(t) {
+        if (glRender) glRender(t);
+        const hudO = r(t, 0.4, 0.9) * (1 - r(t, T.end - 0.5, T.end));
+        $("#hud-l").style.opacity = hudO; $("#hud-r").style.opacity = hudO; $("#hud-band").style.opacity = hudO;
+        let st = STATE[0][1]; for (const [a, s] of STATE) if (t >= a) st = s;
+        $("#hud-st").textContent = st(t); $("#hud-tc").textContent = tc(t);
+        let shade = 0;
+        STS.forEach(([el, t0, t1]) => {
+          const a = eOut(r(t, t0, t0 + 0.55)), b = r(t, t1, t1 + 0.35);
+          el.style.opacity = a * (1 - b);
+          el.style.clipPath = `inset(0 ${(100 * (1 - a)).toFixed(1)}% 0 0)`;
+          el.style.transform = `translateX(${(-40 * (1 - a) - 60 * eIO(b)).toFixed(1)}px)`;
+          shade = Math.max(shade, a * (1 - b));
+        });
+        $("#st-shade").style.opacity = shade;
+        $("#z-shade").style.opacity = r(t, T.end - 0.4, T.end + 0.4);
+        const show = (s, a, b, y) => { const u = r(t, a, b); $(s).style.opacity = u; $(s).style.transform = `translateY(${(y * (1 - eOut(u))).toFixed(1)}px)`; };
+        show("#z-title", T.end, T.end + 0.7, 40);
+        show("#z-sub", T.end + 0.45, T.end + 1.1, 20);
+        $("#z-url").textContent = URL_TEXT.slice(0, Math.round(URL_TEXT.length * r(t, T.end + 1.0, T.end + 2.0)));
+        $("#z-rule").style.transform = `scaleX(${E("expo.inOut")(r(t, T.end + 1.8, T.end + 2.6)).toFixed(3)})`;
+        show("#z-note", T.end + 2.4, T.end + 2.9, 0);
+      }
+      const tl = gsap.timeline({ paused: true });
+      const clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+
+      // ================= the 3D film =================
+      async function build() {
+        await Promise.all([document.fonts.load('700 104px "Baskerville"'), document.fonts.load('400 60px "Baskerville"'), document.fonts.load('600 40px "Inter"'), document.fonts.load('400 40px "Inter"'), document.fonts.load('500 30px "JBM"')]);
+        const canvas = $("#lm-gl");
+        // Hide KHR_parallel_shader_compile so every program links before its first draw (see R01, R07, R13).
+        const gl = canvas.getContext("webgl2", { antialias: true, alpha: false, depth: true, stencil: false, preserveDrawingBuffer: true });
+        const getExt = gl.getExtension.bind(gl), getSup = gl.getSupportedExtensions.bind(gl);
+        gl.getExtension = (name) => (name === "KHR_parallel_shader_compile" ? null : getExt(name));
+        gl.getSupportedExtensions = () => getSup().filter((n) => n !== "KHR_parallel_shader_compile");
+        const renderer = new THREE.WebGPURenderer({ canvas, context: gl, antialias: true, forceWebGL: true });
+        renderer.setPixelRatio(1); renderer.setSize(W, H, false);
+        renderer.setClearColor(0x050404, 1);
+        renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
+        await renderer.init();
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x050404);
+        scene.fog = new THREE.Fog(0x050404, 30, 90);
+        const pmrem = new THREE.PMREMGenerator(renderer);
+        const envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+        scene.environment = envTex; scene.environmentIntensity = 0.32;
+        const camera = new THREE.PerspectiveCamera(36, W / H, 0.05, 600);
+        scene.add(new THREE.HemisphereLight(0x3a3026, 0x060505, 0.5));
+        const key = new THREE.SpotLight(0xffe2bd, 190, 46, 0.5, 0.85, 1.2); key.position.set(4, 19, 7); key.target.position.set(0, 3.6, 3); scene.add(key, key.target);
+        const rim = new THREE.SpotLight(0xffb36b, 160, 40, 0.55, 0.9, 1.2); rim.position.set(-9, 12, -12); rim.target.position.set(0, 5, -2); scene.add(rim, rim.target);
+        const tableKey = new THREE.SpotLight(0xffe6c8, 0, 30, 0.5, 0.9, 1.2); tableKey.position.set(-2, 14, 13); tableKey.target.position.copy(SPOT); scene.add(tableKey, tableKey.target);
+
+        // ---- textures and helpers ----
+        const tex = (w, h, draw) => { const c = document.createElement("canvas"); c.width = w; c.height = h; draw(c.getContext("2d"), w, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; t.userData.canvas = c; return t; };
+        const glowTex = tex(256, 256, (g) => { const gr = g.createRadialGradient(128, 128, 0, 128, 128, 128); gr.addColorStop(0, "rgba(255,255,255,1)"); gr.addColorStop(0.2, "rgba(255,255,255,0.5)"); gr.addColorStop(0.55, "rgba(255,255,255,0.1)"); gr.addColorStop(1, "rgba(255,255,255,0)"); g.fillStyle = gr; g.fillRect(0, 0, 256, 256); });
+        const glow = (c, s, o = 0) => { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: c, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, opacity: o })); sp.scale.setScalar(s); scene.add(sp); return sp; };
+        const rrect = (g, x, y, w, h, rad) => { g.beginPath(); g.moveTo(x + rad, y); g.arcTo(x + w, y, x + w, y + h, rad); g.arcTo(x + w, y + h, x, y + h, rad); g.arcTo(x, y + h, x, y, rad); g.arcTo(x, y, x + w, y, rad); g.closePath(); };
+        const wrap = (g, text, maxW) => { const out = []; let line = ""; for (const w of text.split(" ")) { const tr = line ? line + " " + w : w; if (g.measureText(tr).width > maxW && line) { out.push(line); line = w; } else line = tr; } if (line) out.push(line); return out; };
+        const UPV = V3(0, 1, 0);
+        const rod = (r0, mat) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(r0, r0, 1, 10, 1, false).translate(0, 0.5, 0), mat); m.frustumCulled = false; scene.add(m); return m; };
+        const aim = (m, a, b) => { const d = b.clone().sub(a); m.position.copy(a); m.quaternion.setFromUnitVectors(UPV, d.clone().normalize()); m.scale.set(1, Math.max(1e-4, d.length()), 1); };
+
+        const brass = new THREE.MeshStandardMaterial({ color: 0xc9a165, metalness: 1, roughness: 0.3, envMapIntensity: 1.4 });
+        const darkBrass = new THREE.MeshStandardMaterial({ color: 0x8a6a3c, metalness: 1, roughness: 0.42 });
+        const woodTex = tex(512, 512, (g, w, h) => { g.fillStyle = "#3a2516"; g.fillRect(0, 0, w, h); for (let k = 0; k < 140; k++) { const y = hash(k * 3.3) * h; g.strokeStyle = `rgba(${hash(k) > 0.5 ? "90,58,34" : "26,16,10"},${0.25 + 0.4 * hash(k + 9)})`; g.lineWidth = 1 + 3 * hash(k + 2); g.beginPath(); g.moveTo(0, y); for (let x = 0; x <= w; x += 32) g.lineTo(x, y + 6 * Math.sin(x * 0.02 + k)); g.stroke(); } });
+        woodTex.wrapS = woodTex.wrapT = THREE.RepeatWrapping;
+        const wood = new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.55, metalness: 0.0 });
+        const box = (w, h, d, mat, x, y, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); scene.add(m); return m; };
+
+        // ---- the floor: black and polished, a soft mirror ----
+        const refl = reflector({ resolutionScale: 0.5 });
+        refl.target.rotateX(-Math.PI / 2); scene.add(refl.target);
+        refl.uvNode = refl.uvNode.add(normalWorld.xz.mul(0.01));
+        const floorMat = new THREE.MeshStandardNodeMaterial({ color: 0x080706, roughness: 0.55, metalness: 0.0 });
+        floorMat.emissiveNode = refl.rgb.mul(0.4);
+        scene.add(new THREE.Mesh(new THREE.PlaneGeometry(400, 400).rotateX(-Math.PI / 2), floorMat));
+
+        // ---- the loom: oak frame, brass beams, the Jacquard head on top ----
+        for (const sx of [-4.95, 4.95]) {
+          box(0.32, 10.0, 0.32, wood, sx, 5.0, BEAM_Z); box(0.32, 9.6, 0.32, wood, sx, 4.8, -1.8); box(0.32, 3.6, 0.32, wood, sx, 1.8, FELL_Z);
+          box(0.3, 0.3, 7.4, wood, sx, 1.2, -2.5); box(0.3, 0.3, 4.6, wood, sx, 9.75, -4.0);
+        }
+        const beamMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 9.6, 32).rotateZ(Math.PI / 2), darkBrass); beamMesh.position.set(0, BEAM_Y - 0.28, BEAM_Z); scene.add(beamMesh);
+        const breast = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 9.6, 32).rotateZ(Math.PI / 2), brass); breast.position.set(0, FELL_Y - 0.17, FELL_Z + 0.05); scene.add(breast);
+        box(9.9, 0.12, 0.7, wood, 0, COMB_Y, EYE_Z);                                            // the comber board
+        box(9.9, 1.6, 1.6, wood, 0, 10.4, EYE_Z);                                               // the Jacquard head
+        box(10.2, 0.08, 1.8, brass, 0, 11.24, EYE_Z); box(10.2, 0.08, 1.8, brass, 0, 9.56, EYE_Z);
+        // the reed: a comb of brass that beats each pick into the cloth
+        const REED_N = 120;
+        const reed = new THREE.InstancedMesh(new THREE.BoxGeometry(0.018, 1.25, 0.05), brass, REED_N); reed.frustumCulled = false; scene.add(reed);
+        const reedRail = [box(9.0, 0.08, 0.1, brass, 0, 4.66, 0.4), box(9.0, 0.08, 0.1, brass, 0, 3.4, 0.4)];
+        // the shuttle: an oak boat with brass tips
+        const shuttle = new THREE.Group(); scene.add(shuttle);
+        shuttle.add(new THREE.Mesh(new THREE.SphereGeometry(1, 24, 12).scale(0.62, 0.075, 0.12), wood));
+        for (const s of [-1, 1]) { const tip = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.26, 12).rotateZ(-s * Math.PI / 2), brass); tip.position.x = s * 0.66; shuttle.add(tip); }
+        const shuttleGlow = glow(0xffd9a8, 1.1);
+        const weft = new THREE.Line(new THREE.BufferGeometry().setFromPoints([V3(), V3()]), new THREE.LineBasicMaterial({ color: new THREE.Color(2.4, 2.0, 1.5), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+        weft.frustumCulled = false; scene.add(weft);
+
+        // ---- the threads: one line strip per source, from the dark to the beam, then the warp to the fell ----
+        const NF = 16, NW = 12, NP = NF + NW, NS = NP - 1;     // points: 16 in flight, 6 beam to eye, 6 eye to fell
+        const tPos = new Float32Array(N * NS * 6), tCol = new Float32Array(N * NS * 6);
+        const tGeo = new THREE.BufferGeometry();
+        tGeo.setAttribute("position", new THREE.BufferAttribute(tPos, 3)); tGeo.setAttribute("color", new THREE.BufferAttribute(tCol, 3));
+        const lineMat = () => new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+        const tLines = new THREE.LineSegments(tGeo, lineMat()); tLines.frustumCulled = false; scene.add(tLines);
+        const cPos = new Float32Array(N * 6), cCol = new Float32Array(N * 6), cGeo = new THREE.BufferGeometry();
+        cGeo.setAttribute("position", new THREE.BufferAttribute(cPos, 3)); cGeo.setAttribute("color", new THREE.BufferAttribute(cCol, 3));
+        const cords = new THREE.LineSegments(cGeo, lineMat()); cords.frustumCulled = false; scene.add(cords);
+        const START = TH.map((th) => V3(...th.start));
+        const P = Array.from({ length: NP }, () => V3());
+        const AMBER = new THREE.Color(1.0, 0.56, 0.2), TEAL = new THREE.Color(0.0, 0.85, 0.78), GREY = new THREE.Color(0.32, 0.31, 0.3), BONE = new THREE.Color(1.0, 0.86, 0.66);
+        // the nine threads the card keeps also get a body of light
+        const keptMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.0, 1.5, 1.38), transparent: true, opacity: 0, fog: false, blending: THREE.AdditiveBlending, depthWrite: false });
+        const KEPTM = KEPT.map(() => [rod(0.011, keptMat), rod(0.011, keptMat)]);
+        const eyeOf = (i, t) => {
+          // the shed: kept threads go up and down on alternate picks; the rest are never lifted
+          if (!isKept[i]) return EYE_Y;
+          const open = r(t, T.weave, T.weave + 0.3) * (1 - r(t, T.full + 0.1, T.full + 0.4)) + r(t, PICKS2[0] - 0.3, PICKS2[0]);
+          const n = picksBy(ALLP, t), last = n > 0 ? ALLP[n - 1] : 0, sNow = (i + n) % 2 ? 1 : -1, sWas = -sNow;
+          return EYE_Y + SHED * open * lerp(sWas, sNow, n > 0 ? eIO(r(t, last + 0.02, last + 0.14)) : 1);
+        };
+        // the warp of thread i at t: beam, eye, fell, sagging and falling if the card rejected it
+        const B = V3(), Ey = V3(), F = V3(), q = V3();
+        const warpAt = (i, t, f, out) => {
+          const th = TH[i], x = th.x; B.set(x, BEAM_Y, BEAM_Z); Ey.set(x, eyeOf(i, t), EYE_Z); F.set(x, FELL_Y, FELL_Z);
+          if (f < 0.5) out.copy(B).lerp(Ey, f * 2); else out.copy(Ey).lerp(F, f * 2 - 1);
+          if (th.reject !== undefined && t > th.reject) {
+            const dt = t - th.reject, sag = 1.3 * eIn(r(dt, 0, 0.6)), fall = Math.max(0, dt - 0.45);
+            out.y -= sag * Math.sin(Math.PI * f) + 0.5 * 9 * fall * fall * (0.6 + 0.4 * Math.sin(Math.PI * f));
+            out.z += 0.6 * fall * (hash(i) - 0.3); out.y = Math.max(0.03, out.y);
+          }
+          return out;
+        };
+        const threadFade = (i, t) => { const th = TH[i]; return th.reject === undefined ? 1 : 1 - r(t, th.reject + 0.9, th.reject + 1.9); };
+        function updateThreads(t) {
+          let w = 0;
+          for (let i = 0; i < N; i++) {
+            const th = TH[i], S = START[i], u = r(t, th.arrive, th.arrive + 1.3);
+            const fade = threadFade(i, t);
+            if (u <= 0 || fade <= 0) { for (let k = 0; k < NS * 6; k++) { tPos[w + k] = 0; tCol[w + k] = 0; } w += NS * 6; continue; }
+            // flight: a curve from the dark to the beam
+            B.set(th.x, BEAM_Y, BEAM_Z); const C = q.copy(S).lerp(B, 0.5); C.y += 3.0;
+            for (let k = 0; k < NF; k++) { const s = k / (NF - 1), a = 1 - s; P[k].set(a * a * S.x + 2 * a * s * C.x + s * s * B.x, a * a * S.y + 2 * a * s * C.y + s * s * B.y, a * a * S.z + 2 * a * s * C.z + s * s * B.z); }
+            for (let k = 0; k < NW; k++) warpAt(i, t, (k + 1) / NW, P[NF + k]);
+            const head = NS * e2Out(u), tail = Math.min(NF - 1, Math.max(0, head - 10));
+            const at = (k) => { const kk = cl(k, tail, head), k0 = Math.floor(kk), k1 = Math.min(NP - 1, k0 + 1); return q.copy(P[k0]).lerp(P[k1], kk - k0); };
+            // colour: amber in the stream; the kept ones turn teal as the loom starts; the rejected go grey, then out
+            const th0 = th.reject;
+            const base = tc3.copy(AMBER).multiplyScalar(0.42);
+            if (isKept[i]) base.lerp(tc4.copy(TEAL).multiplyScalar(0.9), r(t, T.weave, T.weave + 0.5));
+            if (th0 !== undefined) base.lerp(GREY, r(t, th0, th0 + 0.4) * 0.8);
+            base.multiplyScalar(fade * (isKept[i] ? 1 : 1 - 0.35 * r(t, T.read, T.weave)));
+            for (let k = 0; k < NS; k++) {
+              for (const e of [0, 1]) {
+                const p = at(k + e), g = u < 1 ? 1 + 3.2 * Math.exp(-(((k + e - head) / 1.6) ** 2)) : 1;
+                tPos[w] = p.x; tPos[w + 1] = p.y; tPos[w + 2] = p.z;
+                tCol[w] = base.r * g; tCol[w + 1] = base.g * g; tCol[w + 2] = base.b * g; w += 3;
+              }
+            }
+          }
+          tGeo.attributes.position.needsUpdate = true; tGeo.attributes.color.needsUpdate = true;
+          // cords from the comber board to every eye, dropping in once the card is read
+          for (let i = 0; i < N; i++) {
+            const th = TH[i], x = th.x, d = eOut(r(t, T.cords + 0.5 * hash(i * 1.7), T.cords + 0.5 * hash(i * 1.7) + 0.5));
+            warpAt(i, t, 0.5, q); const top = V3(x, COMB_Y - 0.06, EYE_Z), bot = top.clone().lerp(q, d);
+            const o = 0.2 * d * threadFade(i, t) * (isKept[i] ? 1.6 : 1) * (1 - 0.7 * r(t, 14.6, 15.2));
+            cPos.set([top.x, top.y, top.z, bot.x, bot.y, bot.z], i * 6);
+            const c = isKept[i] && t > T.weave ? TEAL : AMBER;
+            cCol.set([c.r * o, c.g * o, c.b * o, c.r * o * 1.6, c.g * o * 1.6, c.b * o * 1.6], i * 6);
+          }
+          cGeo.attributes.position.needsUpdate = true; cGeo.attributes.color.needsUpdate = true;
+          KEPT.forEach((i, k) => { const a = warpAt(i, t, 0, V3()), m = warpAt(i, t, 0.5, V3()), b = warpAt(i, t, 1, V3()); aim(KEPTM[k][0], a, m); aim(KEPTM[k][1], m, b); });
+          keptMat.opacity = 0.75 * r(t, T.weave, T.weave + 0.6);
+        }
+        const tc3 = new THREE.Color(), tc4 = new THREE.Color();
+
+        // ---- headlines flicker past in the stream: three that matter, four that are noise (all made up) ----
+        const HLO = HL.map((h, k) => {
+          const fs = 44, g0 = document.createElement("canvas").getContext("2d"); g0.font = `500 ${fs}px "JBM"`;
+          const w = Math.ceil(g0.measureText(h.text).width + 60), hh = 84;
+          const map = tex(w, hh, (g) => { g.font = `500 ${fs}px "JBM"`; g.textBaseline = "middle"; g.fillStyle = h.signal ? "#ffd7a1" : "#8d8a85"; g.fillText(h.text, 30, hh / 2 + 2); });
+          const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map, transparent: true, depthWrite: false, fog: false, opacity: 0 })); sp.scale.set(w / 200, hh / 200, 1); scene.add(sp);
+          return { h, sp, p0: V3(...h.pos) };
+        });
+
+        // ---- the knowledge card: brass, punched one rule at a time; it is read before the news ----
+        const CPX = 250, cw = Math.round(CARD_W * CPX), ch = Math.round(CARD_H * CPX);
+        const holeXY = (rl) => [150 + rl.col * 380, 196 + rl.row * 128];
+        const cardTex = (n) => tex(cw, ch, (g, w, h) => {
+          const gr = g.createLinearGradient(0, 0, w, h); gr.addColorStop(0, "#d8b47a"); gr.addColorStop(0.5, "#b88c50"); gr.addColorStop(1, "#d3ab6c"); g.fillStyle = gr; rrect(g, 0, 0, w, h, 26); g.fill();
+          g.strokeStyle = "rgba(60,40,15,0.6)"; g.lineWidth = 4; rrect(g, 12, 12, w - 24, h - 24, 20); g.stroke();
+          g.fillStyle = "#3b2a12"; g.font = '600 30px "JBM"'; g.fillText("WHAT YOU KNOW · READ FIRST", 44, 82);
+          g.textAlign = "right"; g.fillText("CARD 01", w - 44, 82); g.textAlign = "left";
+          g.globalCompositeOperation = "destination-out";
+          for (let k = 0; k < 40; k++) if (hash(k * 2.3 + 1) > 0.45) { g.beginPath(); g.arc(44 + k * 38.6, 30, 7, 0, 7); g.fill(); }
+          for (let k = 0; k < 40; k++) if (hash(k * 1.9 + 4) > 0.4) { g.beginPath(); g.arc(44 + k * 38.6, h - 30, 7, 0, 7); g.fill(); }
+          RULES.slice(0, n).forEach((rl) => { const [x, y] = holeXY(rl); g.beginPath(); g.arc(x, y, 22, 0, 7); g.fill(); });
+          g.globalCompositeOperation = "source-over";
+          RULES.forEach((rl, k) => { const [x, y] = holeXY(rl); g.strokeStyle = "rgba(60,40,15,0.75)"; g.lineWidth = 3; g.beginPath(); g.arc(x, y, 26, 0, 7); g.stroke(); g.fillStyle = k < n ? "#2a1d0b" : "rgba(59,42,18,0.45)"; g.font = '500 29px "JBM"'; g.fillText(rl.label, x + 40, y + 10); });
+        });
+        const CARDT = RULES.map((_, k) => cardTex(k)).concat([cardTex(RULES.length)]);
+        const cardMat = new THREE.MeshStandardMaterial({ map: CARDT[0], metalness: 0.85, roughness: 0.34, transparent: true, alphaTest: 0.5, envMapIntensity: 1.5 });
+        const card = new THREE.Mesh(new THREE.PlaneGeometry(CARD_W, CARD_H), cardMat); scene.add(card);
+        const holeGlow = RULES.map(() => glow(0x5ff2e6, 0.5));
+        const punchFlash = RULES.map(() => glow(0xbff7f1, 1.2));
+        const scanMat = new THREE.MeshBasicMaterial({ map: glowTex, color: new THREE.Color(0.2, 2.6, 2.4), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+        const scan = new THREE.Mesh(new THREE.PlaneGeometry(0.5, CARD_H * 1.5), scanMat); scene.add(scan);
+
+        // ---- the cloth: a woven bone ground, the nine kept threads as teal stripes, the briefing's type woven in ----
+        const TW = 2048, TH2 = Math.round(TW * LMAX / CW);
+        const tile = document.createElement("canvas"); tile.width = tile.height = 8;
+        { const g = tile.getContext("2d"); g.fillStyle = "#d6ccb6"; g.fillRect(0, 0, 8, 8); g.fillStyle = "#e6ddc9"; g.fillRect(0, 0, 4, 2); g.fillRect(4, 4, 4, 2); g.fillStyle = "#c4b9a1"; g.fillRect(4, 0, 2, 4); g.fillRect(0, 4, 2, 4); }
+        const ux = (x) => ((CW / 2 - x) / CW) * TW;      // the page reads left to right from the reading camera
+        const ground = (g, w, h, strong) => {
+          g.fillStyle = g.createPattern(tile, "repeat"); g.fillRect(0, 0, w, h);
+          g.fillStyle = "rgba(90,70,40,0.25)"; g.fillRect(0, 0, 18, h); g.fillRect(w - 18, 0, 18, h);
+          KEPT.forEach((i) => { g.fillStyle = strong ? "rgba(0,160,150,0.55)" : "rgba(0,160,150,0.4)"; g.fillRect(ux(TH[i].x) - 6, 0, 12, h); });
+        };
+        const plainTex = tex(TW, TH2, (g, w, h) => ground(g, w, h, false));
+        const fullTex = tex(TW, TH2, (g, w, h) => {
+          ground(g, w, h, true);
+          const L = 120;
+          g.fillStyle = "#006f69"; g.font = '600 34px "JBM"'; g.fillText("MONDAY BRIEFING · WEEK 43 · 09:00", L, 150);
+          g.fillStyle = "#1b1814"; g.font = '700 104px "Baskerville"'; g.fillText("Three things that matter this week.", L, 300);
+          g.fillStyle = "rgba(27,24,20,0.5)"; g.fillRect(L, 360, w - 2 * L, 4);
+          STORIES.forEach((s, c) => {
+            const cx = ux(KEPT.filter((i) => TH[i].story === c).map((i) => TH[i].x).reduce((a, b) => a + b) / 3), x = cx - 300, mw = 610;
+            g.fillStyle = "#006f69"; g.font = '600 34px "JBM"'; g.fillText(String(c + 1).padStart(2, "0"), x, 470);
+            g.fillStyle = "#1b1814"; g.font = '700 62px "Baskerville"'; const tl2 = wrap(g, s.title, mw); tl2.forEach((ln, k) => g.fillText(ln, x, 560 + k * 74));
+            const yb = 560 + tl2.length * 74 + 30;
+            g.font = '400 42px "Inter"'; g.fillStyle = "#1f1b16"; const bl = wrap(g, s.body, mw); bl.forEach((ln, k) => g.fillText(ln, x, yb + k * 58));
+            const y0 = yb + bl.length * 58;
+            g.fillStyle = "#006f69"; g.font = '600 30px "JBM"'; g.fillText("WHY IT MATTERS", x, y0 + 30);
+            g.fillStyle = "#1b1814"; g.font = '500 40px "Inter"'; wrap(g, s.why, mw).forEach((ln, k) => g.fillText(ln, x, y0 + 96 + k * 56));
+            g.fillStyle = "rgba(0,111,105,0.8)"; g.font = '500 28px "JBM"'; g.fillText("3 SOURCES ↓", x, h - 300);
+          });
+          g.fillStyle = "rgba(27,24,20,0.5)"; g.fillRect(L, h - 200, w - 2 * L, 4);
+          g.fillStyle = "#4a443a"; g.font = '500 32px "JBM"'; g.fillText(`${N} SOURCES READ · 9 USED · SENT MON 09:00`, L, h - 130);
+        });
+        const clothMat = (withType) => {
+          const rv = uniform(0);
+          const m = new THREE.MeshStandardNodeMaterial({ side: THREE.DoubleSide, roughness: 0.88, metalness: 0 });
+          const plain = texture(plainTex), full = withType ? texture(fullTex) : plain;
+          const y = float(1).sub(uv().y), inside = step(y, rv), edge = exp(abs(y.sub(rv)).mul(-60)).mul(step(0.001, rv)).mul(float(1).sub(step(1.0, rv)));
+          const front = mix(plain.rgb, full.rgb, inside);
+          m.colorNode = mix(plain.rgb.mul(0.45), front.mul(0.55), frontFacing.select(float(1), float(0)));
+          m.emissiveNode = color(0x00e0d0).mul(edge.mul(1.2));
+          m.userData.rv = rv; return m;
+        };
+        const GX = 40, GD = 60;
+        const clothGeo = () => {
+          const g = new THREE.BufferGeometry(), n = (GX + 1) * (GD + 1);
+          g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(n * 3), 3)); g.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(n * 2), 2));
+          const idx = []; for (let j = 0; j < GD; j++) for (let i = 0; i < GX; i++) { const a = j * (GX + 1) + i, b = a + 1, c = a + GX + 1, d = c + 1; idx.push(a, b, c, b, d, c); }
+          g.setIndex(idx); return g;
+        };
+        const clothA = new THREE.Mesh(clothGeo(), clothMat(true)); clothA.frustumCulled = false; scene.add(clothA);
+        const clothB = new THREE.Mesh(clothGeo(), clothMat(false)); clothB.frustumCulled = false; scene.add(clothB);
+        const cutGlow = new THREE.Mesh(new THREE.PlaneGeometry(1, 0.06).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.4, 2.6, 2.4), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+        scene.add(cutGlow);
+        const sv = V3(), sw = V3(), rotY = new THREE.Quaternion().setFromAxisAngle(UPV, 7 * D2R);
+        // lay a cloth of length L out from the fell, folded (f1, f2) and carried to the table (sl)
+        function layCloth(mesh, L, f1, f2, sl, lift) {
+          const pos = mesh.geometry.attributes.position.array, uva = mesh.geometry.attributes.uv.array;
+          const th1 = Math.PI * f1, th2 = Math.PI * f2, h1 = LMAX / 2;
+          for (let j = 0; j <= GD; j++) for (let i = 0; i <= GX; i++) {
+            const k = j * (GX + 1) + i, u = i / GX, x = CW / 2 - CW * u, d = (L * j) / GD;
+            let lx = x, ly = 0, ld = d;
+            if (f1 > 0 && d > h1) { const qd = d - h1; ld = h1 + qd * Math.cos(th1); ly = qd * Math.sin(th1) + 0.012 * f1; }
+            if (f2 > 0 && lx < 0) { const qx = -lx; lx = -qx * Math.cos(th2); ly = ly + qx * Math.sin(th2) + 0.024 * f2; }
+            sv.set(lx, FELL_Y + 0.02 + ly, FELL_Z + ld);
+            if (sl > 0) {
+              sw.set((lx - CW / 4) * FS, ly * FS, (ld - LMAX / 4) * FS).applyQuaternion(rotY).add(SPOT);
+              sv.lerp(sw, eIO(sl)); sv.y += lift * Math.sin(Math.PI * sl);
+            }
+            pos[k * 3] = sv.x; pos[k * 3 + 1] = sv.y; pos[k * 3 + 2] = sv.z;
+            uva[k * 2] = u; uva[k * 2 + 1] = 1 - (L - d) / LMAX;
+          }
+          mesh.geometry.attributes.position.needsUpdate = true; mesh.geometry.attributes.uv.needsUpdate = true; mesh.geometry.computeVertexNormals();
+        }
+
+        // ---- the table and the empty chair, before the meeting ----
+        box(9.6, 0.16, 10.2, wood, 0, FELL_Y - 0.1, 6.55);
+        for (const [x, z] of [[-4.5, 2.0], [4.5, 2.0], [-4.5, 11.2], [4.5, 11.2]]) box(0.26, FELL_Y - 0.18, 0.26, wood, x, (FELL_Y - 0.18) / 2, z);
+        const CH = V3(0, 0, 13.0);
+        box(2.4, 0.16, 2.2, wood, CH.x, 2.1, CH.z); box(2.4, 2.5, 0.16, wood, CH.x, 3.4, CH.z + 1.05);
+        for (const [x, z] of [[-1.05, -0.95], [1.05, -0.95], [-1.05, 0.95], [1.05, 0.95]]) box(0.14, 2.05, 0.14, wood, CH.x + x, 1.02, CH.z + z);
+
+        // ---- the clock: a double-faced brass station clock that swings in for Monday 09:00 ----
+        const clockPivot = new THREE.Group(); clockPivot.position.copy(CLOCK_PIV); scene.add(clockPivot);
+        const clockG = new THREE.Group(); clockG.position.y = -CLOCK_DROP; clockG.scale.setScalar(1.35); clockPivot.add(clockG);
+        const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, CLOCK_DROP / 1.35 - 1.05, 10).translate(0, (CLOCK_DROP / 1.35 - 1.05) / 2 + 1.05, 0), brass); clockG.add(stem);
+        clockG.add(new THREE.Mesh(new THREE.TorusGeometry(1.02, 0.09, 16, 64), brass));
+        clockG.add(new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.0, 0.16, 64).rotateX(Math.PI / 2), darkBrass));
+        const faceTex = tex(1024, 1024, (g, w) => {
+          g.fillStyle = "#efe7d6"; g.beginPath(); g.arc(512, 512, 512, 0, 7); g.fill();
+          for (let k = 0; k < 60; k++) { const a = (k / 60) * Math.PI * 2, l = k % 5 ? 22 : 60; g.strokeStyle = "#1b1814"; g.lineWidth = k % 5 ? 4 : 12; g.beginPath(); g.moveTo(512 + Math.sin(a) * 470, 512 - Math.cos(a) * 470); g.lineTo(512 + Math.sin(a) * (470 - l), 512 - Math.cos(a) * (470 - l)); g.stroke(); }
+          g.fillStyle = "#1b1814"; g.font = '700 92px "Baskerville"'; g.textAlign = "center"; g.textBaseline = "middle";
+          [[12, 0], [3, 90], [6, 180], [9, 270]].forEach(([n, a]) => g.fillText(String(n), 512 + Math.sin(a * D2R) * 330, 512 - Math.cos(a * D2R) * 330));
+          g.fillStyle = "#006f69"; g.font = '600 46px "JBM"'; g.fillText("MONDAY", 512, 680);
+        });
+        const HANDS = [];
+        for (const s of [1, -1]) {
+          const face = new THREE.Mesh(new THREE.CircleGeometry(0.97, 64), new THREE.MeshStandardMaterial({ map: faceTex, roughness: 0.6, emissive: 0xffffff, emissiveMap: faceTex, emissiveIntensity: 0.1 }));
+          face.position.z = s * 0.085; if (s < 0) face.rotation.y = Math.PI; clockG.add(face);
+          const hand = (len, wd) => { const m = new THREE.Mesh(new THREE.BoxGeometry(wd, len, 0.02).translate(0, len / 2 - 0.08, 0), new THREE.MeshStandardMaterial({ color: 0x15120e, roughness: 0.5 })); m.position.z = s * 0.1; clockG.add(m); return m; };
+          HANDS.push({ s, hr: hand(0.52, 0.07), mn: hand(0.8, 0.045) });
+        }
+        const clockGlow = glow(0x5ff2e6, 3.5);
+
+        // ---- every Monday: the briefings stack up on the table ----
+        const STACK_N = 52;
+        const stackMat = new THREE.MeshStandardMaterial({ map: plainTex, color: 0xbdb4a2, roughness: 0.9 });
+        const stack = new THREE.InstancedMesh(new THREE.BoxGeometry((CW / 2) * FS, 0.05, (LMAX / 2) * FS), stackMat, STACK_N); stack.frustumCulled = false; scene.add(stack);
+
+        // ---- the word: threads of light gather into "briefed" ----
+        const svgNS = "http://www.w3.org/2000/svg", host = document.createElementNS(svgNS, "svg");
+        host.setAttribute("width", "0"); host.setAttribute("height", "0"); host.style.position = "absolute"; document.body.appendChild(host);
+        const WP = [], WSEG = [];
+        window.WORD.contours.forEach((d) => {
+          const p = document.createElementNS(svgNS, "path"); p.setAttribute("d", d); host.appendChild(p);
+          const len = p.getTotalLength(), n = Math.max(8, Math.round(len / 5.0)), first = WP.length;
+          for (let i = 0; i < n; i++) { const qq = p.getPointAtLength((len * i) / n); WP.push(V3(WORD_C.x + qq.x * WS, WORD_C.y - qq.y * WS, WORD_C.z)); WSEG.push([first + i, first + ((i + 1) % n)]); }
+        });
+        const WSRC = WP.map((_, j) => { const i = KEPT[j % KEPT.length], f = 0.55 + 0.45 * hash(j * 3.7); return { i, f, t0: T.word[0] + 0.75 * hash(j * 7 + 1), lift: 2 + 2.5 * hash(j + 5) }; });
+        const wPos = new Float32Array(WSEG.length * 6), wCol = new Float32Array(WSEG.length * 6), wGeo = new THREE.BufferGeometry();
+        wGeo.setAttribute("position", new THREE.BufferAttribute(wPos, 3)); wGeo.setAttribute("color", new THREE.BufferAttribute(wCol, 3));
+        const wLines = new THREE.LineSegments(wGeo, lineMat()); wLines.frustumCulled = false; scene.add(wLines);
+        const beads = new THREE.InstancedMesh(new THREE.SphereGeometry(0.034, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false }), WP.length); beads.frustumCulled = false; scene.add(beads);
+        const WC = WP.map((w, j) => (hash(j * 1.3 + 2) > 0.8 ? TEAL.clone().multiplyScalar(2.2) : BONE.clone().multiplyScalar(1.7)));
+        const wordLight = new THREE.PointLight(0xffd9a8, 0, 30, 1.4); wordLight.position.copy(WORD_C).add(V3(0, -1, 3)); scene.add(wordLight);
+        const WNOW = WP.map(() => V3());
+
+        // ================= camera =================
+        // [film t, look target, distance, azimuth° (0 = from +z), elevation°, fov°]
+        const KF = [
+          [0, [0, 5.4, -5.5], 15, 38, 10, 36], [3.4, [0, 4.9, -4.2], 11.5, 24, 12, 36],
+          [4.4, [0, 10.4, -0.97], 6.2, 6, 3, 34], [7.3, [0, 10.35, -0.97], 6.9, -6, 4, 34],
+          [8.3, [0, 6.6, -1.6], 12.5, 24, 14, 36], [9.7, [0.8, 4.1, -0.4], 7.4, 62, 12, 36], [12.0, [-0.6, 4.0, -0.2], 7.8, 40, 22, 36],
+          [13.8, [0, 3.9, 1.6], 9.5, 14, 30, 36], [14.6, [0, 3.8, 3.2], 13, 90, 62, 38], [15.4, [0, 3.6, 4.4], 9.8, 180, 58, 40], [16.8, [0, 3.6, 4.6], 9.4, 180, 60, 40],
+          [19.6, [0, 3.6, 4.8], 10.2, 180, 56, 40], [20.9, [0, 5.6, 8.0], 10.6, 180, 40, 40], [23.2, [0, 5.2, 7.4], 11.2, 180, 44, 40],
+          [24.6, [0, 4.4, 9.6], 9.4, 332, 16, 36], [25.8, [0, 4.6, 9.6], 9.0, 338, 16, 36],
+          [27.2, [0, 6.0, 6.4], 20, 346, 10, 36], [28.6, [0, 8.2, 7.4], 25, 0, 11, 36], [DUR, [0, 8.2, 7.4], 23.8, 0, 11, 36],
+        ];
+        const camAt = (t) => {
+          let i = 0; while (i < KF.length - 2 && t >= KF[i + 1][0]) i++;
+          const a = KF[i], b = KF[i + 1], u = eIO(r(t, a[0], b[0]));
+          const look = V3(...a[1]).lerp(V3(...b[1]), u);
+          const d = Math.exp(lerp(Math.log(a[2]), Math.log(b[2]), u)), az = lerp(a[3], b[3], u) * D2R, el = lerp(a[4], b[4], u) * D2R;
+          const pos = look.clone().add(V3(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el)).multiplyScalar(d));
+          pos.x += 0.04 * Math.sin(t * 0.7); pos.y += 0.03 * Math.sin(t * 1.1 + 1);
+          return { pos, look, fov: lerp(a[5], b[5], u) };
+        };
+
+        // ================= post =================
+        const post = new THREE.PostProcessing(renderer);
+        const sceneColor = pass(scene, camera).getTextureNode("output");
+        post.outputNode = sceneColor.add(bloom(sceneColor, 0.6, 0.45, 0.88));
+        const m4 = new THREE.Matrix4(), q4 = new THREE.Quaternion(), v3 = V3(), s3 = V3(), e3 = new THREE.Euler();
+
+        function renderAt(t) {
+          clock.t = t;
+          const C = camAt(t);
+          camera.position.copy(C.pos); camera.lookAt(C.look); camera.fov = C.fov; camera.updateProjectionMatrix(); camera.updateMatrixWorld();
+
+          updateThreads(t);
+          HLO.forEach(({ h, sp, p0 }, k) => {
+            const o = r(t, h.t0, h.t0 + 0.25) * (1 - r(t, h.t1 - 0.4, h.t1)), fl = 0.78 + 0.22 * Math.sin(t * 37 + k * 2.1) * Math.sin(t * 13 + k);
+            sp.material.opacity = o * fl * (h.signal ? 1 : 0.7);
+            sp.position.copy(p0).lerp(V3(p0.x * 0.4, BEAM_Y + 1.2, BEAM_Z), 0.5 * r(t, h.t0, h.t1));
+          });
+
+          // the card slides in, rule by rule it is punched, then a line of light reads it
+          const cin = eOut(r(t, T.card, T.card + 0.8));
+          card.position.copy(CARD).add(V3(lerp(9.5, 0, cin), 0, 0));
+          const nP = RULES.filter((rl) => t >= rl.t).length; cardMat.map = CARDT[nP];
+          const toW = (x, y) => V3(card.position.x + (x / cw - 0.5) * CARD_W, card.position.y + (0.5 - y / ch) * CARD_H, CARD.z - 0.012);
+          RULES.forEach((rl, k) => {
+            const [x, y] = holeXY(rl), dt = t - rl.t, read = Math.exp(-(((t - (T.read + 0.08 * rl.col + 0.04 * rl.row) - 0.25) / 0.12) ** 2));
+            holeGlow[k].position.copy(toW(x, y)); holeGlow[k].material.opacity = dt > 0 ? (0.45 + 0.55 * Math.exp(-dt * 4) + 0.6 * read) * (1 - 0.6 * r(t, 9, 10)) : 0;
+            punchFlash[k].position.copy(toW(x, y)).add(V3(0, 0, 0.05)); punchFlash[k].material.opacity = dt > 0 ? 0.9 * Math.exp(-dt * 9) : 0;
+          });
+          const sc = r(t, T.read, T.read + 0.6);
+          scan.position.copy(card.position).add(V3(lerp(-CARD_W / 2 - 0.3, CARD_W / 2 + 0.3, eIO(sc)), 0, 0.03)); scanMat.opacity = sc > 0 && sc < 1 ? 0.85 : 0;
+
+          // the loom runs: the shuttle crosses the shed, the reed beats each pick in
+          const nAll = picksBy(ALLP, t + 0.5);
+          let shX = 99, shO = 0, beat = 0;
+          ALLP.forEach((p, k) => {
+            const fast = p > T.fast && p <= T.full + 0.01, dur = fast ? 0.24 : 0.4, s0 = p - dur - 0.04, u = r(t, s0, p - 0.04);
+            if (t >= s0 && t <= p + 0.05) { const dir = k % 2 ? -1 : 1; shX = lerp(-5.4 * dir, 5.4 * dir, eIO(u)); shO = 1; }
+            beat = Math.max(beat, t < p ? eIn(r(t, p - 0.1, p)) : 1 - e2Out(r(t, p, p + 0.2)));
+          });
+          shuttle.position.set(shX, EYE_Y - 0.02, 0.62); shuttle.visible = shO > 0;
+          shuttleGlow.position.copy(shuttle.position); shuttleGlow.material.opacity = 0.35 * shO;
+          { const pa = weft.geometry.attributes.position; pa.setXYZ(0, shX > 0 ? -4.4 : 4.4, EYE_Y - 0.02, 0.62); pa.setXYZ(1, shX, EYE_Y - 0.02, 0.62); pa.needsUpdate = true; weft.material.opacity = shO * 0.9; }
+          const rz = lerp(0.36, 0.92, beat);
+          for (let k = 0; k < REED_N; k++) { m4.makeTranslation(-4.4 + (8.8 * k) / (REED_N - 1), 4.03, rz); reed.setMatrixAt(k, m4); }
+          reed.instanceMatrix.needsUpdate = true; reedRail.forEach((m) => (m.position.z = rz));
+
+          // the cloth: woven pick by pick, its type comes through, then it is cut, folded and carried to the table
+          const LA = t < T.cut ? (LMAX * woven(PICKS, t)) / PICKS.length : LMAX;
+          const f1 = eIO(r(t, T.fold[0], T.fold[1])), f2 = eIO(r(t, T.fold[1], T.fold[2])), sl = r(t, T.slide[0], T.slide[1]);
+          clothA.visible = LA > 0.01;
+          if (clothA.visible) layCloth(clothA, Math.max(LA, 0.01), f1, f2, sl, 1.4);
+          clothA.material.userData.rv.value = lerp(0, 1.02, r(t, T.resolve[0], T.resolve[1]));
+          const LB = t > T.cut ? (LMAX * woven(PICKS2, t)) / PICKS.length : 0;
+          clothB.visible = LB > 0.01; if (clothB.visible) layCloth(clothB, LB, 0, 0, 0, 0);
+          const cu = r(t, T.cut, T.cut + 0.3);
+          cutGlow.position.set(lerp(-CW / 2, CW / 2, eIO(cu)) / 2, FELL_Y + 0.04, FELL_Z + 0.04); cutGlow.scale.x = CW * eIO(cu) + 0.01; cutGlow.material.opacity = cu > 0 ? 1 - r(t, T.cut + 0.3, T.cut + 0.7) : 0;
+
+          // the clock swings in, the hands reach 09:00, and it rings
+          const s = t - T.clock;
+          let ang = s < 0 ? 72 : 72 * Math.exp(-2.6 * s) * Math.cos(4.6 * s);
+          ang -= 84 * eIn(r(t, T.clockOut, T.clockOut + 0.9));
+          clockPivot.rotation.z = ang * D2R; clockPivot.visible = t > T.clock - 0.2 && t < T.clockOut + 1.0;
+          const mins = 57 + 3 * eIO(r(t, T.clock + 0.6, T.nine)), tick = Math.exp(-(((t - T.nine) / 0.05) ** 2));
+          HANDS.forEach(({ s: sd, hr, mn }) => { mn.rotation.z = -sd * ((mins / 60) * 360 + 3 * tick) * D2R; hr.rotation.z = -sd * (((8 + mins / 60) / 12) * 360) * D2R; });
+          clockG.updateWorldMatrix(true, false); clockGlow.position.setFromMatrixPosition(clockG.matrixWorld);
+          clockGlow.material.opacity = t > T.nine ? 0.9 * Math.exp(-(t - T.nine) * 2.2) : 0;
+          tableKey.intensity = 70 * r(t, 24.2, 25.2);
+
+          // every Monday: the stack grows on the table
+          for (let k = 0; k < STACK_N; k++) {
+            const t0 = T.stack[0] + (T.stack[1] - T.stack[0]) * (k / STACK_N) ** 1.25, u = r(t, t0, t0 + 0.35);
+            const y = SPOT.y + 0.075 + 0.05 * (k + 1) + 1.6 * (1 - E("bounce.out")(u));
+            e3.set(0, (7 + 6 * (hash(k * 5.1) - 0.5)) * D2R, 0); q4.setFromEuler(e3); s3.setScalar(u > 0 ? 1 : 1e-4);
+            m4.compose(v3.set(SPOT.x + 0.05 * (hash(k) - 0.5), y, SPOT.z + 0.05 * (hash(k + 3) - 0.5)), q4, s3); stack.setMatrixAt(k, m4);
+          }
+          stack.instanceMatrix.needsUpdate = true;
+
+          // the word: points leave the kept threads and draw "briefed" in light
+          WP.forEach((w, j) => {
+            const sr = WSRC[j], u = eIO(r(t, sr.t0, sr.t0 + 0.9)), src = warpAt(sr.i, t, sr.f, V3());
+            const mid = src.clone().lerp(w, 0.5); mid.y += sr.lift;
+            const a = src.lerp(mid, u), b = mid.lerp(w, u); WNOW[j].copy(a.lerp(b, u));
+            s3.setScalar(u > 0 ? (u < 1 ? 0.8 : 0.9 + 0.1 * Math.sin(t * 3 + j)) : 1e-4);
+            m4.compose(WNOW[j], q4.identity(), s3); beads.setMatrixAt(j, m4);
+            beads.setColorAt(j, tc3.copy(WC[j]).multiplyScalar(u > 0 ? 1 : 0));
+          });
+          beads.instanceMatrix.needsUpdate = true; if (beads.instanceColor) beads.instanceColor.needsUpdate = true;
+          WSEG.forEach(([a, b], k) => {
+            const ua = r(t, WSRC[a].t0, WSRC[a].t0 + 0.9), ub = r(t, WSRC[b].t0, WSRC[b].t0 + 0.9), o = Math.min(ua, ub) ** 2 * 0.9;
+            wPos.set([WNOW[a].x, WNOW[a].y, WNOW[a].z, WNOW[b].x, WNOW[b].y, WNOW[b].z], k * 6);
+            wCol.set([WC[a].r * o, WC[a].g * o, WC[a].b * o, WC[b].r * o, WC[b].g * o, WC[b].b * o], k * 6);
+          });
+          wGeo.attributes.position.needsUpdate = true; wGeo.attributes.color.needsUpdate = true;
+          wordLight.intensity = 40 * r(t, T.word[0] + 0.6, T.word[1]);
+
+          post.render();
+        }
+
+        for (const tt of [0, 2.6, 5.5, 8.8, 11, 15, 17.5, 21.5, 23.6, 26.5, 29, DUR - 0.5]) renderAt(tt);   // warm every pipeline
+        let last = -1;
+        glRender = (t) => { if (t !== last) { last = t; renderAt(t); } };
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(window.__hfThreeTime || 0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = window.__hf.buildReady || {};
+      window.__hf.buildReady["loom"] = build();
+    </script>
+  </body>
+</html>
