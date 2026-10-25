@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <!--
+      R17 · Prism. One take, 32 s, Three.js (WebGPURenderer, WebGL2 backend, TSL bloom, glass and a reflector floor).
+      Content systems as a prism: your best writing becomes the glass (the voice), stock phrases break against it, one
+      brief goes in as white light and comes out as a spectrum, every colour lands as a finished piece in its own format,
+      a person approves each one, and the month of content gathers into one word. Every piece, phrase and day is one row
+      of a baked table (assets/pieces.js, from bake/pieces.py); score/compose.py reads the same table. Any frame renders
+      on its own.
+    -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/word.js"></script>
+    <script src="assets/pieces.js"></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "./assets/vendor/three.webgpu.js",
+          "three/webgpu": "./assets/vendor/three.webgpu.js",
+          "three/tsl": "./assets/vendor/three.tsl.js"
+        }
+      }
+    </script>
+    <style>
+      @font-face { font-family: "Inter"; src: url("assets/fonts/inter-400.woff2") format("woff2"); font-weight: 400; }
+      @font-face { font-family: "Inter"; src: url("assets/fonts/inter-500.woff2") format("woff2"); font-weight: 500; }
+      @font-face { font-family: "Inter"; src: url("assets/fonts/inter-600.woff2") format("woff2"); font-weight: 600; }
+      @font-face { font-family: "Baskerville"; src: url("assets/fonts/libre-baskerville-400.woff2") format("woff2"); font-weight: 400; }
+      @font-face { font-family: "Baskerville"; src: url("assets/fonts/libre-baskerville-700.woff2") format("woff2"); font-weight: 700; }
+      @font-face { font-family: "JBM"; src: url("assets/fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 100 800; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #040506; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #040506; color: #f5f5f0; font-family: "Inter", sans-serif; }
+      #pr-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #pr-gl { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #pr-ui { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+
+      .hud { position: absolute; top: 48px; font: 500 19px "JBM", monospace; letter-spacing: 0.1em; white-space: nowrap; color: #a3a39f; }
+      #hud-l { left: 64px; color: #f5f5f0; font: 600 19px "Inter", sans-serif; letter-spacing: 0.18em; }
+      #hud-l span { font: 500 19px "JBM", monospace; letter-spacing: 0.1em; color: #00BFB4; margin-left: 16px; }
+      #hud-r { right: 64px; }
+      #hud-r b { font-weight: 500; color: #00BFB4; margin-right: 26px; }
+      #hud-band { position: absolute; left: 0; right: 0; top: 0; height: 170px; background: linear-gradient(rgba(4, 5, 6, 0.9), rgba(4, 5, 6, 0.7) 55%, rgba(4, 5, 6, 0)); }
+
+      .st { position: absolute; left: 92px; bottom: 96px; opacity: 0; }
+      .st i { display: block; font: 600 22px "JBM", monospace; font-style: normal; letter-spacing: 0.24em; color: #00BFB4; }
+      .st b { display: block; margin-top: 8px; font: 700 104px/1 "Baskerville", serif; letter-spacing: -0.02em; color: #f5f5f0; white-space: nowrap; }
+      .st span { display: block; margin-top: 16px; font: 400 28px "Inter", sans-serif; color: #d2d6da; white-space: nowrap; }
+      #st-shade { position: absolute; left: 0; bottom: 0; width: 1400px; height: 460px; opacity: 0;
+        background: radial-gradient(ellipse 70% 90% at 0% 100%, rgba(4, 5, 6, 0.9) 0%, rgba(4, 5, 6, 0.6) 50%, rgba(4, 5, 6, 0) 100%); }
+
+      .stamp { position: absolute; left: 0; top: 0; padding: 7px 14px 7px 12px; border-radius: 22px; opacity: 0; white-space: nowrap;
+        font: 600 19px "JBM", monospace; letter-spacing: 0.12em; color: #04110f; background: #00BFB4; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55); }
+      .stamp.rw { color: #1a1204; background: #ffbf6a; }
+      #cursor { position: absolute; left: 0; top: 0; width: 40px; height: 48px; opacity: 0; }
+
+      #z-shade { position: absolute; left: 0; right: 0; bottom: 0; height: 560px; opacity: 0; background: linear-gradient(rgba(4, 5, 6, 0), rgba(4, 5, 6, 0.86) 45%, rgba(4, 5, 6, 0.94)); }
+      #z-title { position: absolute; left: 0; right: 0; top: 664px; text-align: center; opacity: 0; font: 700 78px/1.1 "Baskerville", serif; letter-spacing: -0.02em; white-space: nowrap; }
+      #z-sub { position: absolute; left: 0; right: 0; top: 768px; text-align: center; opacity: 0; font: 400 30px/1.45 "Inter", sans-serif; color: #d2d6da; }
+      #z-url { position: absolute; left: 0; right: 0; top: 884px; text-align: center; font: 500 30px "JBM", monospace; color: #f5f5f0; white-space: nowrap; }
+      #z-rule { position: absolute; left: 610px; top: 936px; width: 700px; height: 4px; border-radius: 2px; background: #00BFB4; transform: scaleX(0); }
+      #z-note { position: absolute; left: 0; right: 0; top: 970px; text-align: center; opacity: 0; font: 500 19px "JBM", monospace; letter-spacing: 0.3em; color: #a3a39f; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="32" data-width="1920" data-height="1080">
+      <div id="pr-stage" class="clip" data-start="0" data-duration="32" data-track-index="0">
+        <canvas id="pr-gl" width="1920" height="1080"></canvas>
+      </div>
+      <div id="pr-ui" class="clip" data-start="0" data-duration="32" data-track-index="1">
+        <div id="stamps" data-layout-allow-occlusion></div>
+        <svg id="cursor" viewBox="0 0 40 48" data-layout-allow-occlusion><path d="M4 3 L4 38 L13 30 L19 44 L25 41 L19 28 L31 28 Z" fill="#f5f5f0" stroke="#040506" stroke-width="2.5" stroke-linejoin="round"/></svg>
+        <div id="st-shade" data-layout-allow-occlusion></div>
+        <div class="st" id="st-0" data-layout-allow-occlusion><i>01 · VOICE</i><b>Your voice</b><span>Built from your best work.</span></div>
+        <div class="st" id="st-1" data-layout-allow-occlusion><i>02 · GUARDRAILS</i><b>Guardrails</b><span>The phrases that make AI sound like AI, blocked.</span></div>
+        <div class="st" id="st-2" data-layout-allow-occlusion><i>03 · ONE BRIEF</i><b>One brief</b><span>One idea in. Every format out.</span></div>
+        <div class="st" id="st-3" data-layout-allow-occlusion><i>04 · EVERY FORMAT</i><b>Every format</b><span>Each one made for where it lives.</span></div>
+        <div class="st" id="st-4" data-layout-allow-occlusion><i>05 · REVIEW</i><b>Review</b><span>Nothing goes out until you approve it.</span></div>
+        <div id="hud-band" data-layout-allow-occlusion></div>
+        <div class="hud" id="hud-l" data-layout-allow-occlusion>JQ AI SYSTEMS<span>ai content systems</span></div>
+        <div class="hud" id="hud-r" data-layout-allow-occlusion><b id="hud-st">calibrating voice · 8 examples</b><span id="hud-tc">00:00:00:00</span></div>
+        <div id="z-shade" data-layout-allow-occlusion></div>
+        <div id="z-title" data-layout-allow-occlusion>AI Content Systems</div>
+        <div id="z-sub" data-layout-allow-occlusion>On-brand, multilingual,<br>and human-sounding at scale.</div>
+        <div id="z-url" data-layout-allow-occlusion></div>
+        <div id="z-rule" data-layout-allow-occlusion></div>
+        <div id="z-note" data-layout-allow-occlusion>FILM AND SCORE BUILT IN CODE</div>
+      </div>
+      <audio id="score" src="assets/bgm/score.wav" data-start="0" data-duration="32" data-track-index="7" data-volume="0.45"></audio>
+    </div>
+
+    <script type="module">
+      import * as THREE from "three/webgpu";
+      import { pass, reflector, normalWorld, normalView, uv, uniform, color, float, texture, step, smoothstep, abs, exp, clamp } from "three/tsl";
+      import { bloom } from "./assets/vendor/BloomNode.js";
+      import { RoomEnvironment } from "./assets/vendor/RoomEnvironment.js";
+
+      const W = 1920, H = 1080, DUR = 32;
+      // ---- the one table (bake/pieces.py): rays, pieces, pages, phrases and days; score/compose.py reads the same table
+      const { T, rays: RAYS, pieces: PIECES, pages: PAGES, cliches: CLICHES, days: DAYS } = window.TABLE;
+      const PID = Object.fromEntries(PIECES.map((p, i) => [p.id, i]));
+
+      const cl = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+      const r = (t, a, b) => cl((t - a) / (b - a));
+      const lerp = (a, b, u) => a + (b - a) * u;
+      const E = (n) => gsap.parseEase(n);
+      const eOut = E("power3.out"), eIO = E("power2.inOut"), eIn = E("power2.in");
+      const hash = (n) => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+      const D2R = Math.PI / 180;
+      const V3 = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
+
+      // ---- the prism: an equilateral triangle in the xy plane, apex up, 2 deep in z
+      const S = 3.0, HT = (S * Math.sqrt(3)) / 2, PC = V3(0, 7, 0), PZ = 1.0;
+      const PA = V3(0, PC.y + (2 * HT) / 3, 0), PB = V3(-S / 2, PC.y - HT / 3, 0), PCc = V3(S / 2, PC.y - HT / 3, 0);
+      const P1 = PB.clone().lerp(PA, 0.5), P2 = PCc.clone().lerp(PA, 0.5);       // where white light enters and leaves
+      const dirA = (a) => V3(Math.cos(a * D2R), Math.sin(a * D2R), 0);
+      const SRC = P1.clone().addScaledVector(dirA(20), -12);                    // the brief, where the beam starts
+      const VFACE = V3(6, 7, 30);                                              // every piece turns to face this point
+      // where each piece hangs; its ray ends just behind it, so the card is lit from the back
+      const HOME = PIECES.map((p) => V3(...p.pos));
+      const BEHIND = HOME.map((h) => h.clone().addScaledVector(VFACE.clone().sub(h).setY(0).normalize(), -0.6));
+      const SPLIT = V3(...RAYS[2].split);
+      const rayEnd = RAYS.map((ry, i) => (ry.split ? SPLIT : BEHIND[PIECES.findIndex((p) => p.ray === i)]));
+      const COLS = RAYS.map((ry) => new THREE.Color(ry.colour));
+      // the month, and the word it becomes, hang behind the pieces
+      const CAL = V3(8, 6.8, -5), CELL = 1.8, WS = 0.0145;
+      const dayPos = (d) => V3(CAL.x + (d.col - 3) * CELL, CAL.y + (2 - d.row) * CELL, CAL.z);
+
+      // ================= DOM painter =================
+      const $ = (s) => document.querySelector(s);
+      const STS = [[$("#st-0"), 2.2, 3.85], [$("#st-1"), T.guard, 7.75], [$("#st-2"), 9.5, 11.65], [$("#st-3"), T.formats, 18.85], [$("#st-4"), T.review, 23.9]];
+      const nApproved = (t) => PIECES.filter((p) => t >= p.approve).length;
+      const STATE = [[0, () => "calibrating voice · 8 examples"], [3.4, () => "voice spec · 41 rules"], [T.guard, () => "anti-patterns · blocking"], [7.5, () => "anti-patterns · 4 blocked"],
+        [T.brief, () => "brief · one idea"], [T.fan[0], () => "one brief · 6 formats"], [14.8, () => "one brief · 6 formats · 3 languages"],
+        [T.review, (t) => `review · ${nApproved(t)} of 8 approved`], [T.month, () => "a month · 30 days, in your voice"]];
+      const tc = (t) => { const f = Math.floor(t * 30 + 1e-6); return `00:00:${String(Math.floor(f / 30)).padStart(2, "0")}:${String(f % 30).padStart(2, "0")}`; };
+      const URL_TEXT = "ai.joaoqueiros.com/services/content-systems";
+      const STAMP = PIECES.map(() => { const el = document.createElement("div"); el.className = "stamp"; $("#stamps").appendChild(el); return el; });
+      // the person's clicks, in order: approve, or (once) ask for a rewrite
+      const CLICKS = PIECES.flatMap((p, i) => [[p.approve, i], ...(p.rewrite ? [[p.rewrite, i]] : [])]).sort((a, b) => a[0] - b[0]);
+      let glRender = null, corner = null;
+      function paint(t) {
+        if (glRender) glRender(t);
+        const hudO = r(t, 0.4, 0.9) * (1 - r(t, 26.2, 26.7));
+        $("#hud-l").style.opacity = hudO; $("#hud-r").style.opacity = hudO; $("#hud-band").style.opacity = hudO;
+        let st = STATE[0][1]; for (const [a, s] of STATE) if (t >= a) st = s;
+        $("#hud-st").textContent = st(t); $("#hud-tc").textContent = tc(t);
+        let shade = 0;
+        STS.forEach(([el, t0, t1]) => {
+          const a = eOut(r(t, t0, t0 + 0.55)), b = r(t, t1, t1 + 0.35);
+          el.style.opacity = a * (1 - b);
+          el.style.clipPath = `inset(0 ${(100 * (1 - a)).toFixed(1)}% 0 0)`;
+          el.style.transform = `translateX(${(-40 * (1 - a) - 60 * eIO(b)).toFixed(1)}px)`;
+          shade = Math.max(shade, a * (1 - b));
+        });
+        $("#st-shade").style.opacity = shade;
+        if (corner) {
+          // approval stamps ride on each piece's top right corner
+          PIECES.forEach((p, i) => {
+            const el = STAMP[i], c = corner(i), ok = t >= p.approve, rw = p.rewrite && t >= p.rewrite && !ok;
+            el.textContent = ok ? "✓ APPROVED" : "↻ REWRITE"; el.className = "stamp" + (rw ? " rw" : "");
+            const t0 = ok ? p.approve : p.rewrite || 99, u = E("back.out(2.2)")(r(t, t0, t0 + 0.3));
+            el.style.opacity = (ok || rw) && c.vis ? r(t, t0, t0 + 0.12) * (1 - r(t, p.fly - 0.1, p.fly + 0.15)) : 0;
+            el.style.transform = `translate(${(c.x - 160).toFixed(1)}px, ${(c.y + 10).toFixed(1)}px) scale(${(0.6 + 0.4 * u).toFixed(3)})`;
+          });
+          // the cursor moves from click to click
+          let k = 0; while (k < CLICKS.length - 1 && t >= CLICKS[k][0] + 0.05) k++;
+          const [tk, ik] = CLICKS[k], prev = k > 0 ? corner(CLICKS[k - 1][1]) : { x: 1500, y: 1000 }, next = corner(ik);
+          const u = eIO(r(t, k > 0 ? Math.max(CLICKS[k - 1][0] + 0.05, tk - 0.42) : tk - 0.6, tk - 0.04));
+          const press = Math.exp(-(((t - tk) / 0.06) ** 2));
+          $("#cursor").style.opacity = r(t, T.review + 0.3, T.review + 0.6) * (1 - r(t, 24.0, 24.3));
+          $("#cursor").style.transform = `translate(${lerp(prev.x - 90, next.x - 90, u).toFixed(1)}px, ${lerp(prev.y + 30, next.y + 30, u).toFixed(1)}px) scale(${(1 - 0.18 * press).toFixed(3)})`;
+        }
+        $("#z-shade").style.opacity = r(t, T.end - 0.4, T.end + 0.4);
+        const show = (s, a, b, y) => { const u = r(t, a, b); $(s).style.opacity = u; $(s).style.transform = `translateY(${(y * (1 - eOut(u))).toFixed(1)}px)`; };
+        show("#z-title", T.end, T.end + 0.7, 40);
+        show("#z-sub", T.end + 0.45, T.end + 1.1, 20);
+        $("#z-url").textContent = URL_TEXT.slice(0, Math.round(URL_TEXT.length * r(t, T.end + 1.0, T.end + 2.0)));
+        $("#z-rule").style.transform = `scaleX(${E("expo.inOut")(r(t, T.end + 1.8, T.end + 2.6)).toFixed(3)})`;
+        show("#z-note", T.end + 2.4, T.end + 2.9, 0);
+      }
+      const tl = gsap.timeline({ paused: true });
+      const clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+
+      // ================= the 3D film =================
+      async function build() {
+        await Promise.all([document.fonts.load('700 104px "Baskerville"'), document.fonts.load('400 60px "Baskerville"'), document.fonts.load('600 40px "Inter"'), document.fonts.load('400 40px "Inter"'), document.fonts.load('500 30px "JBM"')]);
+        const canvas = $("#pr-gl");
+        // Hide KHR_parallel_shader_compile so every program links before its first draw (see R01, R07, R13).
+        const gl = canvas.getContext("webgl2", { antialias: true, alpha: false, depth: true, stencil: false, preserveDrawingBuffer: true });
+        const getExt = gl.getExtension.bind(gl), getSup = gl.getSupportedExtensions.bind(gl);
+        gl.getExtension = (name) => (name === "KHR_parallel_shader_compile" ? null : getExt(name));
+        gl.getSupportedExtensions = () => getSup().filter((n) => n !== "KHR_parallel_shader_compile");
+        const renderer = new THREE.WebGPURenderer({ canvas, context: gl, antialias: true, forceWebGL: true });
+        renderer.setPixelRatio(1); renderer.setSize(W, H, false);
+        renderer.setClearColor(0x040506, 1);
+        renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
+        await renderer.init();
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x040506);
+        scene.fog = new THREE.Fog(0x040506, 30, 110);
+        const pmrem = new THREE.PMREMGenerator(renderer);
+        const envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+        scene.environment = envTex; scene.environmentIntensity = 0.12;
+        const camera = new THREE.PerspectiveCamera(32, W / H, 0.05, 600);
+        scene.add(new THREE.HemisphereLight(0x30343a, 0x050506, 0.4));
+        const key = new THREE.SpotLight(0xfff4e6, 260, 40, 0.42, 0.9, 1.2); key.position.set(-2, 19, 6); key.target.position.copy(PC).setY(0); scene.add(key, key.target);
+
+        // ---- textures ----
+        const tex = (w, h, draw) => { const c = document.createElement("canvas"); c.width = w; c.height = h; draw(c.getContext("2d"), w, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; t.userData.canvas = c; return t; };
+        const glowTex = tex(256, 256, (g) => { const gr = g.createRadialGradient(128, 128, 0, 128, 128, 128); gr.addColorStop(0, "rgba(255,255,255,1)"); gr.addColorStop(0.2, "rgba(255,255,255,0.5)"); gr.addColorStop(0.55, "rgba(255,255,255,0.1)"); gr.addColorStop(1, "rgba(255,255,255,0)"); g.fillStyle = gr; g.fillRect(0, 0, 256, 256); });
+        const glow = (c, s, o = 0) => { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: c, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, opacity: o })); sp.scale.setScalar(s); scene.add(sp); return sp; };
+        const rrect = (g, x, y, w, h, rad) => { g.beginPath(); g.moveTo(x + rad, y); g.arcTo(x + w, y, x + w, y + h, rad); g.arcTo(x + w, y + h, x, y + h, rad); g.arcTo(x, y + h, x, y, rad); g.arcTo(x, y, x + w, y, rad); g.closePath(); };
+        const wrap = (g, text, maxW) => { const out = []; let line = ""; for (const w of text.split(" ")) { const tr = line ? line + " " + w : w; if (g.measureText(tr).width > maxW && line) { out.push(line); line = w; } else line = tr; } if (line) out.push(line); return out; };
+
+        // a material that is drawn on by a wipe of coloured light, left to right (or top to bottom)
+        const wipeMat = (map, hex, vertical = false, k = 2.6, solid = false) => {
+          const u = uniform(0), o = uniform(1);
+          const m = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: solid, side: THREE.DoubleSide, fog: false });
+          const tx = texture(map), x = vertical ? float(1).sub(uv().y) : uv().x;
+          const inside = step(x.add(0.004), u), live = float(1).sub(smoothstep(1.0, 1.08, u)).mul(smoothstep(0.0, 0.02, u));
+          const edge = exp(abs(x.sub(u)).mul(-70)).mul(live);
+          m.colorNode = tx.rgb.mul(inside).add(color(hex).mul(edge.mul(k)));
+          m.opacityNode = clamp(tx.a.mul(inside).add(edge), 0, 1).mul(o);
+          m.userData.u = u; m.userData.o = o; return m;
+        };
+        // an additive beam of light: a unit cylinder along +y, scaled to its length every frame
+        const beamMat = (hex, gain) => {
+          const o = uniform(0);
+          const m = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false });
+          m.colorNode = color(hex).mul(gain);
+          m.opacityNode = o.mul(normalView.z.abs().pow(1.3)).mul(float(1).sub(smoothstep(0.92, 1.0, uv().y).mul(0.7)));
+          m.userData.o = o; return m;
+        };
+        const UPV = V3(0, 1, 0);
+        const beam = (r0, r1, hex, gain) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, 1, 32, 1, true).translate(0, 0.5, 0), beamMat(hex, gain)); m.frustumCulled = false; scene.add(m); return m; };
+        const aim = (m, a, b, len, o) => { const d = b.clone().sub(a); const L = d.length(); m.position.copy(a); m.quaternion.setFromUnitVectors(UPV, d.normalize()); m.scale.set(1, Math.max(1e-4, Math.min(len, L)), 1); m.material.userData.o.value = len > 1e-3 ? o : 0; };
+
+        // ---- the floor: black and polished, a soft mirror for the glass, the light and the word ----
+        const refl = reflector({ resolutionScale: 0.5 });
+        refl.target.rotateX(-Math.PI / 2); scene.add(refl.target);
+        refl.uvNode = refl.uvNode.add(normalWorld.xz.mul(0.01));
+        const floorMat = new THREE.MeshStandardNodeMaterial({ color: 0x07080a, roughness: 0.55, metalness: 0.0 });
+        floorMat.emissiveNode = refl.rgb.mul(0.42);
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(400, 400).rotateX(-Math.PI / 2), floorMat); scene.add(floor);
+        // pools of coloured light on the floor below each landed piece
+        const poolGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+        const POOLS = HOME.map((h, i) => { const m = new THREE.Mesh(poolGeo, new THREE.MeshBasicMaterial({ map: glowTex, color: COLS[PIECES[i].ray], transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0, fog: false })); m.position.set(h.x, 0.02, h.z); m.scale.setScalar(6); scene.add(m); return m; });
+
+        // ---- the prism: real glass (transmission and dispersion), its edges drawn in light ----
+        const tri = new THREE.Shape(); tri.moveTo(PB.x, PB.y); tri.lineTo(PCc.x, PCc.y); tri.lineTo(PA.x, PA.y); tri.lineTo(PB.x, PB.y);
+        const prismGeo = new THREE.ExtrudeGeometry(tri, { depth: 2 * PZ, bevelEnabled: true, bevelThickness: 0.03, bevelSize: 0.03, bevelSegments: 3 }).translate(0, 0, -PZ);
+        const glassMat = new THREE.MeshPhysicalNodeMaterial({ color: 0xffffff, metalness: 0, roughness: 0.02, transmission: 1, thickness: 2.4, ior: 1.52, dispersion: 6, clearcoat: 1, clearcoatRoughness: 0.02, specularIntensity: 1, envMap: envTex, envMapIntensity: 1.6 });
+        const prism = new THREE.Mesh(prismGeo, glassMat); prism.visible = false; scene.add(prism);
+        const EDGES = [[PA, PB], [PB, PCc], [PCc, PA]].flatMap(([a, b]) => [[a.clone().setZ(PZ), b.clone().setZ(PZ)], [a.clone().setZ(-PZ), b.clone().setZ(-PZ)]]).concat([PA, PB, PCc].map((a) => [a.clone().setZ(PZ), a.clone().setZ(-PZ)]));
+        const edgeM = EDGES.map(() => { const m = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 1, 8, 1, true).translate(0, 0.5, 0), new THREE.MeshBasicMaterial({ color: new THREE.Color(1.6, 2.2, 2.1), transparent: true, opacity: 0, fog: false })); scene.add(m); return m; });
+        // a flash of light that sweeps across each face as it is cut
+        const faceFlash = [[PB, PA, V3(-0.866, 0.5, 0)], [PCc, PA, V3(0.866, 0.5, 0)], [PB, PCc, V3(0, -1, 0)]].map(([a, b, n]) => {
+          const len = a.distanceTo(b), m = new THREE.Mesh(new THREE.PlaneGeometry(len, 2 * PZ), null);
+          const u = uniform(-1), mat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false });
+          mat.colorNode = color(0xbff7f1).mul(2.4); mat.opacityNode = exp(abs(uv().x.sub(u)).mul(-26)).mul(0.9); mat.userData.u = u; m.material = mat;
+          m.position.copy(a.clone().lerp(b, 0.5)).addScaledVector(n, 0.02);
+          const xAxis = b.clone().sub(a).normalize(), zAxis = n.clone(), yAxis = zAxis.clone().cross(xAxis);
+          m.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(xAxis, yAxis, zAxis)); scene.add(m); return m;
+        });
+
+        // ---- the pages of your best writing; their lines lift off as light into the glass ----
+        const PX = 420;   // texture pixels per world unit
+        const PAGE_W = 2.9, PAGE_H = 1.75;
+        const pageO = PAGES.map((pg, n) => {
+          const w = PAGE_W * PX, h = PAGE_H * PX;
+          const paper = tex(w, h, (g) => { rrect(g, 0, 0, w, h, 22); g.fillStyle = "#ece6d9"; g.fill(); g.fillStyle = "#8b8478"; g.font = '500 30px "JBM"'; g.fillText(pg.label, 54, 76); });
+          const ink = tex(w, h, (g) => { g.fillStyle = "#1c1a17"; g.font = '400 62px "Baskerville"'; pg.lines.forEach((ln, k) => g.fillText(ln, 54, 196 + k * 98)); });
+          const grp = new THREE.Group(); grp.position.set(...pg.pos); grp.rotation.set(pg.rot[0] * D2R, pg.rot[1] * D2R, pg.rot[2] * D2R); scene.add(grp);
+          const pm = new THREE.MeshBasicMaterial({ map: paper, transparent: true, depthWrite: false, fog: false });
+          const sheet = new THREE.Mesh(new THREE.PlaneGeometry(PAGE_W, PAGE_H), pm); grp.add(sheet);
+          const im = wipeMat(ink, 0x5ff2e6, true, 3.0); im.userData.u.value = 1.1;
+          const text = new THREE.Mesh(new THREE.PlaneGeometry(PAGE_W, PAGE_H), im); text.position.z = 0.005; grp.add(text);
+          grp.updateMatrixWorld(true);
+          // sample lit pixels of the ink: each becomes a mote that flies into the prism
+          const c = ink.userData.canvas, data = c.getContext("2d").getImageData(0, 0, c.width, c.height).data, pts = [];
+          for (let k = 0; pts.length < 360 && k < 40000; k++) {
+            const x = Math.floor(hash(k * 3.1 + n * 17) * c.width), y = Math.floor(hash(k * 5.7 + n * 29) * c.height);
+            if (data[(y * c.width + x) * 4 + 3] > 140) pts.push({ v: 1 - y / c.height, p: V3((x / c.width - 0.5) * PAGE_W, (0.5 - y / c.height) * PAGE_H, 0.01).applyMatrix4(grp.matrixWorld) });
+          }
+          return { grp, pm, im, pts };
+        });
+        // a point inside the prism for every mote
+        const inside = (k) => { let a = hash(k * 1.3 + 2), b = hash(k * 2.9 + 5); if (a + b > 1) { a = 1 - a; b = 1 - b; } const p = PB.clone().multiplyScalar(1 - a - b).addScaledVector(PCc, a).addScaledVector(PA, b); return p.lerp(PC, 0.22).setZ((hash(k * 4.1 + 9) * 2 - 1) * PZ * 0.8); };
+        const MOTES = pageO.flatMap((po, n) => po.pts.map((q, j) => {
+          const k = n * 1000 + j, rel = PAGES[n].lift + (1 - q.v) * 0.85 + 0.12 * hash(k + 0.5), arr = rel + 0.85 + 0.4 * hash(k + 7);
+          return { from: q.p, to: inside(k), rel, arr, ph: hash(k + 3) * 6.28, mid: q.p.clone().lerp(PC, 0.5).add(V3(0, 1.2 + 1.5 * hash(k + 11), 1.2 * (hash(k + 13) - 0.5))) };
+        }));
+        const moteMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.6, 3.0, 2.9), fog: false });
+        const motes = new THREE.InstancedMesh(new THREE.SphereGeometry(0.02, 6, 4), moteMat, MOTES.length); motes.frustumCulled = false; scene.add(motes);
+
+        // ---- the stock phrases: they fly at the glass and break into shards ----
+        const CLO = CLICHES.map((c, n) => {
+          const fs = 64, padX = 40, g0 = document.createElement("canvas").getContext("2d"); g0.font = `600 ${fs}px "Inter"`;
+          const w = Math.ceil(g0.measureText(c.text).width + 2 * padX), h = 120;
+          const map = tex(w, h, (g) => { rrect(g, 3, 3, w - 6, h - 6, 18); g.fillStyle = "rgba(34,38,44,0.82)"; g.fill(); g.strokeStyle = "rgba(160,166,174,0.8)"; g.lineWidth = 3; g.stroke(); g.fillStyle = "#b9bec5"; g.font = `600 ${fs}px "Inter"`; g.textBaseline = "middle"; g.fillText(c.text, padX, h / 2 + 2); });
+          const pw = w / 170, ph = h / 170, mat = new THREE.MeshBasicMaterial({ map, transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: false });
+          // a jittered 4 by 2 grid, two triangles a cell: sixteen shards that start as one plate
+          const NX = 4, NY = 2, gp = [];
+          for (let j = 0; j <= NY; j++) for (let i = 0; i <= NX; i++) { const edge = i === 0 || i === NX || j === 0 || j === NY; gp.push([i / NX + (edge ? 0 : 0.12 * (hash(n * 50 + i * 7 + j) - 0.5)), j / NY + (edge ? 0 : 0.2 * (hash(n * 60 + i * 3 + j * 11) - 0.5))]); }
+          const shards = [];
+          for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) {
+            const q = (a, b) => gp[(j + b) * (NX + 1) + (i + a)];
+            for (const triUV of [[q(0, 0), q(1, 0), q(1, 1)], [q(0, 0), q(1, 1), q(0, 1)]]) {
+              const cx = (triUV[0][0] + triUV[1][0] + triUV[2][0]) / 3, cy = (triUV[0][1] + triUV[1][1] + triUV[2][1]) / 3;
+              const geo = new THREE.BufferGeometry();
+              geo.setAttribute("position", new THREE.Float32BufferAttribute(triUV.flatMap(([u, v]) => [(u - cx) * pw, (v - cy) * ph, 0]), 3));
+              geo.setAttribute("uv", new THREE.Float32BufferAttribute(triUV.flat(), 2)); geo.computeVertexNormals();
+              const m = new THREE.Mesh(geo, mat); scene.add(m);
+              shards.push({ m, off: V3((cx - 0.5) * pw, (cy - 0.5) * ph, 0), k: shards.length });
+            }
+          }
+          // it hits the face it flies at
+          const right = c.start[0] > 0, a = right ? PCc : PB, s = 0.3 + 0.4 * hash(n + 4);
+          const hitP = a.clone().lerp(PA, s).add(V3(0, 0, c.start[2] * 0.25)), nrm = right ? V3(0.866, 0.5, 0) : V3(-0.866, 0.5, 0);
+          const back = V3(0, 0, 0.6).addScaledVector(nrm, 0.9).add(V3(right ? pw / 2 : -pw / 2, 0, 0));
+          const flash = glow(0x9ff8f0, 1.8);
+          return { c, mat, shards, hitP: hitP.add(back), nrm, flash, start: V3(...c.start), pw };
+        });
+
+        // ---- the brief: one card, one line, where the white light starts ----
+        const BW = 4.2, BH = 1.25;
+        const briefMap = tex(BW * PX, BH * PX, (g, w, h) => { rrect(g, 3, 3, w - 6, h - 6, 26); g.fillStyle = "rgba(12,15,19,0.94)"; g.fill(); g.strokeStyle = "rgba(245,245,240,0.8)"; g.lineWidth = 4; g.stroke(); g.fillStyle = "#00BFB4"; g.font = '600 34px "JBM"'; g.fillText("BRIEF · ONE IDEA", 56, 104); g.fillStyle = "#f5f5f0"; g.font = '400 66px "Baskerville"'; g.fillText("Our new studio opens in Porto.", 56, 222); });
+        const briefM = wipeMat(briefMap, 0xffffff);
+        const brief = new THREE.Mesh(new THREE.PlaneGeometry(BW, BH), briefM); brief.position.copy(SRC).add(V3(-BW / 2 - 0.15, 0, 0)); scene.add(brief);
+        const beamIn = beam(0.05, 0.05, 0xffffff, 2.6), beamInCore = beam(0.018, 0.018, 0xffffff, 4.0), beamGlass = beam(0.06, 0.07, 0xffffff, 2.0);
+        const gSrc = glow(0xffffff, 1.3), gIn = glow(0xffffff, 3.2), gOut = glow(0xffffff, 3.6);
+        gSrc.position.copy(SRC); gIn.position.copy(P1); gOut.position.copy(P2);
+
+        // ---- the spectrum: one ray per colour, and three more off the yellow for the languages ----
+        const RAYM = RAYS.map((ry, i) => [beam(0.03, 0.09, ry.colour, 2.2), beam(0.012, 0.03, ry.colour, 3.4)]);
+        const SUBM = PIECES.filter((p) => p.ray === 2).map(() => [beam(0.05, 0.08, RAYS[2].colour, 2.2), beam(0.016, 0.026, RAYS[2].colour, 3.4)]);
+        const gEnd = PIECES.map((p) => glow(COLS[p.ray], 1.4));
+        const gSplit = glow(COLS[2], 2.2); gSplit.position.copy(SPLIT);
+
+        // ---- the pieces: one card per format, each drawn for where it lives ----
+        const drawCard = (p, alt) => (g, w, h) => {
+          const col = RAYS[p.ray].colour, title = alt ? p.title2 : p.title, body = alt ? p.body2 : p.body;
+          rrect(g, 4, 4, w - 8, h - 8, 34); g.fillStyle = "rgba(11,14,18,0.95)"; g.fill(); g.lineWidth = 5; g.strokeStyle = col; g.globalAlpha = 0.9; g.stroke(); g.globalAlpha = 1;
+          g.fillStyle = col; rrect(g, 40, 38, 120, 12, 6); g.fill();
+          g.fillStyle = "#9aa3ad"; g.font = '500 34px "JBM"'; g.fillText(p.label, 40, 108);
+          const L = 40, R = w - 40;
+          if (p.id === "post") {
+            g.fillStyle = col; g.globalAlpha = 0.16; rrect(g, L, 140, R - L, 520, 24); g.fill(); g.globalAlpha = 1;
+            g.fillStyle = "#f5f1e6"; g.font = '700 96px "Baskerville"'; wrap(g, title, R - L - 60).forEach((ln, k) => g.fillText(ln, L + 30, 300 + k * 112));
+            g.fillStyle = "#cfd4da"; g.font = '400 44px "Inter"'; body.forEach((ln, k) => g.fillText(ln, L, 780 + k * 62));
+            g.fillStyle = col; g.font = '500 32px "JBM"'; g.fillText("♥ 248   ↻ 31", L, h - 60);
+          } else if (p.id === "thread") {
+            body.forEach((ln, k) => {
+              const y = 150 + k * 300; g.fillStyle = "rgba(255,255,255,0.05)"; rrect(g, L, y, R - L, 262, 22); g.fill();
+              g.fillStyle = col; g.beginPath(); g.arc(L + 54, y + 62, 30, 0, 7); g.fill();
+              g.fillStyle = "#f5f1e6"; g.font = '500 44px "Inter"'; wrap(g, ln, R - L - 150).forEach((s, j) => g.fillText(s, L + 112, y + 76 + j * 58));
+            });
+          } else if (p.id === "en" || p.id === "pt" || p.id === "fr") {
+            g.fillStyle = col; g.globalAlpha = 0.18; rrect(g, L, 140, R - L, 230, 20); g.fill(); g.globalAlpha = 1;
+            g.fillStyle = "#f5f1e6"; g.font = '700 70px "Baskerville"'; g.fillText(title, L, 470);
+            g.fillStyle = "#cfd4da"; g.font = '400 40px "Inter"'; body.forEach((ln, k) => g.fillText(ln, L, 560 + k * 60));
+            g.fillStyle = "#9aa3ad"; g.font = '500 30px "JBM"'; g.fillText(p.id === "pt" ? "O estúdio" : p.id === "fr" ? "Le studio" : "The studio", L, h - 64);
+          } else if (p.id === "blog") {
+            g.fillStyle = col; g.globalAlpha = 0.18; rrect(g, L, 140, 300, 230, 20); g.fill(); g.globalAlpha = 1;
+            g.fillStyle = "#f5f1e6"; g.font = '700 74px "Baskerville"'; g.fillText(title, L + 340, 250); g.fillStyle = "#9aa3ad"; g.font = '500 30px "JBM"'; g.fillText("4 MIN READ · DRAFT", L + 340, 320);
+            g.fillStyle = "#cfd4da"; g.font = '400 40px "Inter"'; body.forEach((ln, k) => g.fillText(ln, L, 470 + k * 62));
+          } else if (p.id === "caption") {
+            g.fillStyle = "#f5f1e6"; g.font = '600 64px "Inter"'; g.fillText(title, L, 228);
+            g.fillStyle = col; g.font = '500 38px "JBM"'; g.fillText(body[0], L, 310);
+          } else if (p.id === "short") {
+            const gr = g.createLinearGradient(0, 130, 0, h); gr.addColorStop(0, col); gr.addColorStop(1, "rgba(11,14,18,0)"); g.globalAlpha = 0.35; g.fillStyle = gr; rrect(g, L, 140, R - L, h - 200, 24); g.fill(); g.globalAlpha = 1;
+            g.fillStyle = "#f5f1e6"; g.beginPath(); g.moveTo(w / 2 - 34, 400); g.lineTo(w / 2 + 44, 450); g.lineTo(w / 2 - 34, 500); g.closePath(); g.fill();
+            g.font = '700 74px "Baskerville"'; g.fillText(title, L + 20, h - 250);
+            g.fillStyle = "#cfd4da"; g.font = '500 32px "JBM"'; g.fillText(body[0], L + 20, h - 180);
+            g.fillStyle = "rgba(255,255,255,0.25)"; g.fillRect(L + 20, h - 130, R - L - 40, 6); g.fillStyle = col; g.fillRect(L + 20, h - 130, (R - L - 40) * 0.35, 6);
+          }
+        };
+        const PO = PIECES.map((p, i) => {
+          const grp = new THREE.Group(); grp.position.copy(HOME[i]); scene.add(grp);
+          grp.lookAt(VFACE);
+          const mk = (alt) => { const m = wipeMat(tex(p.w * PX, p.h * PX, drawCard(p, alt)), RAYS[p.ray].colour, false, 2.6, true); const mesh = new THREE.Mesh(new THREE.PlaneGeometry(p.w, p.h), m); grp.add(mesh); return mesh; };
+          const a = mk(false), b = p.title2 ? mk(true) : null;
+          return { grp, a, b, q0: grp.quaternion.clone() };
+        });
+
+        // ---- the month: thirty days of light, then one word ----
+        const tileTex = tex(128, 128, (g) => { rrect(g, 6, 6, 116, 116, 18); g.fillStyle = "rgba(255,255,255,0.28)"; g.fill(); g.lineWidth = 5; g.strokeStyle = "rgba(255,255,255,1)"; g.stroke(); });
+        const tiles = new THREE.InstancedMesh(new THREE.PlaneGeometry(CELL * 0.86, CELL * 0.86), new THREE.MeshBasicMaterial({ map: tileTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }), DAYS.length);
+        tiles.frustumCulled = false; scene.add(tiles);
+        const numTex = tex(7 * 160, 5 * 160, (g) => { g.fillStyle = "#f5f5f0"; g.font = '500 34px "JBM"'; DAYS.forEach((d) => g.fillText(String(d.day).padStart(2, "0"), d.col * 160 + 20, d.row * 160 + 46)); });
+        const numMat = new THREE.MeshBasicMaterial({ map: numTex, transparent: true, depthWrite: false, opacity: 0, fog: false });
+        const nums = new THREE.Mesh(new THREE.PlaneGeometry(7 * CELL, 5 * CELL), numMat); nums.position.copy(CAL).add(V3(0, 0, 0.02)); scene.add(nums);
+        const svgNS = "http://www.w3.org/2000/svg", host = document.createElementNS(svgNS, "svg");
+        host.setAttribute("width", "0"); host.setAttribute("height", "0"); host.style.position = "absolute"; document.body.appendChild(host);
+        const WP = [];
+        window.WORD.contours.forEach((d) => {
+          const p = document.createElementNS(svgNS, "path"); p.setAttribute("d", d); host.appendChild(p);
+          const len = p.getTotalLength(), n = Math.max(8, Math.round(len / 5.4));
+          for (let i = 0; i < n; i++) { const q = p.getPointAtLength((len * i) / n); WP.push(V3(CAL.x + q.x * WS, CAL.y - q.y * WS, CAL.z)); }
+        });
+        // the word in the spectrum, red to violet from left to right
+        const specAt = (x) => { const f = cl((x - (CAL.x - 7.2)) / 14.4) * 5, i = Math.min(4, Math.floor(f)); return COLS[i].clone().lerp(COLS[i + 1], f - i); };
+        const beads = new THREE.InstancedMesh(new THREE.SphereGeometry(0.06, 10, 6), new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false }), WP.length);
+        beads.frustumCulled = false; scene.add(beads);
+        const BEADC = WP.map((w) => specAt(w.x).multiplyScalar(2.4));
+        const wordLight = new THREE.PointLight(0xffffff, 0, 30, 1.4); wordLight.position.copy(CAL).add(V3(0, 0, 3)); scene.add(wordLight);
+
+        // ================= camera =================
+        // [film t, look target, distance, azimuth° (0 = from +z), elevation°, fov°]; a piece id frames that piece from the front
+        const faceAz = (i) => Math.atan2(VFACE.x - HOME[i].x, VFACE.z - HOME[i].z) / D2R;
+        const PK = (t, id, d, fov = 32, el = 2) => [t, id, d, id === "news" ? faceAz(PID.pt) : faceAz(PID[id]), el, fov];
+        const KF = [
+          [0, "page0", 3.3, 14, 0, 32], [1.6, "page0", 4.6, 10, 1, 33], [3.2, "prism", 10.5, 12, 4, 34],
+          [4.4, "prism", 12.5, 22, 5, 36], [7.6, "prism", 13.0, 34, 6, 36],
+          [8.6, [-10.2, 2.9, 0], 10.5, 8, 3, 36], [10.0, [-1.5, 6.6, 0], 17, 4, 2, 36], [11.6, [5, 6.6, 0], 21, 2, 2, 38],
+          PK(12.25, "post", 7.4), PK(12.95, "post", 6.6), PK(13.4, "thread", 7.2), PK(14.1, "thread", 6.5),
+          PK(14.7, "news", 12.5, 34), PK(15.6, "news", 11.6, 34), PK(16.0, "blog", 7.6), PK(16.7, "blog", 6.8),
+          PK(17.1, "caption", 6.0), PK(17.75, "caption", 5.6), PK(18.15, "short", 6.2), PK(18.8, "short", 5.8),
+          [19.8, "review", 24.5, -10, 2, 36], [23.9, "review", 23.2, -8, 2, 36],
+          [25.4, "cal", 25, 0, 3, 36], [26.5, "cal", 23.5, 0, 3, 36], [28.3, "word", 26, 0, 4, 34], [DUR, "word", 24.5, 0, 4, 34],
+        ];
+        const targetOf = (s) => {
+          if (Array.isArray(s)) return V3(...s);
+          if (s === "page0") return V3(...PAGES[0].pos);
+          if (s === "prism") return PC.clone().add(V3(0, 0.2, 0));
+          if (s === "review") return V3(16.4, 6.6, 0);
+          if (s === "cal") return CAL.clone().add(V3(-1.1, -0.4, 0));
+          if (s === "word") return CAL.clone().add(V3(-1.1, -2.6, 0));
+          if (s === "news") return HOME[PID.pt].clone().add(V3(-0.9, -0.3, 0));
+          // a piece, held right of centre so the station titles have room
+          const i = PID[s], h = HOME[i]; return h.clone().add(V3(-0.85 * Math.cos(faceAz(i) * D2R), 0, 0.85 * Math.sin(faceAz(i) * D2R)));
+        };
+        const camAt = (t) => {
+          let i = 0; while (i < KF.length - 2 && t >= KF[i + 1][0]) i++;
+          const a = KF[i], b = KF[i + 1], u = eIO(r(t, a[0], b[0]));
+          const look = targetOf(a[1]).lerp(targetOf(b[1]), u);
+          const d = Math.exp(lerp(Math.log(a[2]), Math.log(b[2]), u)), az = lerp(a[3], b[3], u) * D2R, el = lerp(a[4], b[4], u) * D2R;
+          const pos = look.clone().add(V3(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el)).multiplyScalar(d));
+          pos.x += 0.04 * Math.sin(t * 0.7); pos.y += 0.03 * Math.sin(t * 1.1 + 1);
+          return { pos, look, fov: lerp(a[5], b[5], u) };
+        };
+        // the screen position of a piece's top right corner, for the stamps and the cursor
+        corner = (i) => {
+          const p = PIECES[i], c = V3(p.w / 2, p.h / 2, 0.02).applyMatrix4(PO[i].grp.matrixWorld);
+          const inFront = c.clone().applyMatrix4(camera.matrixWorldInverse).z < 0; c.project(camera);
+          return { x: (c.x * 0.5 + 0.5) * W, y: (-c.y * 0.5 + 0.5) * H, vis: inFront && Math.abs(c.x) < 1.02 && Math.abs(c.y) < 1.02 };
+        };
+
+        // ================= post =================
+        const post = new THREE.PostProcessing(renderer);
+        const sceneColor = pass(scene, camera).getTextureNode("output");
+        post.outputNode = sceneColor.add(bloom(sceneColor, 0.7, 0.45, 0.85));
+        const m4 = new THREE.Matrix4(), q4 = new THREE.Quaternion(), v3 = V3(), s3 = V3(), tc3 = new THREE.Color();
+
+        function renderAt(t) {
+          clock.t = t;
+          const C = camAt(t);
+          camera.position.copy(C.pos); camera.lookAt(C.look); camera.fov = C.fov; camera.updateProjectionMatrix(); camera.updateMatrixWorld();
+
+          // pages: they hang in the dark, their lines lift off as light, then the paper goes
+          pageO.forEach((po, n) => {
+            const pg = PAGES[n], a = r(t, 0, 0.4), lift = r(t, pg.lift, pg.lift + 0.95), gone = r(t, pg.lift + 0.75, pg.lift + 1.15);
+            po.im.userData.u.value = 1.1 - 1.12 * lift; po.im.userData.o.value = a;
+            po.pm.opacity = a * (1 - gone); po.grp.visible = gone < 1;
+            po.grp.position.set(pg.pos[0], pg.pos[1] + 0.06 * Math.sin(t * 0.8 + n) + 0.4 * eIn(gone), pg.pos[2]);
+          });
+          // motes: from the ink to the glass, then they live inside it; the white light makes them glow
+          const lit = r(t, T.enter, T.enter + 0.3) * (1 - 0.6 * r(t, 11, 13));
+          MOTES.forEach((mo, j) => {
+            const u = r(t, mo.rel, mo.arr), e = eIO(u);
+            if (t < mo.rel) { s3.setScalar(0); }
+            else {
+              const a = mo.from.clone().lerp(mo.mid, e), b = mo.mid.clone().lerp(mo.to, e); v3.copy(a.lerp(b, e));
+              if (u >= 1) { const w = t - mo.arr; v3.x += 0.05 * Math.sin(w * 0.9 + mo.ph); v3.y += 0.05 * Math.cos(w * 0.7 + mo.ph); }
+              s3.setScalar(u < 1 ? 1.3 : 0.55 + 0.5 * lit);
+            }
+            m4.compose(v3, q4.identity(), s3); motes.setMatrixAt(j, m4);
+          });
+          motes.instanceMatrix.needsUpdate = true;
+
+          // the prism: its edges draw in light, each face is cut with a flash, then it is glass
+          EDGES.forEach(([a, b], k) => { const u = eOut(r(t, 1.3 + 0.13 * k, 1.75 + 0.13 * k)); const m = edgeM[k], d = b.clone().sub(a); m.position.copy(a); m.quaternion.setFromUnitVectors(UPV, d.clone().normalize()); m.scale.set(1, Math.max(1e-4, d.length() * u), 1); m.material.opacity = (u > 0 ? 0.9 : 0) * (1 - 0.55 * r(t, 3.6, 4.4)); });
+          T.cut.forEach((tc0, k) => { faceFlash[k].material.userData.u.value = lerp(-0.2, 1.2, r(t, tc0, tc0 + 0.42)); faceFlash[k].visible = t > tc0 && t < tc0 + 0.45; });
+          prism.visible = t >= T.cut[0];
+
+          // the stock phrases fly at the glass and break
+          CLO.forEach((co) => {
+            const hit = co.c.hit, fly = eIn(r(t, hit - 1.7, hit)), dt = t - hit;
+            const p0 = co.start.clone().lerp(co.hitP, fly);
+            co.shards.forEach((sh) => {
+              const m = sh.m;
+              if (dt < 0) { m.position.copy(p0).add(sh.off); m.rotation.set(0, 0, 0); }
+              else {
+                const k = sh.k, vel = co.nrm.clone().multiplyScalar(2.2 + 1.6 * hash(k + co.pw)).add(V3((hash(k * 3 + 1) - 0.5) * 2.4, 1.0 + 1.6 * hash(k * 5 + 2), 1.4 * (hash(k * 7 + 3) - 0.2)));
+                v3.copy(co.hitP).add(sh.off).addScaledVector(vel, dt); v3.y -= 0.5 * 7.5 * dt * dt; v3.y = Math.max(0.03, v3.y);
+                m.position.copy(v3); m.rotation.set(dt * (hash(k + 9) - 0.5) * 9, dt * (hash(k + 4) - 0.5) * 7, dt * (hash(k + 6) - 0.5) * 8);
+              }
+            });
+            co.mat.opacity = r(t, hit - 1.7, hit - 1.4) * (1 - r(dt, 0.5, 1.4));
+            co.mat.color.setScalar(dt > 0 ? 1 - 0.55 * r(dt, 0, 0.3) : 1);
+            co.flash.position.copy(co.hitP).addScaledVector(co.nrm, -0.3); co.flash.material.opacity = dt > 0 ? 0.8 * Math.exp(-dt * 7) : 0;
+          });
+
+          // the brief, then white light into the glass
+          briefM.userData.u.value = 1.1 * r(t, T.brief, T.brief + 0.5); briefM.userData.o.value = 1 - r(t, 11.2, 11.8);
+          const fire = eIn(r(t, T.fire, T.enter)), fade = 1 - 0.5 * r(t, 18.5, 19.5) - 0.5 * r(t, 24.2, 25.0);
+          aim(beamIn, SRC, P1, SRC.distanceTo(P1) * fire, 0.5 * fade); aim(beamInCore, SRC, P1, SRC.distanceTo(P1) * fire, 0.8 * fade);
+          const gl2 = r(t, T.enter, T.enter + 0.14);
+          aim(beamGlass, P1, P2, P1.distanceTo(P2) * gl2, 0.35 * fade);
+          gSrc.material.opacity = 0.9 * r(t, T.fire - 0.2, T.fire) * fade;
+          gIn.material.opacity = 0.9 * r(t, T.enter - 0.05, T.enter) * fade; gOut.material.opacity = 0.8 * gl2 * fade;
+
+          // the spectrum fans out, then each ray runs to its piece
+          RAYS.forEach((ry, i) => {
+            const L = P2.distanceTo(rayEnd[i]), f0 = T.fan[0] + 0.14 * i, l0 = 4.2 * eOut(r(t, f0, f0 + 0.9));
+            const len = lerp(l0, L, eIn(r(t, ry.land - 0.5, ry.land)));
+            const o = r(t, f0, f0 + 0.2) * fade;
+            aim(RAYM[i][0], P2, rayEnd[i], len, 0.4 * o); aim(RAYM[i][1], P2, rayEnd[i], len, 0.7 * o);
+          });
+          gSplit.material.opacity = 0.8 * r(t, RAYS[2].land - 0.05, RAYS[2].land + 0.1) * fade;
+          let si = 0;
+          PIECES.forEach((p, i) => {
+            const po = PO[i];
+            if (p.ray === 2) { const from = SPLIT, L = from.distanceTo(BEHIND[i]), len = L * eIn(r(t, p.land - 0.4, p.land)); aim(SUBM[si][0], from, BEHIND[i], len, 0.4 * fade); aim(SUBM[si][1], from, BEHIND[i], len, 0.7 * fade); si++; }
+            // a piece is drawn on by its colour when its ray arrives; the caption is rewritten once
+            const wipe = 1.1 * r(t, p.land, p.land + 0.7);
+            const fly = eIO(r(t, p.fly, p.fly + 0.9)), gone = r(t, p.fly + 0.6, p.fly + 0.95);
+            if (po.b) {
+              po.a.material.userData.u.value = t < p.rewrite + 0.1 ? wipe : 1.1 * (1 - r(t, p.rewrite + 0.1, p.rewrite + 0.6));
+              po.b.material.userData.u.value = 1.1 * r(t, p.rewrite + 0.6, p.rewrite + 1.2);
+              po.b.material.userData.o.value = 1 - gone;
+            } else po.a.material.userData.u.value = wipe;
+            po.a.material.userData.o.value = 1 - gone;
+            // into the month: the piece flies to its day and becomes a tile
+            const day = DAYS[p.day - 1], dp = dayPos(day);
+            const mid = HOME[i].clone().lerp(dp, 0.5).add(V3(0, 1.5, 2));
+            po.grp.position.copy(HOME[i].clone().lerp(mid, fly).lerp(mid.clone().lerp(dp, fly), fly));
+            po.grp.quaternion.copy(po.q0).slerp(q4.identity(), fly);
+            po.grp.scale.setScalar(lerp(1, (CELL * 0.8) / Math.max(p.w, p.h), fly));
+            po.grp.visible = gone < 1;
+            gEnd[i].position.copy(BEHIND[i]); gEnd[i].material.opacity = t > p.land ? (0.8 * Math.exp(-(t - p.land) * 3) + 0.15) * fade : 0;
+            POOLS[i].material.opacity = 0.32 * r(t, p.land, p.land + 0.6) * (1 - r(t, 24.2, 25.2));
+          });
+
+          // the month: tiles light as pieces arrive and the rest of the days fill; then they become the word
+          const out = r(t, T.beads[0], T.beads[0] + 1.2);
+          DAYS.forEach((d, j) => {
+            const p = d.piece ? PIECES[PID[d.piece]] : null, on = p ? r(t, p.fly + 0.7, p.fly + 0.95) : E("back.out(2)")(r(t, d.pop, d.pop + 0.25));
+            const pos = dayPos(d); s3.setScalar(cl(on, 0, 1.3) * (1 - 0.6 * out) + 1e-4);
+            m4.compose(pos, q4.identity(), s3); tiles.setMatrixAt(j, m4);
+            tiles.setColorAt(j, tc3.copy(COLS[d.ray]).multiplyScalar((p ? 1.5 : 1.1) * cl(on) * (1 - out)));
+          });
+          tiles.instanceMatrix.needsUpdate = true; if (tiles.instanceColor) tiles.instanceColor.needsUpdate = true;
+          numMat.opacity = 0.55 * r(t, 24.9, 25.4) * (1 - r(t, T.beads[0] - 0.2, T.beads[0] + 0.3));
+          WP.forEach((w, j) => {
+            const d = DAYS[j % DAYS.length], src = dayPos(d).add(V3((hash(j) - 0.5) * 1.2, (hash(j + 1) - 0.5) * 1.2, 0));
+            const t0 = T.beads[0] + 0.8 * hash(j * 7 + 1), u = eIO(r(t, t0, t0 + 0.9));
+            const m = src.clone().lerp(w, 0.5).add(V3(0, 0, 2.2 * hash(j + 5))), a = src.clone().lerp(m, u), c = m.lerp(w, u);
+            const p = a.lerp(c, u), tw = 0.85 + 0.15 * Math.sin(t * 3 + j);
+            s3.setScalar(u > 0 ? (u < 1 ? 0.85 : tw) : 0);
+            m4.compose(p, q4.identity(), s3); beads.setMatrixAt(j, m4);
+            beads.setColorAt(j, tc3.copy(BEADC[j]).multiplyScalar(u < 1 ? 1.4 : 1));
+          });
+          beads.instanceMatrix.needsUpdate = true; if (beads.instanceColor) beads.instanceColor.needsUpdate = true;
+          wordLight.intensity = 30 * r(t, T.beads[0] + 0.6, T.beads[1]);
+
+          post.render();
+        }
+
+        for (const tt of [0, 2.6, 5.2, 9.4, 12.6, 15, 20, 23, 25.5, 27.5, DUR - 0.5]) renderAt(tt);   // warm every pipeline
+        let last = -1;
+        glRender = (t) => { if (t !== last) { last = t; renderAt(t); } };
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(window.__hfThreeTime || 0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = window.__hf.buildReady || {};
+      window.__hf.buildReady["prism"] = build();
+    </script>
+  </body>
+</html>
