@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <!--
+      R16 · Lighthouse. One take, 32 s, Three.js (WebGPURenderer, WebGL2 backend, TSL bloom and a reflector sea).
+      Lead generation as a lighthouse at night: the beam is the search, the boats are prospects, the harbour is the
+      pipeline. Every boat is one row of a baked table (assets/boats.js, from bake/boats.py): where it is, when the beam
+      first finds it, when it is scored and its score. The beam's path is in the same table, so score/compose.py hears
+      exactly what the picture shows. Any frame renders on its own.
+    -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/word.js"></script>
+    <script src="assets/boats.js"></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "./assets/vendor/three.webgpu.js",
+          "three/webgpu": "./assets/vendor/three.webgpu.js",
+          "three/tsl": "./assets/vendor/three.tsl.js"
+        }
+      }
+    </script>
+    <style>
+      @font-face { font-family: "Inter"; src: url("assets/fonts/inter-400.woff2") format("woff2"); font-weight: 400; }
+      @font-face { font-family: "Inter"; src: url("assets/fonts/inter-500.woff2") format("woff2"); font-weight: 500; }
+      @font-face { font-family: "Inter"; src: url("assets/fonts/inter-600.woff2") format("woff2"); font-weight: 600; }
+      @font-face { font-family: "Baskerville"; src: url("assets/fonts/libre-baskerville-400.woff2") format("woff2"); font-weight: 400; }
+      @font-face { font-family: "Baskerville"; src: url("assets/fonts/libre-baskerville-700.woff2") format("woff2"); font-weight: 700; }
+      @font-face { font-family: "JBM"; src: url("assets/fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 100 800; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #04070b; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #04070b; color: #f5f5f0; font-family: "Inter", sans-serif; }
+      #lh-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #lh-gl { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #lh-ui { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+
+      .hud { position: absolute; top: 48px; font: 500 19px "JBM", monospace; letter-spacing: 0.1em; white-space: nowrap; color: #a3a39f; }
+      #hud-l { left: 64px; color: #f5f5f0; font: 600 19px "Inter", sans-serif; letter-spacing: 0.18em; }
+      #hud-l span { font: 500 19px "JBM", monospace; letter-spacing: 0.1em; color: #00BFB4; margin-left: 16px; }
+      #hud-r { right: 64px; }
+      #hud-r b { font-weight: 500; color: #00BFB4; margin-right: 26px; }
+      #hud-band { position: absolute; left: 0; right: 0; top: 0; height: 170px; background: linear-gradient(rgba(4, 7, 11, 0.9), rgba(4, 7, 11, 0.7) 55%, rgba(4, 7, 11, 0)); }
+
+      .st { position: absolute; left: 92px; bottom: 96px; opacity: 0; }
+      .st i { display: block; font: 600 22px "JBM", monospace; font-style: normal; letter-spacing: 0.24em; color: #00BFB4; }
+      .st b { display: block; margin-top: 8px; font: 700 104px/1 "Baskerville", serif; letter-spacing: -0.02em; color: #f5f5f0; white-space: nowrap; }
+      .st span { display: block; margin-top: 16px; font: 400 28px "Inter", sans-serif; color: #cfd6dd; white-space: nowrap; }
+      #st-shade { position: absolute; left: 0; bottom: 0; width: 1300px; height: 440px; opacity: 0;
+        background: radial-gradient(ellipse 70% 90% at 0% 100%, rgba(4, 7, 11, 0.88) 0%, rgba(4, 7, 11, 0.55) 50%, rgba(4, 7, 11, 0) 100%); }
+
+      .ec { position: absolute; left: 0; top: 0; width: 430px; padding: 22px 26px; border-radius: 16px; opacity: 0;
+        background: rgba(8, 13, 19, 0.88); border: 2px solid rgba(201, 161, 74, 0.85); }
+      .ec i { display: block; font: 500 17px "JBM", monospace; font-style: normal; letter-spacing: 0.08em; color: #a9b3bd; white-space: nowrap; }
+      .ec b { display: block; margin-top: 8px; font: 600 30px "Inter", sans-serif; color: #f5f1e6; white-space: nowrap; }
+      .ec span { display: block; margin-top: 10px; font: 500 16px "JBM", monospace; letter-spacing: 0.12em; color: #00BFB4; white-space: nowrap; }
+      .sc { position: absolute; left: 0; top: 0; padding: 1px 7px; border-radius: 7px; background: rgba(4, 7, 11, 0.72);
+        font: 600 22px "JBM", monospace; color: #e6edf2; white-space: nowrap; opacity: 0; }
+      .sc.hot { font-size: 30px; color: #ffbf6a; }
+
+      #dr { position: absolute; left: 1150px; top: 250px; width: 660px; padding: 34px 38px 30px; border-radius: 20px; opacity: 0;
+        background: rgba(8, 13, 19, 0.92); border: 2px solid rgba(201, 161, 74, 0.85); }
+      #dr-h { font: 600 18px "JBM", monospace; letter-spacing: 0.2em; color: #00BFB4; }
+      #dr-to { margin-top: 14px; font: 500 19px "JBM", monospace; color: #a9b3bd; white-space: nowrap; }
+      #dr-body { margin-top: 20px; height: 176px; font: 400 29px/1.45 "Inter", sans-serif; color: #f5f1e6; }
+      #dr-row { position: relative; margin-top: 22px; height: 120px; border-top: 1px solid rgba(201, 161, 74, 0.35); }
+      #lv-slot { position: absolute; left: 6px; top: 20px; width: 34px; height: 96px; border-radius: 17px; background: #05080c; border: 2px solid #8a6d36; }
+      #lv-knob { position: absolute; left: 0; top: 14px; width: 46px; height: 46px; border-radius: 50%;
+        background: radial-gradient(circle at 35% 30%, #f3d58c, #c9a14a 45%, #7d5f22); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6); }
+      #lv-label { position: absolute; left: 76px; top: 26px; font: 700 34px "JBM", monospace; letter-spacing: 0.24em; color: #f5f1e6; }
+      #lv-note { position: absolute; left: 78px; top: 76px; font: 500 17px "JBM", monospace; letter-spacing: 0.06em; color: #a9b3bd; white-space: nowrap; }
+      #cursor { position: absolute; left: 0; top: 0; width: 40px; height: 48px; opacity: 0; }
+
+      #z-shade { position: absolute; left: 0; right: 0; bottom: 0; height: 560px; opacity: 0; background: linear-gradient(rgba(4, 7, 11, 0), rgba(4, 7, 11, 0.86) 45%, rgba(4, 7, 11, 0.94)); }
+      #z-title { position: absolute; left: 0; right: 0; top: 664px; text-align: center; opacity: 0; font: 700 78px/1.1 "Baskerville", serif; letter-spacing: -0.02em; white-space: nowrap; }
+      #z-sub { position: absolute; left: 0; right: 0; top: 768px; text-align: center; opacity: 0; font: 400 30px/1.45 "Inter", sans-serif; color: #cfd6dd; }
+      #z-url { position: absolute; left: 0; right: 0; top: 884px; text-align: center; font: 500 30px "JBM", monospace; color: #f5f5f0; white-space: nowrap; }
+      #z-rule { position: absolute; left: 610px; top: 936px; width: 700px; height: 4px; border-radius: 2px; background: #00BFB4; transform: scaleX(0); }
+      #z-note { position: absolute; left: 0; right: 0; top: 970px; text-align: center; opacity: 0; font: 500 19px "JBM", monospace; letter-spacing: 0.3em; color: #a3a39f; }
+    </style>
+  </head>
+  <body>
+    <div data-hf-id="hf-lh01" id="root" data-composition-id="main" data-start="0" data-duration="32" data-width="1920" data-height="1080">
+      <div data-hf-id="hf-lh02" id="lh-stage" class="clip" data-start="0" data-duration="32" data-track-index="0">
+        <canvas data-hf-id="hf-lh03" id="lh-gl" width="1920" height="1080"></canvas>
+      </div>
+      <div data-hf-id="hf-lh04" id="lh-ui" class="clip" data-start="0" data-duration="32" data-track-index="1">
+        <div data-hf-id="hf-lh05" id="scores" data-layout-allow-occlusion></div>
+        <div data-hf-id="hf-lh06" class="ec" id="ec-C" data-layout-allow-occlusion><i data-hf-id="hf-lh07">BRAND AGENCY · 40 PEOPLE</i><b data-hf-id="hf-lh08">Posted about a rebrand</b><span data-hf-id="hf-lh09">PUBLIC EVIDENCE · CHECKED</span></div>
+        <div data-hf-id="hf-lh10" class="ec" id="ec-B" data-layout-allow-occlusion><i data-hf-id="hf-lh11">ARCHITECTURE PRACTICE · 18 PEOPLE</i><b data-hf-id="hf-lh12">Opened a second office</b><span data-hf-id="hf-lh13">PUBLIC EVIDENCE · CHECKED</span></div>
+        <div data-hf-id="hf-lh14" class="ec" id="ec-A" data-layout-allow-occlusion><i data-hf-id="hf-lh15">DESIGN STUDIO · 24 PEOPLE</i><b data-hf-id="hf-lh16">Hiring a designer</b><span data-hf-id="hf-lh17">PUBLIC EVIDENCE · CHECKED</span></div>
+        <div data-hf-id="hf-lh18" id="dr" data-layout-allow-occlusion>
+          <div data-hf-id="hf-lh19" id="dr-h">DRAFT · FOR YOUR REVIEW</div>
+          <div data-hf-id="hf-lh20" id="dr-to">to: Ana · design studio · fit 96</div>
+          <div data-hf-id="hf-lh21" id="dr-body"></div>
+          <div data-hf-id="hf-lh22" id="dr-row">
+            <div data-hf-id="hf-lh23" id="lv-slot"></div>
+            <div data-hf-id="hf-lh24" id="lv-knob"></div>
+            <div data-hf-id="hf-lh25" id="lv-label">SEND</div>
+            <div data-hf-id="hf-lh26" id="lv-note">nothing sends until you do</div>
+          </div>
+        </div>
+        <svg data-hf-id="hf-lh27" id="cursor" viewBox="0 0 40 48" data-layout-allow-occlusion><path data-hf-id="hf-lh28" d="M4 3 L4 38 L13 30 L19 44 L25 41 L19 28 L31 28 Z" fill="#f5f5f0" stroke="#04070b" stroke-width="2.5" stroke-linejoin="round"/></svg>
+        <div data-hf-id="hf-lh29" id="st-shade" data-layout-allow-occlusion></div>
+        <div data-hf-id="hf-lh30" class="st" id="st-0" data-layout-allow-occlusion><i data-hf-id="hf-lh31">01 · SOURCE</i><b data-hf-id="hf-lh32">Source</b><span data-hf-id="hf-lh33">Find the people who fit.</span></div>
+        <div data-hf-id="hf-lh34" class="st" id="st-1" data-layout-allow-occlusion><i data-hf-id="hf-lh35">02 · ENRICH</i><b data-hf-id="hf-lh36">Enrich</b><span data-hf-id="hf-lh37">Every lead checked against public evidence.</span></div>
+        <div data-hf-id="hf-lh38" class="st" id="st-2" data-layout-allow-occlusion><i data-hf-id="hf-lh39">03 · SCORE</i><b data-hf-id="hf-lh40">Score</b><span data-hf-id="hf-lh41">Fit from 0 to 100. The hot ones first.</span></div>
+        <div data-hf-id="hf-lh42" class="st" id="st-3" data-layout-allow-occlusion><i data-hf-id="hf-lh43">04 · DRAFT</i><b data-hf-id="hf-lh44">Draft</b><span data-hf-id="hf-lh45">A first message, written for you. You press send.</span></div>
+        <div data-hf-id="hf-lh46" id="hud-band" data-layout-allow-occlusion></div>
+        <div data-hf-id="hf-lh47" class="hud" id="hud-l" data-layout-allow-occlusion>JQ AI SYSTEMS<span data-hf-id="hf-lh48">ai lead generation</span></div>
+        <div data-hf-id="hf-lh49" class="hud" id="hud-r" data-layout-allow-occlusion><b data-hf-id="hf-lh50" id="hud-st">night · searching</b><span data-hf-id="hf-lh51" id="hud-tc">00:00:00:00</span></div>
+        <div data-hf-id="hf-lh52" id="z-shade" data-layout-allow-occlusion></div>
+        <div data-hf-id="hf-lh53" id="z-title" data-layout-allow-occlusion>AI Lead Generation &amp; Outreach</div>
+        <div data-hf-id="hf-lh54" id="z-sub" data-layout-allow-occlusion>Your next clients,<br data-hf-id="hf-lh55">found and scored for you.</div>
+        <div data-hf-id="hf-lh56" id="z-url" data-layout-allow-occlusion></div>
+        <div data-hf-id="hf-lh57" id="z-rule" data-layout-allow-occlusion></div>
+        <div data-hf-id="hf-lh58" id="z-note" data-layout-allow-occlusion>FILM AND SCORE BUILT IN CODE</div>
+      </div>
+      <audio data-hf-id="hf-lh59" id="score" src="assets/bgm/score.wav" data-start="0" data-duration="32" data-track-index="7" data-volume="0.4"></audio>
+    </div>
+
+    <script type="module">
+      import * as THREE from "three/webgpu";
+      import { pass, reflector, normalWorld, normalView, uv, uniform, color, float } from "three/tsl";
+      import { bloom } from "./assets/vendor/BloomNode.js";
+      import { RoomEnvironment } from "./assets/vendor/RoomEnvironment.js";
+
+      const W = 1920, H = 1080, DUR = 32;
+      // ---- the one table (bake/boats.py): the beam's path and every boat; score/compose.py reads the same table
+      const { beam: BEAM, boats: BOATS } = window.BOATS;
+      const T = { ignite: 0.9, source: 3.4, enrich: 9.3, score: 14.6, glide: [19.6, 27.6], draft: 20.2, pull: 23.0, sent: 23.45, hit: 24.15, beads: [25.9, 27.9], end: 28.4 };
+      const KEY = Object.fromEntries(BOATS.filter((b) => b.key).map((b) => [b.key, b]));
+      const CARD = { C: 9.6, B: 11.6, A: 13.3 };
+      const MESSAGE = "Hi Ana, I saw the studio is hiring a designer. Could a faster brief-to-first-draft process help the new hire settle in? Happy to show you how.";
+
+      const cl = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+      const r = (t, a, b) => cl((t - a) / (b - a));
+      const lerp = (a, b, u) => a + (b - a) * u;
+      const E = (n) => gsap.parseEase(n);
+      const eOut = E("power3.out"), eIO = E("power2.inOut");
+      const hash = (n) => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+      const D2R = Math.PI / 180;
+
+      // the lighthouse stands on a rocky point; azimuth 0 is straight out to sea (-z)
+      const L = new THREE.Vector3(-16, 0, 6), LAMP = L.clone().add(new THREE.Vector3(0, 11.2, 0));
+      const seaPoint = (az, d) => new THREE.Vector3(L.x + Math.sin(az * D2R) * d, 0, L.z - Math.cos(az * D2R) * d);
+      const beamAt = (t) => { let i = 0; while (i < BEAM.length - 2 && t >= BEAM[i + 1][0]) i++; const a = BEAM[i], b = BEAM[i + 1], u = eIO(r(t, a[0], b[0])); return [lerp(a[1], b[1], u), lerp(a[2], b[2], u)]; };
+      const QUAY_Z = -12, WORD_C = new THREE.Vector3(0, 4.6, -12.9), WS = 0.0165;
+      const slotPos = (s) => new THREE.Vector3(-8.75 + s * 3.5, 0, QUAY_Z - 2.2);
+      // a boat's place at t: where it was found, then (hot leads) along a curve into its slot at the quay
+      const boatHome = BOATS.map((b) => seaPoint(b.phi, b.d));
+      const boatAt = (i, t, out) => {
+        const b = BOATS[i], p0 = boatHome[i];
+        if (!b.hot) return out.copy(p0);
+        const u = eIO(r(t, T.glide[0] + 0.12 * b.slot, T.glide[1])), q = slotPos(b.slot), c = p0.clone().lerp(q, 0.5).add(new THREE.Vector3(6 * (b.slot - 2.5), 0, -4));
+        const a = p0.clone().lerp(c, u), d = c.clone().lerp(q, u); return out.copy(a.lerp(d, u));
+      };
+
+      // ================= DOM painter =================
+      const $ = (s) => document.querySelector(s);
+      const STS = [[$("#st-0"), T.source], [$("#st-1"), T.enrich], [$("#st-2"), T.score], [$("#st-3"), T.draft]];
+      const STATE = [[0, "night · searching"], [T.source, "ideal customer · design studios, 10 to 50 people"], [T.enrich, "enriching · public evidence"], [T.score, "scoring · fit 0 to 100"], [18.9, "6 hot leads"], [T.draft, "drafting · for your review"], [T.sent, "sent · by you"]];
+      const tc = (t) => { const f = Math.floor(t * 30 + 1e-6); return `00:00:${String(Math.floor(f / 30)).padStart(2, "0")}:${String(f % 30).padStart(2, "0")}`; };
+      const URL_TEXT = "ai.joaoqueiros.com/services/lead-generation";
+      const SC = BOATS.map((b) => { const el = document.createElement("div"); el.className = "sc" + (b.hot ? " hot" : ""); $("#scores").appendChild(el); return el; });
+      let glRender = null, project = null;
+      function paint(t) {
+        if (glRender) glRender(t);
+        const hudO = r(t, 0.4, 0.9) * (1 - r(t, 25.4, 25.9));
+        $("#hud-l").style.opacity = hudO; $("#hud-r").style.opacity = hudO; $("#hud-band").style.opacity = hudO;
+        let st = STATE[0][1]; for (const [a, s] of STATE) if (t >= a) st = s;
+        $("#hud-st").textContent = st; $("#hud-tc").textContent = tc(t);
+        let shade = 0;
+        STS.forEach(([el, t0], i) => {
+          const t1 = i + 1 < STS.length ? STS[i + 1][1] - 0.35 : 25.2;
+          const a = eOut(r(t, t0, t0 + 0.55)), b = r(t, t1, t1 + 0.35);
+          el.style.opacity = a * (1 - b);
+          el.style.clipPath = `inset(0 ${(100 * (1 - a)).toFixed(1)}% 0 0)`;
+          el.style.transform = `translateX(${(-40 * (1 - a) - 60 * eIO(b)).toFixed(1)}px)`;
+          shade = Math.max(shade, a * (1 - b));
+        });
+        $("#st-shade").style.opacity = shade;
+        const drO = r(t, T.draft + 0.2, T.draft + 0.6) * (1 - r(t, 24.7, 25.2));
+        if (project) {
+          // enrichment cards ride beside their boats
+          for (const k of ["C", "B", "A"]) {
+            const el = $(`#ec-${k}`), b = KEY[k], i = BOATS.indexOf(b), p = project(i, 1.6);
+            const u = eOut(r(t, CARD[k], CARD[k] + 0.4)), o = r(t, CARD[k], CARD[k] + 0.25) * (1 - r(t, 14.3, 14.7));
+            el.style.opacity = p.vis ? o : 0;
+            el.style.transform = `translate(${(p.x + 70).toFixed(1)}px, ${(p.y - 150 + 20 * (1 - u)).toFixed(1)}px)`;
+          }
+          // a score above every boat, counted up when the beam passes; cold ones fade, hot ones stay
+          BOATS.forEach((b, i) => {
+            const el = SC[i], p = project(i, 1.9), u = r(t, b.scored, b.scored + 0.6);
+            const fade = b.hot ? 1 - r(t, 24.6, 25.2) : 1 - 0.7 * r(t, 18.9, 19.5) - 0.3 * r(t, 19.5, 20.2);
+            el.textContent = String(Math.round(b.score * E("power2.out")(u)));
+            // keep clear of the HUD band and of the draft panel while it is up
+            const x = p.x - (b.hot ? 25 : 20), y = p.y - 38, clear = y > 180 && !(drO > 0 && x > 1110 && y > 210 && y < 800);
+            el.style.opacity = p.vis && clear && t >= b.scored ? cl(r(t, b.scored, b.scored + 0.15) * fade) : 0;
+            el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+          });
+        }
+        // the draft: it writes itself, then a person pulls the lever
+        $("#dr").style.opacity = drO;
+        $("#dr").style.transform = `translateY(${(24 * (1 - eOut(r(t, T.draft + 0.2, T.draft + 0.8)))).toFixed(1)}px)`;
+        $("#dr-body").textContent = MESSAGE.slice(0, Math.round(MESSAGE.length * r(t, T.draft + 0.6, 22.3)));
+        const pull = E("power2.in")(r(t, T.pull, T.sent));
+        $("#lv-knob").style.transform = `translateY(${(56 * pull).toFixed(1)}px)`;
+        const sent = t >= T.sent;
+        $("#lv-label").textContent = sent ? "SENT" : "SEND"; $("#lv-label").style.color = sent ? "#00BFB4" : "#f5f1e6";
+        $("#lv-note").textContent = sent ? "by you · 09:41" : "nothing sends until you do";
+        const cu = eIO(r(t, 22.2, T.pull)), cx = lerp(1640, 1186, cu), cy = lerp(1010, 640, cu) + 56 * pull;
+        $("#cursor").style.opacity = r(t, 22.1, 22.4) * (1 - r(t, 24.2, 24.6));
+        $("#cursor").style.transform = `translate(${cx.toFixed(1)}px, ${cy.toFixed(1)}px)`;
+        $("#z-shade").style.opacity = r(t, T.end - 0.4, T.end + 0.4);
+        const show = (s, a, b, y) => { const u = r(t, a, b); $(s).style.opacity = u; $(s).style.transform = `translateY(${(y * (1 - eOut(u))).toFixed(1)}px)`; };
+        show("#z-title", T.end, T.end + 0.7, 40);
+        show("#z-sub", T.end + 0.45, T.end + 1.1, 20);
+        $("#z-url").textContent = URL_TEXT.slice(0, Math.round(URL_TEXT.length * r(t, T.end + 1.0, T.end + 2.0)));
+        $("#z-rule").style.transform = `scaleX(${E("expo.inOut")(r(t, T.end + 1.8, T.end + 2.6)).toFixed(3)})`;
+        show("#z-note", T.end + 2.4, T.end + 2.9, 0);
+      }
+      const tl = gsap.timeline({ paused: true });
+      const clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+
+      // ================= the 3D film =================
+      async function build() {
+        await Promise.all([document.fonts.load('700 104px "Baskerville"'), document.fonts.load('600 40px "Inter"'), document.fonts.load('500 30px "JBM"')]);
+        const canvas = $("#lh-gl");
+        // Hide KHR_parallel_shader_compile so every program links before its first draw (see R01, R07, R13).
+        const gl = canvas.getContext("webgl2", { antialias: true, alpha: false, depth: true, stencil: false, preserveDrawingBuffer: true });
+        const getExt = gl.getExtension.bind(gl), getSup = gl.getSupportedExtensions.bind(gl);
+        gl.getExtension = (name) => (name === "KHR_parallel_shader_compile" ? null : getExt(name));
+        gl.getSupportedExtensions = () => getSup().filter((n) => n !== "KHR_parallel_shader_compile");
+        const renderer = new THREE.WebGPURenderer({ canvas, context: gl, antialias: true, forceWebGL: true });
+        renderer.setPixelRatio(1); renderer.setSize(W, H, false);
+        renderer.setClearColor(0x04070b, 1);
+        renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
+        await renderer.init();
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x04070b);
+        scene.fog = new THREE.Fog(0x070d14, 40, 190);
+        const pmrem = new THREE.PMREMGenerator(renderer);
+        scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+        scene.environmentIntensity = 0.08;
+        const camera = new THREE.PerspectiveCamera(32, W / H, 0.05, 900);
+        scene.add(new THREE.HemisphereLight(0x2a3e57, 0x05070a, 0.5));
+        const moonL = new THREE.DirectionalLight(0x9fb8d8, 0.7); moonL.position.set(-70, 40, -200); scene.add(moonL);
+
+        // ---- textures ----
+        const tex = (w, h, draw) => { const c = document.createElement("canvas"); c.width = w; c.height = h; draw(c.getContext("2d"), w, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; };
+        const glowTex = tex(256, 256, (g) => { const gr = g.createRadialGradient(128, 128, 0, 128, 128, 128); gr.addColorStop(0, "rgba(255,255,255,1)"); gr.addColorStop(0.2, "rgba(255,255,255,0.5)"); gr.addColorStop(0.55, "rgba(255,255,255,0.1)"); gr.addColorStop(1, "rgba(255,255,255,0)"); g.fillStyle = gr; g.fillRect(0, 0, 256, 256); });
+        const glow = (color, s, o = 0) => { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, opacity: o })); sp.scale.setScalar(s); return sp; };
+
+        // ---- the night sky: a gradient dome with stars, and a low moon ----
+        const sky = tex(1024, 1024, (g, w, h) => {
+          const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, "#020408"); gr.addColorStop(0.38, "#06101b"); gr.addColorStop(0.5, "#132538"); gr.addColorStop(0.53, "#0a1520"); gr.addColorStop(1, "#04070b");
+          g.fillStyle = gr; g.fillRect(0, 0, w, h);
+          for (let i = 0; i < 900; i++) { const y = hash(i + 5) * h * 0.47; g.fillStyle = `rgba(220,232,255,${0.15 + 0.6 * hash(i + 9) * (1 - y / (h * 0.5))})`; const s = hash(i + 2) > 0.97 ? 2 : 1; g.fillRect(hash(i) * w, y, s, s); }
+        });
+        scene.add(new THREE.Mesh(new THREE.SphereGeometry(600, 48, 24), new THREE.MeshBasicMaterial({ map: sky, side: THREE.BackSide, fog: false, depthWrite: false })));
+        const moon = new THREE.Mesh(new THREE.CircleGeometry(9, 48), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.85, 0.88, 0.9), fog: false }));
+        moon.position.set(-150, 50, -440); moon.lookAt(0, 10, 0); scene.add(moon);
+        const moonGlow = glow(0x9fb8d8, 120, 0.35); moonGlow.position.copy(moon.position); scene.add(moonGlow);
+
+        // ---- the sea: gently moving waves, a mirror for everything above it ----
+        const SEG_X = 160, SEG_Z = 120;
+        const seaGeo = new THREE.PlaneGeometry(520, 360, SEG_X, SEG_Z).rotateX(-Math.PI / 2).translate(0, 0, -120);
+        const seaBase = seaGeo.attributes.position.array.slice();
+        const refl = reflector({ resolutionScale: 0.5 });
+        refl.target.rotateX(-Math.PI / 2); scene.add(refl.target);
+        refl.uvNode = refl.uvNode.add(normalWorld.xz.mul(0.07));
+        const seaMat = new THREE.MeshStandardNodeMaterial({ color: 0x050b12, roughness: 0.62, metalness: 0.0 });
+        seaMat.emissiveNode = refl.rgb.mul(0.6);
+        const sea = new THREE.Mesh(seaGeo, seaMat); scene.add(sea);
+        const wave = (x, z, t) => 0.16 * Math.sin(0.11 * x + 0.05 * z + 0.9 * t) + 0.11 * Math.sin(-0.07 * x + 0.13 * z + 1.3 * t) + 0.05 * Math.sin(0.31 * x + 0.27 * z + 2.1 * t);
+
+        // ---- the lighthouse on its rocks ----
+        const lh = new THREE.Group(); lh.position.copy(L); scene.add(lh);
+        const stripes = tex(64, 512, (g, w, h) => { for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? "#8c1f1a" : "#e8e2d6"; g.fillRect(0, (i * h) / 8, w, h / 8); } });
+        const towerPts = []; for (let i = 0; i <= 20; i++) { const y = (i / 20) * 9.6; towerPts.push(new THREE.Vector2(2.0 - 0.7 * (y / 9.6) ** 1.2, y)); }
+        lh.add(new THREE.Mesh(new THREE.LatheGeometry(towerPts, 64), new THREE.MeshStandardMaterial({ map: stripes, roughness: 0.75 })));
+        const matDark = new THREE.MeshStandardMaterial({ color: 0x15191d, metalness: 0.6, roughness: 0.45 });
+        const matBrass = new THREE.MeshStandardMaterial({ color: 0xc9a14a, metalness: 1, roughness: 0.3 });
+        const gallery = new THREE.Mesh(new THREE.CylinderGeometry(1.95, 1.95, 0.22, 64), matDark); gallery.position.y = 9.7; lh.add(gallery);
+        const rail = new THREE.Mesh(new THREE.TorusGeometry(1.88, 0.03, 8, 96).rotateX(Math.PI / 2), matBrass); rail.position.y = 10.35; lh.add(rail);
+        const glass = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.15, 1.6, 48, 1, true), new THREE.MeshPhysicalMaterial({ color: 0xbcd8e6, roughness: 0.04, clearcoat: 1, transparent: true, opacity: 0.12, depthWrite: false, side: THREE.DoubleSide }));
+        glass.position.y = 11.0; lh.add(glass);
+        for (let i = 0; i < 8; i++) { const m = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.6, 0.05), matDark); const a = (i / 8) * Math.PI * 2; m.position.set(Math.cos(a) * 1.16, 11.0, Math.sin(a) * 1.16); lh.add(m); }
+        const roof = new THREE.Mesh(new THREE.ConeGeometry(1.4, 1.0, 48), new THREE.MeshStandardMaterial({ color: 0x2f5a52, metalness: 0.7, roughness: 0.4 })); roof.position.y = 12.3; lh.add(roof);
+        const vent = new THREE.Mesh(new THREE.SphereGeometry(0.16, 24, 12), matBrass); vent.position.y = 12.9; lh.add(vent);
+        // the lamp and its turning Fresnel lens
+        const lampM = new THREE.MeshBasicMaterial({ color: 0x000000 }); const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.16, 24, 12), lampM); lamp.position.y = 11.2; lh.add(lamp);
+        const lampGlow = glow(0xffd9a0, 3.2); lampGlow.position.y = 11.2; lh.add(lampGlow);
+        const lampLight = new THREE.PointLight(0xffd9a0, 0, 12, 1.5); lampLight.position.y = 11.2; lh.add(lampLight);
+        const lensM = new THREE.MeshPhysicalMaterial({ color: 0xfff1d6, roughness: 0.04, clearcoat: 1, transparent: true, opacity: 0.4, emissive: new THREE.Color(0xffc27a), emissiveIntensity: 0, depthWrite: false });
+        const lens = new THREE.Group(); lens.position.y = 11.2; lh.add(lens);
+        for (let k = 0; k < 9; k++) { const y = -0.48 + k * 0.12, rr = 0.5 + 0.16 * Math.sin((k / 8) * Math.PI); const m = new THREE.Mesh(new THREE.TorusGeometry(rr, 0.022, 8, 64).rotateX(Math.PI / 2), lensM); m.position.y = y; lens.add(m); }
+        for (let s = 0; s < 4; s++) { const g = new THREE.Group(); g.rotation.y = (s / 4) * Math.PI * 2; for (const rr of [0.07, 0.15, 0.23, 0.31]) { const m = new THREE.Mesh(new THREE.TorusGeometry(rr, 0.018, 8, 48), lensM); m.position.z = 0.72; g.add(m); } lens.add(g); }
+        // rocks
+        const matRock = new THREE.MeshStandardMaterial({ color: 0x1b1d20, roughness: 0.92, flatShading: true });
+        for (let i = 0; i < 9; i++) {
+          const geo = new THREE.IcosahedronGeometry(1.6 + 1.6 * hash(i + 40), 1), p = geo.attributes.position;
+          for (let v = 0; v < p.count; v++) { const k = 0.75 + 0.45 * hash(i * 97 + v * 13); p.setXYZ(v, p.getX(v) * k, p.getY(v) * k * 0.7, p.getZ(v) * k); }
+          geo.computeVertexNormals();
+          const m = new THREE.Mesh(geo, matRock); const a = (i / 9) * Math.PI * 2 + hash(i) * 0.5, d = 2.2 + 1.8 * hash(i + 3); m.position.set(Math.cos(a) * d, -0.4 + 0.5 * hash(i + 7), Math.sin(a) * d); m.rotation.set(hash(i + 1) * 3, hash(i + 2) * 3, 0); lh.add(m);
+        }
+
+        // ---- the quay: a stone pier where the hot leads moor ----
+        const matStone = new THREE.MeshStandardMaterial({ color: 0x2a2c2f, roughness: 0.85 });
+        const quay = new THREE.Mesh(new THREE.BoxGeometry(27, 1.2, 2.2), matStone); quay.position.set(0, 0.1, QUAY_Z); scene.add(quay);
+        for (let i = 0; i < 8; i++) { const b = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 0.4, 16), matDark); b.position.set(-12 + i * (24 / 7), 0.9, QUAY_Z - 0.9); scene.add(b); }
+
+        // ---- the beam: two additive cones and a spotlight that really lights the sea ----
+        // brightest at the lamp, fading along its length, and thicker toward the middle as a real volume of light would be
+        // unit length, scaled every frame to end where the beam meets the water
+        const cone = (spread, hex) => {
+          const geo = new THREE.CylinderGeometry(spread, 0.004, 1, 48, 1, true).translate(0, 0.5, 0);
+          const mat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false });
+          const o = uniform(0);
+          mat.colorNode = color(hex);
+          mat.opacityNode = o.mul(float(1).sub(uv().y).pow(1.6)).mul(normalView.z.abs().pow(1.5));
+          const m = new THREE.Mesh(geo, mat); m.userData.o = o; scene.add(m); return m;
+        };
+        const beamOuter = cone(0.075, 0xffe6c0), beamCore = cone(0.026, 0xfff4e0);
+        const spot = new THREE.SpotLight(0xfff0d8, 0, 170, 0.08, 0.85, 1.15); spot.position.copy(LAMP); scene.add(spot, spot.target);
+
+        // ---- the boats: one per row of the table ----
+        const matHull = new THREE.MeshStandardMaterial({ color: 0x1c2733, roughness: 0.6, metalness: 0.2 });
+        const matCabin = new THREE.MeshStandardMaterial({ color: 0x8f8a80, roughness: 0.7 });
+        // a small boat: a pointed hull extruded from its deck outline, a wheelhouse, a mast with the lamp
+        const deck = new THREE.Shape(); deck.moveTo(-0.85, -0.3); deck.lineTo(0.35, -0.3); deck.quadraticCurveTo(0.8, -0.22, 1.0, 0); deck.quadraticCurveTo(0.8, 0.22, 0.35, 0.3); deck.lineTo(-0.85, 0.3); deck.lineTo(-0.85, -0.3);
+        const hullGeo = new THREE.ExtrudeGeometry(deck, { depth: 0.36, bevelEnabled: true, bevelThickness: 0.06, bevelSize: 0.05, bevelSegments: 2 }).rotateX(-Math.PI / 2).translate(0, -0.12, 0);
+        const cabinGeo = new THREE.BoxGeometry(0.5, 0.38, 0.4), mastGeo = new THREE.CylinderGeometry(0.025, 0.025, 1.3, 6), bulbGeo = new THREE.SphereGeometry(0.09, 12, 8);
+        const WARM = new THREE.Color(0xffe6c0), AMBER = new THREE.Color(0xffa63c), COLD = new THREE.Color(0x6f8aa3);
+        const BO = BOATS.map((b) => {
+          const g = new THREE.Group();
+          const hull = new THREE.Mesh(hullGeo, matHull); g.add(hull);
+          const cab = new THREE.Mesh(cabinGeo, matCabin); cab.position.set(-0.25, 0.47, 0); g.add(cab);
+          const mast = new THREE.Mesh(mastGeo, matDark); mast.position.set(0.25, 0.95, 0); g.add(mast);
+          const bm = new THREE.MeshBasicMaterial({ color: 0x000000 }); const bulb = new THREE.Mesh(bulbGeo, bm); bulb.position.set(0.25, 1.62, 0); g.add(bulb);
+          const bg = glow(0xffe6c0, 2.4); bg.position.copy(bulb.position); g.add(bg);
+          scene.add(g); return { g, bm, bg };
+        });
+
+        // ---- the sent message: a spark from the lamp to the best lead ----
+        const spark = glow(0x9ff8f0, 3.2); scene.add(spark);
+        const sparkCore = new THREE.Mesh(new THREE.SphereGeometry(0.16, 16, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(2.2, 3.4, 3.2), fog: false })); scene.add(sparkCore);
+        const hitGlow = glow(0x9ff8f0, 7); scene.add(hitGlow);
+
+        // ---- the word: harbour lights on the outlines of "found", carried in from the hot leads ----
+        const svgNS = "http://www.w3.org/2000/svg", host = document.createElementNS(svgNS, "svg");
+        host.setAttribute("width", "0"); host.setAttribute("height", "0"); host.style.position = "absolute"; document.body.appendChild(host);
+        const WP = [];
+        window.WORD.contours.forEach((d) => {
+          const p = document.createElementNS(svgNS, "path"); p.setAttribute("d", d); host.appendChild(p);
+          const len = p.getTotalLength(), n = Math.max(8, Math.round(len / 6.2));
+          for (let i = 0; i < n; i++) { const q = p.getPointAtLength((len * i) / n); WP.push(new THREE.Vector3(WORD_C.x + q.x * WS, WORD_C.y - q.y * WS, WORD_C.z)); }
+        });
+        const HOTI = BOATS.map((b, i) => (b.hot ? i : -1)).filter((i) => i >= 0);
+        const beads = new THREE.InstancedMesh(new THREE.SphereGeometry(0.075, 10, 6), new THREE.MeshBasicMaterial({ color: new THREE.Color(3.0, 2.0, 1.0), fog: false }), WP.length);
+        beads.frustumCulled = false; scene.add(beads);
+        const wordLight = new THREE.PointLight(0xffb560, 0, 30, 1.4); wordLight.position.copy(WORD_C).add(new THREE.Vector3(0, 0, 2)); scene.add(wordLight);
+
+        // ================= camera =================
+        // [film t, look target ("lamp", "sector", "word", a boat key A/B/C, or "Aside": A seen with room for the draft), distance, azimuth°, elevation°, fov°]
+        const KF = [
+          [0, "lamp", 2.0, 30, -4, 30], [2.2, "lamp", 6.5, 45, 6, 34],
+          [4.4, [-20, 2, -40], 67, 20, 12, 40], [8.8, [-14, 2, -44], 64, 14, 11, 40],
+          [9.5, "C", 13, 24, 10, 32], [10.9, "C", 12, 18, 9, 32], [11.5, "B", 13, 10, 10, 32], [12.6, "B", 12, 6, 9, 32], [13.2, "A", 13, -4, 10, 32], [14.2, "A", 12, -10, 9, 32],
+          [15.4, "sector", 82, 0, 58, 40], [19.0, "sector", 74, 0, 64, 40],
+          [20.4, "Aside", 17, 14, 8, 32], [23.2, "Aside", 15, 8, 7, 32], [24.4, "Aside", 19, 4, 8, 34],
+          [26.0, "word", 30, 0, 5, 34], [DUR, "word", 27, 0, 4, 34],
+        ];
+        const tmpV = new THREE.Vector3();
+        const targetOf = (s, t) => {
+          if (Array.isArray(s)) return new THREE.Vector3(...s);
+          if (s === "lamp") return LAMP.clone();
+          if (s === "sector") return seaPoint(0, 60);
+          if (s === "word") return WORD_C.clone().add(new THREE.Vector3(0, -2.6, 0));
+          if (s === "Aside") { return boatAt(BOATS.indexOf(KEY.A), t, new THREE.Vector3()).add(new THREE.Vector3(4.2, 1.2, 0)); }
+          return boatAt(BOATS.indexOf(KEY[s]), t, new THREE.Vector3()).add(new THREE.Vector3(0, 0.9, 0));
+        };
+        const camAt = (t) => {
+          let i = 0; while (i < KF.length - 2 && t >= KF[i + 1][0]) i++;
+          const a = KF[i], b = KF[i + 1], u = eIO(r(t, a[0], b[0]));
+          const look = targetOf(a[1], t).lerp(targetOf(b[1], t), u);
+          const d = Math.exp(lerp(Math.log(a[2]), Math.log(b[2]), u)), az = lerp(a[3], b[3], u) * D2R, el = lerp(a[4], b[4], u) * D2R;
+          const pos = look.clone().add(new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el)).multiplyScalar(d));
+          pos.x += 0.04 * Math.sin(t * 0.7); pos.y += 0.03 * Math.sin(t * 1.1 + 1);
+          return { pos, look, fov: lerp(a[5], b[5], u) };
+        };
+        // screen position of a point above boat i, for the HTML cards and scores
+        const tmpB = new THREE.Vector3();
+        project = (i, up) => {
+          boatAt(i, clock.t, tmpB); tmpB.y += up;
+          const inFront = tmpB.clone().applyMatrix4(camera.matrixWorldInverse).z < 0;
+          tmpB.project(camera);
+          return { x: (tmpB.x * 0.5 + 0.5) * W, y: (-tmpB.y * 0.5 + 0.5) * H, vis: inFront && Math.abs(tmpB.x) < 1.05 && Math.abs(tmpB.y) < 1.05 };
+        };
+
+        // ================= post =================
+        const post = new THREE.PostProcessing(renderer);
+        const sceneColor = pass(scene, camera).getTextureNode("output");
+        post.outputNode = sceneColor.add(bloom(sceneColor, 0.75, 0.45, 0.82));
+        const m4 = new THREE.Matrix4(), q4 = new THREE.Quaternion(), v3 = new THREE.Vector3(), s3 = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0), bp = new THREE.Vector3();
+
+        function renderAt(t) {
+          clock.t = t;
+          const C = camAt(t);
+          camera.position.copy(C.pos); camera.lookAt(C.look); camera.fov = C.fov; camera.updateProjectionMatrix(); camera.updateMatrixWorld();
+
+          // the sea moves
+          const pa = seaGeo.attributes.position.array;
+          for (let k = 0; k < pa.length; k += 3) pa[k + 1] = wave(seaBase[k], seaBase[k + 2], t);
+          seaGeo.attributes.position.needsUpdate = true; seaGeo.computeVertexNormals();
+
+          // the lamp ignites, the lens turns
+          const ign = t < T.ignite ? 0.08 * r(t, 0.2, T.ignite) : t < T.ignite + 0.5 ? (hash(Math.floor(t * 30)) > 0.4 ? 1 : 0.3) * r(t, T.ignite, T.ignite + 0.5) : 1;
+          lampM.color.setRGB(4.0 * ign + 0.05, 3.2 * ign + 0.03, 2.0 * ign + 0.02);
+          lampGlow.material.opacity = 0.9 * ign; lampLight.intensity = 25 * ign; lensM.emissiveIntensity = 0.5 * ign;
+          lens.rotation.y = 0.5 * Math.max(0, t - T.ignite);
+          const [baz, reach] = beamAt(t), hit = seaPoint(baz, reach);
+          const dir = hit.clone().sub(LAMP).normalize();
+          const bOn = r(t, T.ignite + 0.3, T.ignite + 1.0) * (1 - 0.55 * r(t, 25.2, 26.8));
+          // a volume of light reads from outside; seen from inside it is a grey wall, so it fades as the camera nears its axis
+          const rel = C.pos.clone().sub(LAMP), along = Math.max(0, rel.dot(dir)), off = rel.clone().addScaledVector(dir, -along).length();
+          const inside = cl((off - (0.2 + along * 0.075)) / (6 + along * 0.12)), bLen = hit.distanceTo(LAMP) * 1.04;
+          for (const [m, o] of [[beamOuter, 0.11], [beamCore, 0.22]]) { m.position.copy(LAMP); m.quaternion.setFromUnitVectors(up, dir); m.scale.setScalar(bLen); m.userData.o.value = o * bOn * inside; }
+          spot.target.position.copy(hit); spot.intensity = 300 * bOn;
+
+          // boats: dark until the beam finds them, warm once found, then amber (hot) or cold blue (not a fit)
+          BOATS.forEach((b, i) => {
+            const o = BO[i]; boatAt(i, t, bp);
+            o.g.position.set(bp.x, wave(bp.x, bp.z, t) * 0.8 - 0.05, bp.z);
+            let yaw = b.yaw * D2R;
+            if (b.hot && t > T.glide[0]) { const ahead = boatAt(i, t + 0.3, new THREE.Vector3()).sub(bp); if (ahead.lengthSq() > 1e-5) yaw = lerp(yaw, Math.atan2(-ahead.z, ahead.x), r(t, T.glide[0], T.glide[0] + 1.2)); }
+            o.g.rotation.set(0.04 * Math.sin(t * 1.3 + b.bob), yaw, 0.05 * Math.sin(t * 0.9 + b.bob));
+            const found = r(t, b.found, b.found + 0.25), flash = t > b.found ? Math.exp(-(t - b.found) * 4) : 0;
+            const sc = r(t, b.scored + 0.4, b.scored + 1.0), settle = r(t, 18.9, 19.6);
+            const col = WARM.clone().lerp(b.hot ? AMBER : COLD, Math.max(sc * 0.6, settle));
+            let k = 0.75 * found + 1.4 * flash;
+            if (b.hot) k += 0.5 * sc; else k *= 1 - 0.75 * settle;
+            if (b.key === "A") k += 3 * (t > T.hit ? Math.exp(-(t - T.hit) * 2.5) : 0);
+            o.bm.color.copy(col).multiplyScalar(2.6 * k + 0.02);
+            o.bg.material.color.copy(col); o.bg.material.opacity = cl(0.55 * k);
+          });
+
+          // the sent message flies from the lamp to the best lead
+          const ia = BOATS.indexOf(KEY.A), aPos = boatAt(ia, t, new THREE.Vector3()); aPos.y += 1.6;
+          const su = r(t, T.sent + 0.05, T.hit), mid = LAMP.clone().lerp(aPos, 0.5).add(new THREE.Vector3(0, 4, 0));
+          const sp1 = LAMP.clone().lerp(mid, su), sp2 = mid.clone().lerp(aPos, su); sp1.lerp(sp2, su);
+          const sOn = su > 0 && su < 1 ? 1 : 0;
+          spark.position.copy(sp1); spark.material.opacity = 0.9 * sOn; sparkCore.position.copy(sp1); sparkCore.visible = sOn > 0;
+          hitGlow.position.copy(aPos); hitGlow.material.opacity = t > T.hit ? 0.8 * Math.exp(-(t - T.hit) * 2) : 0;
+
+          // the word: each light leaves a hot lead and lands on the outline
+          WP.forEach((w, j) => {
+            const src = HOTI[j % HOTI.length]; boatAt(src, t, v3); v3.y += 1.6;
+            const t0 = T.beads[0] + 1.2 * hash(j * 7 + 1), u = E("power2.inOut")(r(t, t0, t0 + 0.9));
+            const m = v3.clone().lerp(w, 0.5).add(new THREE.Vector3(0, 3, 0)), a = v3.clone().lerp(m, u), c = m.lerp(w, u);
+            const p = a.lerp(c, u), on = u > 0 ? 1 : 0, tw = 0.85 + 0.15 * Math.sin(t * 3 + j);
+            s3.setScalar(on * (u < 1 ? 0.8 : tw));
+            m4.compose(p, q4.identity(), s3); beads.setMatrixAt(j, m4);
+          });
+          beads.instanceMatrix.needsUpdate = true;
+          wordLight.intensity = 40 * r(t, T.beads[0] + 0.6, T.beads[1]);
+
+          post.render();
+        }
+
+        for (const tt of [0, 1.5, 5, 10, 16, 21, 24, 27, DUR - 0.5]) renderAt(tt);   // warm every pipeline
+        let last = -1;
+        glRender = (t) => { if (t !== last) { last = t; renderAt(t); } };
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(window.__hfThreeTime || 0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = window.__hf.buildReady || {};
+      window.__hf.buildReady["lighthouse"] = build();
+    </script>
+  </body>
+</html>
