@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <!--
+      R20 · Cartographer. One take, 32 s, Three.js (WebGPURenderer, WebGL2 backend, TSL bloom).
+      A consulting engagement as a navigator's chart table in a dark study: the map of one made-up business lies under
+      fog; a brass survey ring sweeps out and the land rises where the hours go (8,586 columns); the opportunities drop in
+      as pins scored on payoff, cost and risk, and four are knocked flat; the rest line up along the table's edge in rank
+      order, each with its reason; brass dividers walk the route in three phases; the relief settles into the paper, the
+      map rolls up into the roadmap and the route lifts off the table to write "mapped". The map, every pin, stride and
+      phase is one row of a baked table (assets/table.js, from bake/table.py); score/compose.py reads the same table.
+      Heights are relative: no hours, savings or ROI are shown. Any frame renders on its own.
+    -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/word.js"></script>
+    <script src="assets/table.js"></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "./assets/vendor/three.webgpu.js",
+          "three/webgpu": "./assets/vendor/three.webgpu.js",
+          "three/tsl": "./assets/vendor/three.tsl.js"
+        }
+      }
+    </script>
+    <style>
+      @font-face { font-family: "Inter"; src: url("assets/fonts/inter-400.woff2") format("woff2"); font-weight: 400; }
+      @font-face { font-family: "Inter"; src: url("assets/fonts/inter-500.woff2") format("woff2"); font-weight: 500; }
+      @font-face { font-family: "Inter"; src: url("assets/fonts/inter-600.woff2") format("woff2"); font-weight: 600; }
+      @font-face { font-family: "Baskerville"; src: url("assets/fonts/libre-baskerville-400.woff2") format("woff2"); font-weight: 400; }
+      @font-face { font-family: "Baskerville"; src: url("assets/fonts/libre-baskerville-700.woff2") format("woff2"); font-weight: 700; }
+      @font-face { font-family: "JBM"; src: url("assets/fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 100 800; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #050505; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #050505; color: #f5f2ea; font-family: "Inter", sans-serif; }
+      #ct-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #ct-gl { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #ct-ui { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+
+      .hud { position: absolute; top: 48px; font: 500 19px "JBM", monospace; letter-spacing: 0.1em; white-space: nowrap; color: #a8a49b; }
+      #hud-l { left: 64px; color: #f5f2ea; font: 600 19px "Inter", sans-serif; letter-spacing: 0.18em; }
+      #hud-l span { font: 500 19px "JBM", monospace; letter-spacing: 0.1em; color: #00BFB4; margin-left: 16px; }
+      #hud-r { right: 64px; }
+      #hud-r b { font-weight: 500; color: #00BFB4; margin-right: 26px; }
+      #hud-band { position: absolute; left: 0; right: 0; top: 0; height: 170px; background: linear-gradient(rgba(5, 5, 5, 0.9), rgba(5, 5, 5, 0.7) 55%, rgba(5, 5, 5, 0)); }
+
+      .st { position: absolute; left: 92px; bottom: 96px; opacity: 0; }
+      .st i { display: block; font: 600 22px "JBM", monospace; font-style: normal; letter-spacing: 0.24em; color: #00BFB4; }
+      .st b { display: block; margin-top: 8px; font: 700 104px/1 "Baskerville", serif; letter-spacing: -0.02em; color: #f5f2ea; white-space: nowrap; }
+      .st span { display: block; margin-top: 16px; font: 400 28px "Inter", sans-serif; color: #d8d3c8; white-space: nowrap; }
+      #st-shade { position: absolute; left: 0; bottom: 0; width: 1400px; height: 460px; opacity: 0;
+        background: radial-gradient(ellipse 70% 90% at 0% 100%, rgba(5, 5, 5, 0.9) 0%, rgba(5, 5, 5, 0.6) 50%, rgba(5, 5, 5, 0) 100%); }
+
+      #z-shade { position: absolute; left: 0; right: 0; bottom: 0; height: 560px; opacity: 0; background: linear-gradient(rgba(5, 5, 5, 0), rgba(5, 5, 5, 0.86) 45%, rgba(5, 5, 5, 0.94)); }
+      #z-title { position: absolute; left: 0; right: 0; top: 664px; text-align: center; opacity: 0; font: 700 78px/1.1 "Baskerville", serif; letter-spacing: -0.02em; white-space: nowrap; }
+      #z-sub { position: absolute; left: 0; right: 0; top: 768px; text-align: center; opacity: 0; font: 400 30px/1.45 "Inter", sans-serif; color: #d8d3c8; }
+      #z-url { position: absolute; left: 0; right: 0; top: 884px; text-align: center; font: 500 30px "JBM", monospace; color: #f5f2ea; white-space: nowrap; }
+      #z-rule { position: absolute; left: 610px; top: 936px; width: 700px; height: 4px; border-radius: 2px; background: #00BFB4; transform: scaleX(0); }
+      #z-note { position: absolute; left: 0; right: 0; top: 970px; text-align: center; opacity: 0; font: 500 19px "JBM", monospace; letter-spacing: 0.3em; color: #a8a49b; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="32" data-width="1920" data-height="1080">
+      <div id="ct-stage" class="clip" data-start="0" data-duration="32" data-track-index="0">
+        <canvas id="ct-gl" width="1920" height="1080"></canvas>
+      </div>
+      <div id="ct-ui" class="clip" data-start="0" data-duration="32" data-track-index="1">
+        <div id="st-shade" data-layout-allow-occlusion></div>
+        <div class="st" id="st-0" data-layout-allow-occlusion><i>01 · START</i><b>Not sure where to start</b><span>AI everywhere, and no map.</span></div>
+        <div class="st" id="st-1" data-layout-allow-occlusion><i>02 · AUDIT</i><b>The audit</b><span>Where the hours actually go.</span></div>
+        <div class="st" id="st-2" data-layout-allow-occlusion><i>03 · OPPORTUNITIES</i><b>Every opportunity, scored</b><span>On payoff, cost and risk.</span></div>
+        <div class="st" id="st-3" data-layout-allow-occlusion><i>04 · RANKED</i><b>Ranked</b><span>With the reasoning behind each one.</span></div>
+        <div class="st" id="st-4" data-layout-allow-occlusion><i>05 · ROUTE</i><b>The route</b><span>What to build first, second and third.</span></div>
+        <div id="hud-band" data-layout-allow-occlusion></div>
+        <div class="hud" id="hud-l" data-layout-allow-occlusion>JQ AI SYSTEMS<span>ai consulting &amp; roadmapping</span></div>
+        <div class="hud" id="hud-r" data-layout-allow-occlusion><b id="hud-st">where does AI fit?</b><span id="hud-tc">00:00:00:00</span></div>
+        <div id="z-shade" data-layout-allow-occlusion></div>
+        <div id="z-title" data-layout-allow-occlusion>AI Consulting &amp; Roadmapping</div>
+        <div id="z-sub" data-layout-allow-occlusion>Your business mapped against what AI can realistically do now,<br>and a phased plan you can actually execute.</div>
+        <div id="z-url" data-layout-allow-occlusion></div>
+        <div id="z-rule" data-layout-allow-occlusion></div>
+        <div id="z-note" data-layout-allow-occlusion>FILM AND SCORE BUILT IN CODE</div>
+      </div>
+      <audio id="score" src="assets/bgm/score.wav" data-start="0" data-duration="32" data-track-index="7" data-volume="0.6"></audio>
+    </div>
+
+    <script type="module">
+      import * as THREE from "three/webgpu";
+      import { pass, uv, uniform, float, texture, mix, clamp, vec2, vec3, length, smoothstep, positionLocal } from "three/tsl";
+      import { bloom } from "./assets/vendor/BloomNode.js";
+      import { RoomEnvironment } from "./assets/vendor/RoomEnvironment.js";
+
+      const W = 1920, H = 1080, DUR = 32;
+      // ---- the one table (bake/table.py): the map, the relief, the pins, the ranking, the route and the clock
+      const TB = window.TABLE, T = TB.T, M = TB.map, PINS = TB.pins, PH = TB.phases;
+
+      const cl = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+      const r = (t, a, b) => cl((t - a) / (b - a));
+      const lerp = (a, b, u) => a + (b - a) * u;
+      const E = (n) => gsap.parseEase(n);
+      const eOut = E("power3.out"), eIO = E("power2.inOut"), eIn = E("power2.in"), eBack = E("back.out(1.7)"), eBounce = E("bounce.out"), eExpo = E("expo.out");
+      const hash = (n) => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+      const D2R = Math.PI / 180;
+      const V3 = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
+
+      // ---- the study: the chart table at y = 0, the map centred on the origin, z grows toward the camera
+      const PW = M.w, PD = M.d, ROW_Z = 6.5, rowX = (rank) => -6.3 + 1.8 * (rank - 1);
+      const COMPASS = V3(-8.7, 0, 7.7), WORD_C = V3(0, 3.0, 3.0), WS = 0.0072;
+      const RMAX = 10.2;                                                       // the survey ring's last radius
+      const ringR = (t) => RMAX * E("power1.inOut")(r(t, T.audit[0], T.audit[1]));
+      const beamA = (t) => -Math.PI / 2 + 2 * Math.PI * TB.sweepTurns * r(t, T.audit[0], T.audit[1]);
+
+      // the relief: one column per land cell; its rest height comes from the table
+      const COLS = TB.cols, NC = COLS.length;
+      const HGRID = new Float32Array(M.nx * M.nz);
+      COLS.forEach(([i, j, h]) => (HGRID[j * M.nx + i] = h / 100));
+      const hAt = (x, z) => { const i = Math.round((x - M.x0) / M.cell), j = Math.round((z - M.z0) / M.cell); return i < 0 || j < 0 || i >= M.nx || j >= M.nz ? 0 : HGRID[j * M.nx + i]; };
+      const sinkK = (t) => 1 - eIO(r(t, T.sink[0], T.sink[1]));
+
+      // the route: baked points and arc lengths
+      const RP = TB.route.map(([x, y, z]) => V3(x, y, z)), ARC = TB.arc, LTOT = ARC[ARC.length - 1];
+      const atArc = (s) => { s = cl(s, 0, LTOT); let lo = 0, hi = ARC.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (ARC[m] <= s) lo = m; else hi = m; } const u = (s - ARC[lo]) / Math.max(1e-6, ARC[hi] - ARC[lo]); return RP[lo].clone().lerp(RP[hi], u); };
+      const strideAt = (t) => { const S = TB.strides; let k = 0; while (k < S.length - 1 && t >= S[k + 1][0]) k++; const [t0, t1, from, plant, to] = S[k]; return { u: r(t, t0, t1), from, plant, to }; };
+      const penArc = (t) => (t < TB.strides[0][0] ? 0 : (({ u, plant, to }) => lerp(plant, to, u))(strideAt(t)));
+      const legOf = (t) => (t < T.legs[0][0] ? -1 : t < T.legs[1][0] ? 0 : t < T.legs[2][0] ? 1 : 2);
+
+      // ================= DOM painter =================
+      const $ = (s) => document.querySelector(s);
+      const STS = [[$("#st-0"), 0.9, 3.4], [$("#st-1"), 4.2, 7.6], [$("#st-2"), 9.3, 12.5], [$("#st-3"), 14.0, 15.1], [$("#st-4"), 18.3, 20.7]];
+      const STATE = [[0, () => "where does AI fit?"], [T.audit[0], () => "audit · where the hours go"], [T.pins, () => "12 opportunities · payoff · cost · risk"],
+        [T.knock[0], () => "4 not worth building"], [T.rank, () => "ranked · 8, with reasons"], [T.dividers, () => "the route · 3 phases"],
+        [T.legs[0][0], () => "first · 0 to 3 months"], [T.legs[1][0], () => "second · 3 to 6 months"], [T.legs[2][0], () => "third · 6 to 12 months"],
+        [T.sink[0], () => "roadmap · debrief booked"], [T.word[0], () => "mapped"]];
+      const tc = (t) => { const f = Math.floor(t * 30 + 1e-6); return `00:00:${String(Math.floor(f / 30)).padStart(2, "0")}:${String(f % 30).padStart(2, "0")}`; };
+      const URL_TEXT = "ai.joaoqueiros.com/services/consulting";
+      let glRender = null;
+      function paint(t) {
+        if (glRender) glRender(t);
+        const hudO = r(t, 0.4, 0.9) * (1 - r(t, T.end - 0.5, T.end));
+        $("#hud-l").style.opacity = hudO; $("#hud-r").style.opacity = hudO; $("#hud-band").style.opacity = hudO;
+        let st = STATE[0][1]; for (const [a, s] of STATE) if (t >= a) st = s;
+        $("#hud-st").textContent = st(t); $("#hud-tc").textContent = tc(t);
+        let shade = 0;
+        STS.forEach(([el, t0, t1]) => {
+          const a = eOut(r(t, t0, t0 + 0.55)), b = r(t, t1, t1 + 0.35);
+          el.style.opacity = a * (1 - b);
+          el.style.clipPath = `inset(0 ${(100 * (1 - a)).toFixed(1)}% 0 0)`;
+          el.style.transform = `translateX(${(-40 * (1 - a) - 60 * eIO(b)).toFixed(1)}px)`;
+          shade = Math.max(shade, a * (1 - b));
+        });
+        $("#st-shade").style.opacity = shade;
+        $("#z-shade").style.opacity = r(t, T.end - 0.4, T.end + 0.4);
+        const show = (s, a, b, y) => { const u = r(t, a, b); $(s).style.opacity = u; $(s).style.transform = `translateY(${(y * (1 - eOut(u))).toFixed(1)}px)`; };
+        show("#z-title", T.end, T.end + 0.7, 40);
+        show("#z-sub", T.end + 0.45, T.end + 1.1, 20);
+        $("#z-url").textContent = URL_TEXT.slice(0, Math.round(URL_TEXT.length * r(t, T.end + 1.0, T.end + 2.0)));
+        $("#z-rule").style.transform = `scaleX(${E("expo.inOut")(r(t, T.end + 1.8, T.end + 2.6)).toFixed(3)})`;
+        show("#z-note", T.end + 2.4, T.end + 2.9, 0);
+      }
+      const tl = gsap.timeline({ paused: true });
+      const clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+
+      // ================= the 3D film =================
+      async function build() {
+        await Promise.all([document.fonts.load('700 104px "Baskerville"'), document.fonts.load('400 60px "Baskerville"'), document.fonts.load('600 40px "Inter"'), document.fonts.load('400 40px "Inter"'), document.fonts.load('500 30px "JBM"')]);
+        const canvas = $("#ct-gl");
+        // Hide KHR_parallel_shader_compile so every program links before its first draw (see R01, R07, R13).
+        const gl = canvas.getContext("webgl2", { antialias: true, alpha: false, depth: true, stencil: false, preserveDrawingBuffer: true });
+        const getExt = gl.getExtension.bind(gl), getSup = gl.getSupportedExtensions.bind(gl);
+        gl.getExtension = (name) => (name === "KHR_parallel_shader_compile" ? null : getExt(name));
+        gl.getSupportedExtensions = () => getSup().filter((n) => n !== "KHR_parallel_shader_compile");
+        const renderer = new THREE.WebGPURenderer({ canvas, context: gl, antialias: true, forceWebGL: true });
+        renderer.setPixelRatio(1); renderer.setSize(W, H, false);
+        renderer.setClearColor(0x050505, 1);
+        renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.9;
+        await renderer.init();
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x050505);
+        scene.fog = new THREE.Fog(0x050505, 22, 60);
+        const pmrem = new THREE.PMREMGenerator(renderer);
+        const envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+        scene.environment = envTex; scene.environmentIntensity = 0.16;
+        const camera = new THREE.PerspectiveCamera(36, W / H, 0.05, 400);
+        const hemi = new THREE.HemisphereLight(0x3a3128, 0x060505, 0.0); scene.add(hemi);
+        const LAMP = V3(-4.6, 6.2, -3.6);
+        const lampLight = new THREE.SpotLight(0xffd9a6, 0, 34, 0.95, 0.75, 1.1); lampLight.position.copy(LAMP); lampLight.target.position.set(0.6, 0, 1.2); scene.add(lampLight, lampLight.target);
+        const key = new THREE.SpotLight(0xffe6c8, 0, 40, 0.55, 0.9, 1.2); key.position.set(2.5, 15, 13); key.target.position.set(0, 0, 3); scene.add(key, key.target);
+        const rim = new THREE.SpotLight(0xd8e4ff, 0, 34, 0.7, 0.9, 1.2); rim.position.set(3, 9, -12); rim.target.position.set(0, 0, 0); scene.add(rim, rim.target);
+
+        // ---- textures and helpers ----
+        const tex = (w, h, draw) => { const c = document.createElement("canvas"); c.width = w; c.height = h; draw(c.getContext("2d"), w, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; t.userData.canvas = c; return t; };
+        const glowTex = tex(256, 256, (g) => { const gr = g.createRadialGradient(128, 128, 0, 128, 128, 128); gr.addColorStop(0, "rgba(255,255,255,1)"); gr.addColorStop(0.2, "rgba(255,255,255,0.5)"); gr.addColorStop(0.55, "rgba(255,255,255,0.1)"); gr.addColorStop(1, "rgba(255,255,255,0)"); g.fillStyle = gr; g.fillRect(0, 0, 256, 256); });
+        const glow = (c, s, o = 0) => { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: c, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, opacity: o })); sp.scale.setScalar(s); scene.add(sp); return sp; };
+        const rrect = (g, x, y, w, h, rad) => { g.beginPath(); g.moveTo(x + rad, y); g.arcTo(x + w, y, x + w, y + h, rad); g.arcTo(x + w, y + h, x, y + h, rad); g.arcTo(x, y + h, x, y, rad); g.arcTo(x, y, x + w, y, rad); g.closePath(); };
+        const wrap = (g, text, maxW) => { const out = []; let line = ""; for (const w of text.split(" ")) { const tr = line ? line + " " + w : w; if (g.measureText(tr).width > maxW && line) { out.push(line); line = w; } else line = tr; } if (line) out.push(line); return out; };
+        const UPV = V3(0, 1, 0);
+        const rod = (parent, r0, r1, mat, seg = 16) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, 1, seg, 1, false).translate(0, 0.5, 0), mat); m.frustumCulled = false; parent.add(m); return m; };
+        const aim = (m, a, b) => { const d = b.clone().sub(a); m.position.copy(a); m.quaternion.setFromUnitVectors(UPV, d.clone().normalize()); m.scale.set(1, Math.max(1e-4, d.length()), 1); };
+        const add = (parent, geo, mat, x = 0, y = 0, z = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); parent.add(m); return m; };
+        const box = (w, h, d, mat, x, y, z, parent = scene) => add(parent, new THREE.BoxGeometry(w, h, d), mat, x, y, z);
+        const label = (w, h, draw, sx) => { const m = tex(w, h, draw); const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: m, transparent: true, depthWrite: false, fog: false, opacity: 0 })); sp.scale.set(sx, sx * h / w, 1); scene.add(sp); return sp; };
+
+        const brass = new THREE.MeshStandardMaterial({ color: 0xc9a165, metalness: 1, roughness: 0.28, envMapIntensity: 1.5 });
+        const darkBrass = new THREE.MeshStandardMaterial({ color: 0x7d6038, metalness: 1, roughness: 0.4 });
+        const woodTex = tex(1024, 1024, (g, w, h) => { g.fillStyle = "#2c1b10"; g.fillRect(0, 0, w, h); for (let k = 0; k < 260; k++) { const y = hash(k * 3.3) * h; g.strokeStyle = `rgba(${hash(k) > 0.5 ? "84,52,30" : "20,12,7"},${0.25 + 0.4 * hash(k + 9)})`; g.lineWidth = 1 + 4 * hash(k + 2); g.beginPath(); g.moveTo(0, y); for (let x = 0; x <= w; x += 32) g.lineTo(x, y + 7 * Math.sin(x * 0.012 + k)); g.stroke(); } });
+        woodTex.wrapS = woodTex.wrapT = THREE.RepeatWrapping; woodTex.repeat.set(3, 2);
+        const wood = new THREE.MeshPhysicalMaterial({ map: woodTex, roughness: 0.55, metalness: 0, clearcoat: 0.25, clearcoatRoughness: 0.45 });
+
+        // ================= the table and the study around it =================
+        box(26, 0.5, 18.5, wood, 0, -0.25, 1.4);
+        for (const [x, z] of [[-12.4, -7.4], [12.4, -7.4], [-12.4, 10.2], [12.4, 10.2]]) box(0.7, 6, 0.7, wood, x, -3.5, z);
+        // the lamp at the back left: stand, arm, shade and bulb
+        const LB = V3(-10.2, 0, -7.0);
+        add(scene, new THREE.CylinderGeometry(0.9, 1.0, 0.18, 48), darkBrass, LB.x, 0.09, LB.z);
+        aim(rod(scene, 0.07, 0.07, brass), LB.clone().setY(0.1), V3(LB.x, 6.9, LB.z));
+        aim(rod(scene, 0.06, 0.06, brass), V3(LB.x, 6.9, LB.z), LAMP.clone().add(V3(0, 0.7, 0)));
+        add(scene, new THREE.SphereGeometry(0.13, 20, 12), brass, LB.x, 6.9, LB.z);
+        const shade = add(scene, new THREE.CylinderGeometry(0.42, 1.25, 1.1, 48, 1, true), new THREE.MeshStandardMaterial({ color: 0x0f3a33, metalness: 0.4, roughness: 0.35, side: THREE.DoubleSide }), LAMP.x, LAMP.y + 0.25, LAMP.z);
+        shade.lookAt(V3(0.6, 0, 1.2)); shade.rotateX(Math.PI / 2);
+        add(shade, new THREE.TorusGeometry(1.25, 0.035, 10, 64).rotateX(Math.PI / 2), brass, 0, -0.55, 0);
+        const bulb = glow(0xffd29a, 2.2); bulb.position.copy(LAMP).add(V3(0.2, -0.2, 0.2));
+        // spare charts rolled at the back, books and an ink pot at the back right
+        const paperCol = new THREE.MeshStandardMaterial({ color: 0xd9cfb8, roughness: 0.9 });
+        for (const [x, z, a] of [[-6.6, -6.6, 0.1], [-5.4, -6.9, -0.05], [-6.0, -6.4, 0.2]]) { const c = add(scene, new THREE.CylinderGeometry(0.2, 0.2, 3.2, 32), paperCol, x, 0.2 + (x === -6.0 ? 0.36 : 0), z); c.rotation.set(0, a, Math.PI / 2); }
+        for (const [k, c] of [[0, 0x3b1d14], [1, 0x13261f], [2, 0x2a2416]]) box(2.3, 0.34, 1.6, new THREE.MeshStandardMaterial({ color: c, roughness: 0.7 }), 9.6 + 0.08 * k, 0.17 + 0.35 * k, -6.2 - 0.05 * k).rotation.y = 0.12 * k - 0.1;
+        add(scene, new THREE.CylinderGeometry(0.32, 0.38, 0.5, 32), new THREE.MeshPhysicalMaterial({ color: 0x0b0d10, roughness: 0.1, clearcoat: 1 }), 7.6, 0.25, -6.4);
+
+        // ================= the map paper: as it runs today, and the roadmap printed =================
+        const CPX = 2400, CPY = 1500, px = (x) => (x / PW + 0.5) * CPX, py = (z) => (z / PD + 0.5) * CPY;
+        const INK = "#2a2117", INK2 = "rgba(42,33,23,0.55)", TEAL_INK = "#00857d";
+        const coastPath = (g) => { g.beginPath(); TB.coast.forEach(([x, z], k) => (k ? g.lineTo(px(x), py(z)) : g.moveTo(px(x), py(z)))); g.closePath(); };
+        const rose = (g, cx, cy, R) => {
+          g.save(); g.translate(cx, cy);
+          g.strokeStyle = INK2; g.lineWidth = 2; g.beginPath(); g.arc(0, 0, R, 0, 7); g.stroke(); g.beginPath(); g.arc(0, 0, R * 0.82, 0, 7); g.stroke();
+          for (let k = 0; k < 32; k++) { const a = (k / 32) * Math.PI * 2; g.beginPath(); g.moveTo(Math.cos(a) * R * 0.82, Math.sin(a) * R * 0.82); g.lineTo(Math.cos(a) * R * (k % 4 ? 0.9 : 1), Math.sin(a) * R * (k % 4 ? 0.9 : 1)); g.stroke(); }
+          for (let k = 0; k < 8; k++) { const a = (k / 8) * Math.PI * 2 - Math.PI / 2, L = k % 2 ? R * 0.5 : R * 0.95, s = k % 2 ? 0.09 : 0.14;
+            g.fillStyle = k % 2 ? INK2 : INK; g.beginPath(); g.moveTo(0, 0); g.lineTo(Math.cos(a - s) * R * 0.22, Math.sin(a - s) * R * 0.22); g.lineTo(Math.cos(a) * L, Math.sin(a) * L); g.lineTo(Math.cos(a + s) * R * 0.22, Math.sin(a + s) * R * 0.22); g.closePath(); g.fill(); }
+          g.fillStyle = INK; g.font = '700 34px "Baskerville"'; g.textAlign = "center"; g.fillText("N", 0, -R - 14); g.restore(); g.textAlign = "left";
+        };
+        const drawPaper = (g, w, h, roadmap) => {
+          g.fillStyle = "#d4c5a3"; g.fillRect(0, 0, w, h);
+          for (let k = 0; k < 70; k++) { const x = hash(k * 1.7) * w, y = hash(k * 2.9 + 1) * h, rr = 60 + 260 * hash(k + 4); const gr = g.createRadialGradient(x, y, 0, x, y, rr); gr.addColorStop(0, `rgba(${hash(k) > 0.5 ? "150,110,60" : "255,250,235"},${0.05 + 0.07 * hash(k + 7)})`); gr.addColorStop(1, "rgba(0,0,0,0)"); g.fillStyle = gr; g.fillRect(x - rr, y - rr, rr * 2, rr * 2); }
+          const vg = g.createRadialGradient(w / 2, h / 2, h * 0.35, w / 2, h / 2, w * 0.62); vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(80,50,20,0.32)"); g.fillStyle = vg; g.fillRect(0, 0, w, h);
+          // the sea: fine wavy hatching
+          g.strokeStyle = "rgba(42,33,23,0.16)"; g.lineWidth = 2;
+          for (let y = 70; y < h - 60; y += 22) { g.beginPath(); for (let x = 60; x <= w - 60; x += 12) g.lineTo(x, y + 3 * Math.sin(x * 0.03 + y * 0.7)); g.stroke(); }
+          // graticule
+          g.strokeStyle = "rgba(42,33,23,0.2)"; g.lineWidth = 1.5;
+          for (let x = 60; x < w; x += 200) { g.beginPath(); g.moveTo(x, 60); g.lineTo(x, h - 60); g.stroke(); }
+          for (let y = 50; y < h; y += 200) { g.beginPath(); g.moveTo(60, y); g.lineTo(w - 60, y); g.stroke(); }
+          // the land, the coast and its echo
+          coastPath(g); g.fillStyle = "#ddd0b2"; g.fill();
+          g.save(); coastPath(g); g.clip(); g.strokeStyle = "rgba(42,33,23,0.12)"; g.lineWidth = 1.5; for (let y = -h; y < 2 * h; y += 14) { g.beginPath(); g.moveTo(0, y); g.lineTo(w, y + w * 0.3); g.stroke(); } g.restore();
+          g.save(); g.translate(w / 2, h / 2); g.scale(1.035, 1.05); g.translate(-w / 2, -h / 2); coastPath(g); g.strokeStyle = "rgba(42,33,23,0.35)"; g.lineWidth = 2; g.stroke(); g.restore();
+          coastPath(g); g.strokeStyle = INK; g.lineWidth = 5; g.stroke();
+          // the borders between regions, dotted
+          g.fillStyle = "rgba(42,33,23,0.5)";
+          const RG = new Int8Array(M.nx * M.nz).fill(-1); TB.cols.forEach(([i, j, , rg]) => (RG[j * M.nx + i] = rg));
+          for (let j = 0; j < M.nz - 1; j++) for (let i = 0; i < M.nx - 1; i++) { const a = RG[j * M.nx + i]; if (a < 0) continue; const b = RG[j * M.nx + i + 1], c = RG[(j + 1) * M.nx + i];
+            if ((b >= 0 && b !== a) || (c >= 0 && c !== a)) { if ((i + j) % 2) continue; g.beginPath(); g.arc(px(M.x0 + i * M.cell), py(M.z0 + j * M.cell), 3, 0, 7); g.fill(); } }
+          // region names
+          TB.regions.forEach((rg) => { g.fillStyle = INK; g.font = '700 58px "Baskerville"'; g.textAlign = "center"; g.letterSpacing = "10px"; g.fillText(rg.name.toUpperCase(), px(rg.x), py(rg.z) + 20); g.letterSpacing = "0px"; });
+          g.textAlign = "left";
+          // the border, ticks, the rose, the cartouche and the honest corner
+          g.strokeStyle = INK; g.lineWidth = 5; g.strokeRect(34, 34, w - 68, h - 68); g.lineWidth = 2; g.strokeRect(52, 52, w - 104, h - 104);
+          for (let x = 52, k = 0; x < w - 52; x += 50, k++) { g.fillStyle = k % 2 ? INK : "#e3d8bf"; g.fillRect(x, 36, 50, 14); g.fillRect(x, h - 50, 50, 14); }
+          rose(g, px(7.2), py(4.15), 120);
+          const cx = px(-6.9), cy = py(-4.25);
+          g.fillStyle = "rgba(227,216,191,0.92)"; rrect(g, cx - 250, cy - 92, 500, 184, 12); g.fill(); g.strokeStyle = INK; g.lineWidth = 3; rrect(g, cx - 250, cy - 92, 500, 184, 12); g.stroke(); g.lineWidth = 1.5; rrect(g, cx - 238, cy - 80, 476, 160, 8); g.stroke();
+          g.textAlign = "center"; g.fillStyle = roadmap ? TEAL_INK : INK; g.font = '600 26px "JBM"'; g.letterSpacing = "6px"; g.fillText(roadmap ? "ROADMAP" : "THE BUSINESS", cx, cy - 30); g.letterSpacing = "0px";
+          g.fillStyle = INK; g.font = '400 42px "Baskerville"'; g.fillText(roadmap ? "first, second, third" : "as it runs today", cx, cy + 34);
+          g.font = '400 34px "Baskerville"'; g.fillStyle = INK2; g.fillText("here be guesses", px(6.6), py(-4.5)); g.textAlign = "left";
+          if (!roadmap) return;
+          // the roadmap: the route in teal ink, numbered stops, phases
+          g.lineCap = "round"; g.lineJoin = "round";
+          PH.forEach((ph, k) => { const a = (ph.ranks[0] - 1) * TB.seg, b = (ph.ranks[ph.ranks.length - 1] - 1) * TB.seg;
+            g.strokeStyle = TEAL_INK; g.lineWidth = 10; g.setLineDash(k === 0 ? [] : k === 1 ? [34, 14] : [10, 14]); g.beginPath();
+            for (let i = a; i <= b; i++) { const [x, , z] = TB.route[i]; i === a ? g.moveTo(px(x), py(z)) : g.lineTo(px(x), py(z)); } g.stroke(); });
+          g.setLineDash([]);
+          PINS.forEach((p) => { if (!p.rank) { g.strokeStyle = INK2; g.lineWidth = 4; const X = px(p.x), Y = py(p.z); g.beginPath(); g.moveTo(X - 14, Y - 14); g.lineTo(X + 14, Y + 14); g.moveTo(X + 14, Y - 14); g.lineTo(X - 14, Y + 14); g.stroke(); return; }
+            const X = px(p.x), Y = py(p.z); g.fillStyle = TEAL_INK; g.beginPath(); g.arc(X, Y, 30, 0, 7); g.fill(); g.fillStyle = "#e9dfc8"; g.font = '700 34px "Baskerville"'; g.textAlign = "center"; g.fillText(String(p.rank), X, Y + 12); g.textAlign = "left"; });
+        };
+        const paperA = tex(CPX, CPY, (g, w, h) => drawPaper(g, w, h, false));
+        const paperB = tex(CPX, CPY, (g, w, h) => drawPaper(g, w, h, true));
+        const printU = uniform(0);
+        const paperMat = new THREE.MeshStandardNodeMaterial({ roughness: 0.92, metalness: 0, side: THREE.FrontSide });
+        paperMat.colorNode = mix(texture(paperA).rgb, texture(paperB).rgb, printU);
+        const paperBack = new THREE.MeshStandardMaterial({ color: 0xd2c6aa, roughness: 0.95, side: THREE.BackSide });
+        // the paper is a strip of rows so it can roll up: rows run from the back edge (z = -PD/2) to the front
+        const NR = 260, paperGeo = new THREE.PlaneGeometry(PW, PD, 2, NR).rotateX(-Math.PI / 2);
+        const pPos = paperGeo.attributes.position, REST = Float32Array.from(pPos.array);
+        const paper = new THREE.Mesh(paperGeo, paperMat), paperB2 = new THREE.Mesh(paperGeo, paperBack);
+        paper.position.y = 0.004; paperB2.position.y = 0.004; paper.frustumCulled = paperB2.frustumCulled = false; scene.add(paper, paperB2);
+        const R0 = 0.11, CR = 0.01 / Math.PI;
+        let rOut = R0;
+        function rollPaper(z0) {
+          // a spiral: the paper behind the contact line z0 is wound up, the rest lies flat
+          const smax = Math.max(0, z0 + PD / 2); rOut = Math.sqrt(R0 * R0 + CR * smax);
+          const thC = (2 / CR) * (rOut - R0);
+          for (let v = 0; v < pPos.count; v++) {
+            const x = REST[v * 3], zr = REST[v * 3 + 2];
+            if (zr >= z0) { pPos.setXYZ(v, x, 0, zr); continue; }
+            const sig = zr + PD / 2, rho = Math.sqrt(R0 * R0 + CR * sig), al = thC - (2 / CR) * (rho - R0);
+            pPos.setXYZ(v, x, rOut - rho * Math.cos(al), z0 - rho * Math.sin(al));
+          }
+          pPos.needsUpdate = true; paperGeo.computeVertexNormals();
+        }
+
+        // ================= the relief: 8,586 columns, one per land cell =================
+        const cs = M.cell * 0.86;
+        const colMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.78, metalness: 0 }), NC);
+        colMesh.frustumCulled = false; scene.add(colMesh);
+        const CX = new Float32Array(NC), CZ = new Float32Array(NC), CH = new Float32Array(NC), CD = new Float32Array(NC), CA = new Float32Array(NC);
+        const CBASE = [];
+        const LOW = new THREE.Color("#a8946e"), MID = new THREE.Color("#cdbf9f"), HIGH = new THREE.Color("#ebe2cd");
+        COLS.forEach(([i, j, h, rg], k) => {
+          CX[k] = M.x0 + i * M.cell; CZ[k] = M.z0 + j * M.cell; CH[k] = h / 100; CD[k] = Math.hypot(CX[k], CZ[k]); CA[k] = Math.atan2(CZ[k], CX[k]);
+          const u = cl(CH[k] / 1.5); const c = u < 0.5 ? LOW.clone().lerp(MID, u * 2) : MID.clone().lerp(HIGH, (u - 0.5) * 2);
+          c.multiplyScalar(0.94 + 0.08 * hash(rg * 3.1 + 1) + 0.04 * hash(k * 0.37)); CBASE.push(c);
+        });
+        const TEALC = new THREE.Color(0.0, 0.78, 0.72);
+
+        // ================= the fog over the unmapped business =================
+        const fogTex = (seed) => tex(1024, 640, (g, w, h) => {
+          for (let k = 0; k < 260; k++) { const cx = hash(Math.floor(k / 20) * 5.3 + seed) * w, cy = hash(Math.floor(k / 20) * 8.1 + seed * 3) * h, x = cx + (hash(k * 1.3 + seed) - 0.5) * 300, y = cy + (hash(k * 2.1 + seed * 3) - 0.5) * 180, rr = 26 + 90 * hash(k + seed * 7); const gr = g.createRadialGradient(x, y, 0, x, y, rr); gr.addColorStop(0, `rgba(255,255,255,${0.12 + 0.2 * hash(k + seed)})`); gr.addColorStop(1, "rgba(255,255,255,0)"); g.fillStyle = gr; g.fillRect(x - rr, y - rr, rr * 2, rr * 2); }
+        });
+        const RU = uniform(0), fogAmt = uniform(1), lampU = uniform(0);
+        const FW = 24, FD = 15;
+        const FOGS = [[fogTex(1), 0.32, 0.7], [fogTex(5), 0.8, 0.5]].map(([ft, y, k], n) => {
+          ft.wrapS = ft.wrapT = THREE.RepeatWrapping;
+          const drift = uniform(0);
+          const m = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, fog: false });
+          const d = length(vec2(uv().x.sub(0.5).mul(FW), uv().y.sub(0.5).mul(FD)));
+          m.colorNode = vec3(0.44, 0.42, 0.39).mul(lampU.mul(0.85).add(0.15));
+          m.opacityNode = clamp(texture(ft, uv().add(vec2(drift, drift.mul(0.3)))).a.mul(3.2), 0, 1).mul(smoothstep(RU.sub(0.3), RU.add(1.4), d)).mul(fogAmt).mul(k);
+          const mesh = add(scene, new THREE.PlaneGeometry(FW, FD).rotateX(-Math.PI / 2), m, 0, y, 0); mesh.renderOrder = 5 + n;
+          return { mesh, drift };
+        });
+
+        // ================= the survey ring and its beam =================
+        const ringGeo = (tube) => new THREE.TorusGeometry(1, tube, 10, 256).rotateX(Math.PI / 2);
+        const ringNode = (off) => { const p = positionLocal, rl = length(vec2(p.x, p.z)), k = rl.sub(1).add(RU).add(off).div(rl); return vec3(p.x.mul(k), p.y, p.z.mul(k)); };
+        const ringMat = new THREE.MeshStandardNodeMaterial({ color: 0xc9a165, metalness: 1, roughness: 0.25 }); ringMat.positionNode = ringNode(0);
+        const ring = add(scene, ringGeo(0.05), ringMat, 0, 0.06, 0); ring.frustumCulled = false;
+        const ringTMat = new THREE.MeshBasicNodeMaterial({ color: new THREE.Color(0, 2.4, 2.2), transparent: true, fog: false, toneMapped: false }); ringTMat.positionNode = ringNode(-0.11);
+        const ringT = add(scene, ringGeo(0.02), ringTMat, 0, 0.08, 0); ringT.frustumCulled = false;
+        const beamTex = tex(512, 512, (g) => { const gr = g.createConicGradient(0, 256, 256); gr.addColorStop(0, "rgba(120,255,240,0.0)"); gr.addColorStop(0.83, "rgba(0,190,180,0.0)"); gr.addColorStop(0.995, "rgba(60,255,240,0.55)"); gr.addColorStop(1, "rgba(120,255,240,0)"); g.fillStyle = gr; g.beginPath(); g.arc(256, 256, 256, 0, 7); g.fill(); });
+        const beam = add(scene, new THREE.CircleGeometry(1, 128).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: beamTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, opacity: 0 }), 0, 0.03, 0);
+        const hub = add(scene, new THREE.CylinderGeometry(0.16, 0.2, 0.12, 32), brass, 0, 0.06, 0);
+        const pingGlow = glow(0x7ff6ec, 3);
+
+        // ================= the opportunities: pins with their payoff, cost and risk =================
+        const needleGeo = new THREE.CylinderGeometry(0.012, 0.024, 1, 12).translate(0, 0.5, 0), headGeo = new THREE.SphereGeometry(0.11, 24, 16);
+        const tor = (R, c) => { const m = new THREE.Mesh(new THREE.TorusGeometry(R, 0.016, 8, 96).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0, fog: false, toneMapped: false, depthWrite: false })); scene.add(m); return m; };
+        const pinLabel = (p, knocked) => (g, w, h) => {
+          g.fillStyle = knocked ? "rgba(20,18,16,0.82)" : "rgba(10,10,10,0.84)"; rrect(g, 4, 4, w - 8, h - 8, 18); g.fill();
+          g.strokeStyle = knocked ? "rgba(224,137,74,0.8)" : "rgba(0,191,180,0.75)"; g.lineWidth = 3; rrect(g, 4, 4, w - 8, h - 8, 18); g.stroke();
+          g.fillStyle = knocked ? "#8d8a85" : "#f5f2ea"; g.font = '600 38px "Inter"'; g.textAlign = "center"; g.fillText(p.name, w / 2, 62);
+          if (knocked) { const tw = g.measureText(p.name).width; g.strokeStyle = "#8d8a85"; g.lineWidth = 3; g.beginPath(); g.moveTo(w / 2 - tw / 2, 50); g.lineTo(w / 2 + tw / 2, 50); g.stroke(); }
+          g.fillStyle = knocked ? "#e0894a" : "#7fe9e0"; g.font = '600 24px "JBM"'; g.letterSpacing = "3px"; g.fillText(knocked ? "NOT WORTH BUILDING" : "PAYOFF · COST · RISK", w / 2, 108); g.letterSpacing = "0px";
+        };
+        const PG = PINS.map((p, k) => {
+          const g = new THREE.Group(); scene.add(g);
+          const headMat = new THREE.MeshStandardMaterial({ color: 0x00bfb4, emissive: 0x00bfb4, emissiveIntensity: 0.9, roughness: 0.3, metalness: 0.2 });
+          const needle = add(g, needleGeo, brass); needle.scale.y = p.h;
+          const head = add(g, headGeo, headMat, 0, p.h, 0);
+          add(g, new THREE.CylinderGeometry(0.05, 0.05, 0.05, 16), brass, 0, p.h - 0.12, 0);
+          const hg = glow(0x5ff2e6, 0.9);
+          const rings = [tor(0.16 + 0.42 * p.payoff, new THREE.Color(0, 1.9, 1.75)), tor(0.16 + 0.42 * p.cost, new THREE.Color(1.5, 1.4, 1.2)), tor(0.16 + 0.42 * p.risk, new THREE.Color(1.9, 0.8, 0.35))];
+          const lab = label(560, 140, pinLabel(p, false), 1.7), labX = p.rank ? null : label(560, 140, pinLabel(p, true), 1.7);
+          const base = V3(p.x, hAt(p.x, p.z), p.z);
+          const ax = hash(k * 4.1) * Math.PI * 2, axis = V3(Math.cos(ax), 0, Math.sin(ax)).normalize();
+          return { p, g, head, headMat, hg, rings, lab, labX, base, axis };
+        });
+        // the markers the ranked pins leave behind, and the rail at the table's edge
+        const MARK = PINS.map((p) => p.rank ? label(128, 128, (g) => { g.fillStyle = "#00a99f"; g.beginPath(); g.arc(64, 64, 58, 0, 7); g.fill(); g.strokeStyle = "#e9dfc8"; g.lineWidth = 5; g.beginPath(); g.arc(64, 64, 50, 0, 7); g.stroke(); g.fillStyle = "#f5f2ea"; g.font = '700 64px "Baskerville"'; g.textAlign = "center"; g.fillText(String(p.rank), 64, 86); }, 0.42) : null);
+        const rail = add(scene, new THREE.CylinderGeometry(0.05, 0.05, 15.2, 24).rotateZ(Math.PI / 2), brass, 0, 0.05, ROW_Z);
+        for (let k = 1; k <= 8; k++) add(scene, new THREE.CylinderGeometry(0.14, 0.17, 0.08, 32), darkBrass, rowX(k), 0.04, ROW_Z);
+        const tagTex = (p) => tex(640, 320, (g, w, h) => {
+          g.fillStyle = "#ece3cd"; rrect(g, 0, 0, w, h, 22); g.fill();
+          g.strokeStyle = "#2a2117"; g.lineWidth = 3; rrect(g, 10, 10, w - 20, h - 20, 16); g.stroke();
+          g.fillStyle = "#2a2117"; g.beginPath(); g.arc(w / 2, 34, 9, 0, 7); g.fill();
+          g.fillStyle = "#00857d"; g.font = '700 120px "Baskerville"'; g.fillText(String(p.rank), 34, 168);
+          g.fillStyle = "#16140f"; g.font = '600 36px "Inter"'; const nl = wrap(g, p.name, 440); nl.forEach((ln, k) => g.fillText(ln, 148, 108 + k * 42));
+          g.fillStyle = "#4a4236"; g.font = '400 30px "Inter"'; const wl = wrap(g, p.why, 450); wl.forEach((ln, k) => g.fillText(ln, 148, 108 + nl.length * 42 + 22 + k * 36));
+          g.fillStyle = "#00857d"; g.font = '600 20px "JBM"'; g.letterSpacing = "3px"; const ph = PH.findIndex((q) => q.ranks.includes(p.rank) && (p.rank !== q.ranks[0] || q === PH[0])); g.fillText(`${["FIRST", "SECOND", "THIRD"][ph]} · ${PH[ph].span.toUpperCase()}`, 34, h - 34); g.letterSpacing = "0px";
+        });
+        const phaseOf = (rank) => (rank <= 3 ? 0 : rank <= 6 ? 1 : 2);
+        const TAGS = PINS.map((p) => { if (!p.rank) return null; const m = add(scene, new THREE.PlaneGeometry(1.6, 0.8).translate(0, -0.4, 0), new THREE.MeshStandardMaterial({ map: tagTex(p), roughness: 0.85, emissive: 0xffffff, emissiveMap: null, side: THREE.DoubleSide, transparent: true, opacity: 0 }), rowX(p.rank), 0.92, ROW_Z + 0.32); m.material.emissiveIntensity = 0; return m; });
+
+        // ================= the route and the dividers =================
+        const routeGeo = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(RP, false, "catmullrom", 0.2), 1600, 0.04, 8, false);
+        const routeMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0, 2.2, 2.0), transparent: true, opacity: 1, fog: false, toneMapped: false });
+        const route = new THREE.Mesh(routeGeo, routeMat); route.frustumCulled = false; scene.add(route);
+        const ROUTE_IDX = routeGeo.index.count;
+        const pen = glow(0x9ff7f0, 0.9);
+        const LEG_L = 1.45;
+        const divG = new THREE.Group(); scene.add(divG);
+        const legA = rod(divG, 0.006, 0.05, brass, 20), legB = rod(divG, 0.006, 0.05, brass, 20);
+        const hinge = add(divG, new THREE.CylinderGeometry(0.11, 0.11, 0.1, 32).rotateX(Math.PI / 2), brass);
+        const knob = add(divG, new THREE.CylinderGeometry(0.05, 0.06, 0.32, 24), darkBrass);
+        const PLAB = PH.map((ph, k) => label(760, 150, (g, w, h) => { g.fillStyle = "rgba(10,10,10,0.84)"; rrect(g, 4, 4, w - 8, h - 8, 20); g.fill(); g.strokeStyle = "#00BFB4"; g.lineWidth = 3; rrect(g, 4, 4, w - 8, h - 8, 20); g.stroke();
+          g.fillStyle = "#00BFB4"; g.font = '600 28px "JBM"'; g.letterSpacing = "6px"; g.textAlign = "center"; g.fillText(["FIRST", "SECOND", "THIRD"][k], w / 2, 58); g.letterSpacing = "0px"; g.fillStyle = "#f5f2ea"; g.font = '400 44px "Baskerville"'; g.fillText(ph.span, w / 2, 114); }, 2.3));
+        const legMid = PH.map((ph) => atArc((ph.arc[0] + ph.arc[1]) / 2).add(V3(0, 1.0, 0)));
+
+        // ================= the compass: brass bowl, a rose, a needle =================
+        add(scene, new THREE.CylinderGeometry(0.8, 0.86, 0.2, 64), brass, COMPASS.x, 0.1, COMPASS.z);
+        add(scene, new THREE.TorusGeometry(0.8, 0.04, 12, 96).rotateX(Math.PI / 2), brass, COMPASS.x, 0.2, COMPASS.z);
+        const roseTex = tex(512, 512, (g, w) => { g.fillStyle = "#e6dcc4"; g.beginPath(); g.arc(256, 256, 256, 0, 7); g.fill(); rose(g, 256, 256, 200); });
+        add(scene, new THREE.CircleGeometry(0.74, 64).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ map: roseTex, roughness: 0.8 }), COMPASS.x, 0.205, COMPASS.z);
+        const needleG = new THREE.Group(); needleG.position.set(COMPASS.x, 0.25, COMPASS.z); scene.add(needleG);
+        const nTeal = new THREE.MeshStandardMaterial({ color: 0x00bfb4, emissive: 0x00bfb4, emissiveIntensity: 0.6, roughness: 0.3 });
+        add(needleG, new THREE.ConeGeometry(0.06, 0.6, 4).rotateZ(-Math.PI / 2).translate(0.3, 0, 0), nTeal);
+        add(needleG, new THREE.ConeGeometry(0.06, 0.6, 4).rotateZ(Math.PI / 2).translate(-0.3, 0, 0), new THREE.MeshStandardMaterial({ color: 0x1a1612, roughness: 0.4 }));
+        add(needleG, new THREE.CylinderGeometry(0.045, 0.045, 0.05, 16), brass);
+        add(scene, new THREE.CylinderGeometry(0.76, 0.76, 0.01, 64), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3, metalness: 0, transparent: true, opacity: 0.06 }), COMPASS.x, 0.31, COMPASS.z);
+        const first = atArc(PH[0].arc[0] + 1.2);
+        const nTarget = Math.atan2(-(first.z - COMPASS.z), first.x - COMPASS.x);
+
+        // ================= the roadmap: ribbon and tag on the rolled map =================
+        const ribbonMat = new THREE.MeshStandardMaterial({ color: 0x00a99f, roughness: 0.45, metalness: 0.1, emissive: 0x00bfb4, emissiveIntensity: 0.25 });
+        ribbonMat.side = THREE.DoubleSide;
+        const ribbons = [-2.22, -1.88].map((x) => { const m = add(scene, new THREE.CylinderGeometry(1, 1, 0.13, 64, 1, true).rotateZ(Math.PI / 2), ribbonMat, x, 0, 0); m.visible = false; return m; });
+        const rtag = add(scene, new THREE.PlaneGeometry(2.0, 1.0), new THREE.MeshStandardMaterial({ map: tex(800, 400, (g, w, h) => {
+          g.fillStyle = "#ece3cd"; rrect(g, 0, 0, w, h, 26); g.fill(); g.strokeStyle = "#00857d"; g.lineWidth = 8; rrect(g, 16, 16, w - 32, h - 32, 18); g.stroke();
+          g.fillStyle = "#00857d"; g.font = '700 108px "Baskerville"'; g.textAlign = "center"; g.fillText("Roadmap", w / 2, 190); g.font = '600 34px "JBM"'; g.letterSpacing = "6px"; g.fillText("DEBRIEF BOOKED", w / 2, 290); g.letterSpacing = "0px"; }),
+          roughness: 0.85, side: THREE.DoubleSide, transparent: true, opacity: 0 }), -2.05, 0, 6.2);
+        const tieFlash = glow(0x7ff3ea, 1.8);
+
+        // ================= the word: the route lifts off and writes "mapped" =================
+        const svgNS = "http://www.w3.org/2000/svg", host = document.createElementNS(svgNS, "svg");
+        host.setAttribute("width", "0"); host.setAttribute("height", "0"); host.style.position = "absolute"; document.body.appendChild(host);
+        const WP = [], WSEG = [];
+        window.WORD.contours.forEach((d) => {
+          const p = document.createElementNS(svgNS, "path"); p.setAttribute("d", d); host.appendChild(p);
+          const len = p.getTotalLength(), n = Math.max(8, Math.round(len / 5.0)), first = WP.length;
+          for (let i = 0; i < n; i++) { const qq = p.getPointAtLength((len * i) / n); WP.push(V3(WORD_C.x + qq.x * WS, WORD_C.y - qq.y * WS, WORD_C.z)); WSEG.push([first + i, first + ((i + 1) % n)]); }
+        });
+        // each point of the word is reached from its own place along the route, in order, so the line seems to re-form
+        const WSRC = WP.map((_, j) => ({ s: (j / WP.length) * LTOT, t0: T.word[0] + 0.85 * (j / WP.length) + 0.12 * hash(j * 7 + 1), lift: 0.6 + 1.2 * hash(j + 5) }));
+        const wPos = new Float32Array(WSEG.length * 6), wCol = new Float32Array(WSEG.length * 6), wGeo = new THREE.BufferGeometry();
+        wGeo.setAttribute("position", new THREE.BufferAttribute(wPos, 3)); wGeo.setAttribute("color", new THREE.BufferAttribute(wCol, 3));
+        const wLines = new THREE.LineSegments(wGeo, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); wLines.frustumCulled = false; scene.add(wLines);
+        const beads = new THREE.InstancedMesh(new THREE.SphereGeometry(0.032, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false }), WP.length); beads.frustumCulled = false; scene.add(beads);
+        const TEAL = new THREE.Color(0.0, 0.85, 0.78), BONE = new THREE.Color(1.0, 0.86, 0.66);
+        const WCOL = WP.map((w, j) => (hash(j * 1.3 + 2) > 0.35 ? TEAL.clone().multiplyScalar(2.2) : BONE.clone().multiplyScalar(1.6)));
+        const wordLight = new THREE.PointLight(0xffd9a8, 0, 22, 1.4); wordLight.position.copy(WORD_C).add(V3(0, -0.4, 2.2)); scene.add(wordLight);
+        const WNOW = WP.map(() => V3());
+
+        // ================= camera: [film t, look target, position, fov]; the dividers are followed in between =================
+        const KF = [
+          [0, [-1.4, 0.2, 0.6], [-3.6, 2.6, 7.6], 30], [2.8, [-0.4, 0.2, 0.2], [-1.4, 4.2, 9.6], 34],
+          [3.9, [0, 0, 0], [0.6, 8.6, 11.6], 38], [6.6, [0, 0.5, 0.2], [3.6, 8.8, 10.6], 38],
+          [8.5, [-1.0, 0.9, 0.6], [-4.8, 5.0, 9.0], 36], [9.0, [-1.4, 1.2, 0.8], [-6.4, 3.6, 7.8], 34], [12.8, [2.2, 1.3, 0.2], [5.8, 3.8, 8.0], 34],
+          [13.8, [0, 1.4, 3.8], [0.4, 7.4, 15.0], 42], [15.2, [-4.6, 0.8, 6.5], [-4.4, 3.4, 11.4], 32], [17.5, [4.6, 0.8, 6.5], [4.8, 3.4, 11.4], 32],
+          [18.2, [0, 0.3, 0], [0, 10, 10], 40], [22.3, [0, 0.3, 0], [0.5, 9.5, 10.5], 40],
+          [22.6, [-6.8, 0.2, 5.2], [-10.4, 2.3, 10.8], 34], [23.5, [-6.4, 0.3, 4.8], [-10.1, 2.4, 10.5], 34],
+          [24.0, [0, 0.2, 1.0], [0, 7.4, 12.6], 38], [25.6, [0, 0.4, 3.0], [0.8, 4.6, 11.6], 38],
+          [26.3, [-1.9, 0.3, 5.7], [-0.4, 1.7, 9.2], 32], [26.9, [-1.6, 0.6, 5.4], [-0.3, 2.0, 9.6], 33], [27.8, [0, 2.4, 3.0], [0, 3.2, 13.6], 38], [28.8, [0, 2.4, 3.0], [0, 3.4, 15.4], 38], [DUR, [0, 2.4, 3.0], [0, 3.4, 15.0], 38],
+        ];
+        const follow = (t) => {
+          // the pen's place, smoothed over a short window so the legs' pauses do not jerk the camera
+          const c = V3(); for (let k = -4; k <= 4; k++) c.add(atArc(penArc(t + 0.1 * k))); c.multiplyScalar(1 / 9);
+          const look = c.clone().lerp(V3(0, 0.3, 0), 0.3);
+          return { look, pos: look.clone().add(V3(1.4, 6.4, 6.6)), fov: 38 };
+        };
+        const camAt = (t) => {
+          let i = 0; while (i < KF.length - 2 && t >= KF[i + 1][0]) i++;
+          const a = KF[i], b = KF[i + 1], u = eIO(r(t, a[0], b[0]));
+          const look = V3(...a[1]).lerp(V3(...b[1]), u), pos = V3(...a[2]).lerp(V3(...b[2]), u); let fov = lerp(a[3], b[3], u);
+          const w = eIO(r(t, 18.0, 18.7)) * (1 - eIO(r(t, 22.0, 22.5)));
+          if (w > 0) { const F = follow(cl(t, 18.3, 22.4)); look.lerp(F.look, w); pos.lerp(F.pos, w); fov = lerp(fov, F.fov, w); }
+          pos.x += 0.04 * Math.sin(t * 0.6); pos.y += 0.03 * Math.sin(t * 0.9 + 1);
+          return { pos, look, fov };
+        };
+
+        // ================= post =================
+        const post = new THREE.PostProcessing(renderer);
+        const sceneColor = pass(scene, camera).getTextureNode("output");
+        post.outputNode = sceneColor.add(bloom(sceneColor, 0.55, 0.4, 0.92));
+        const m4 = new THREE.Matrix4(), q4 = new THREE.Quaternion(), s3 = V3(), tc3 = new THREE.Color(), p3 = V3();
+        const bez = (a, c, b, u) => { const p = a.clone().multiplyScalar((1 - u) * (1 - u)); return p.add(c.clone().multiplyScalar(2 * u * (1 - u))).add(b.clone().multiplyScalar(u * u)); };
+
+        function renderAt(t) {
+          clock.t = t;
+          const C = camAt(t);
+          camera.position.copy(C.pos); camera.lookAt(C.look); camera.fov = C.fov; camera.updateProjectionMatrix(); camera.updateMatrixWorld();
+
+          // the lamp comes up
+          const lu = eIO(r(t, T.lamp[0], T.lamp[1]));
+          lampLight.intensity = 46 * lu * (0.97 + 0.03 * Math.sin(t * 9.1) * (1 - r(t, 1.6, 3)));
+          bulb.material.opacity = lu; lampU.value = lu; key.intensity = 10 * lu; rim.intensity = 26 * lu; hemi.intensity = 0.22 * lu;
+
+          // the survey: the ring opens, the beam turns, the fog lifts
+          const R = ringR(t), audit = t > T.audit[0] && t < T.audit[1] + 0.6;
+          RU.value = R; ring.visible = ringT.visible = audit; beam.visible = audit;
+          const rf = 1 - r(R, 8.6, RMAX); ringMat.opacity = 1; ringTMat.opacity = rf;
+          ring.scale.y = rf > 0 ? 1 : 0.001;
+          beam.scale.set(R, 1, R); beam.rotation.y = -beamA(t); beam.material.opacity = 0.9 * r(t, T.audit[0], T.audit[0] + 0.3) * (1 - r(t, T.audit[1] - 0.4, T.audit[1]));
+          hub.visible = t > T.audit[0] - 0.4 && t < T.audit[1] + 0.8; hub.position.y = 0.06 + 0.04 * Math.sin(Math.PI * r(t, T.audit[0] - 0.4, T.audit[0]));
+          const pk = (t - T.audit[0]) % ((T.audit[1] - T.audit[0]) / TB.sweepTurns);
+          pingGlow.position.set(0, 0.3, 0); pingGlow.material.opacity = t > T.audit[0] && t < T.audit[1] ? 0.7 * Math.exp(-pk * 5) : 0;
+          fogAmt.value = 1 - r(t, T.audit[1] - 0.6, T.audit[1] + 0.4);
+          FOGS.forEach(({ mesh, drift }, n) => { drift.value = t * (n ? -0.006 : 0.009); mesh.visible = fogAmt.value > 0.001; });
+
+          // the relief rises behind the ring, catches the beam, and settles into the paper at the end
+          const sk = sinkK(t), rising = t > T.audit[0];
+          colMesh.visible = rising && sk > 0.001;
+          if (colMesh.visible) {
+            const ba = beamA(t);
+            for (let k = 0; k < NC; k++) {
+              const front = R - CD[k], u = cl(front / 1.1);
+              const hh = Math.max(0.002, CH[k] * eBack(u) * sk);
+              m4.makeScale(cs, u > 0 ? hh : 0.0001, cs); m4.setPosition(CX[k], 0, CZ[k]); colMesh.setMatrixAt(k, m4);
+              let glowK = front > 0 ? Math.exp(-front * 1.6) : 0;
+              let da = (ba - CA[k]) % (2 * Math.PI); if (da < 0) da += 2 * Math.PI;
+              if (front > 0 && t < T.audit[1]) glowK = Math.max(glowK, 0.75 * Math.exp(-da * 5));
+              colMesh.setColorAt(k, tc3.copy(CBASE[k]).lerp(TEALC, cl(glowK)));
+            }
+            colMesh.instanceMatrix.needsUpdate = true; colMesh.instanceColor.needsUpdate = true;
+          }
+
+          // the pins: they drop, their rings settle, four are knocked flat, the rest lift off to the rail in rank order
+          PG.forEach(({ p, g, head, headMat, hg, rings, lab, labX, base, axis }, k) => {
+            const dropU = r(t, p.drop - 0.5, p.drop), land = t - p.drop;
+            const hBase = base.y * sk;
+            let pos = V3(p.x, hBase + 7 * (1 - eIn(dropU)) ** 1, p.z), q = q4.identity().clone(), sc = 1;
+            if (land > 0) pos.y = hBase + 0.18 * Math.abs(Math.sin(land * 9)) * Math.exp(-land * 7);
+            if (p.rank) {
+              const lu2 = r(t, p.rankT, p.rankT + 1.0), el = eIO(lu2), to = V3(rowX(p.rank), 0.0, ROW_Z);
+              if (lu2 > 0) { const from = V3(p.x, base.y, p.z); pos = bez(from, from.clone().lerp(to, 0.5).add(V3(0, 1.7, 0)), to, el); }
+              const sinkRow = eIO(r(t, T.sink[0], T.sink[1] - 0.2)); if (sinkRow > 0 && lu2 >= 1) sc = 1 - sinkRow;
+            } else {
+              const ku = r(t, p.knock, p.knock + 0.6); q = new THREE.Quaternion().setFromAxisAngle(axis, (Math.PI / 2 - 0.16) * eBounce(ku));
+              if (t > T.sink[0]) sc = sk;
+            }
+            g.position.copy(pos); g.quaternion.copy(q); g.scale.set(1, Math.max(0.001, sc), 1);
+            g.visible = t > p.drop - 0.5 && sc > 0.002;
+            // the head: teal while it stands, grey when knocked flat, bright while its phase is being ruled
+            const lit = p.rank ? (legOf(t) === phaseOf(p.rank) ? 1 : 0) : 0;
+            const knocked = !p.rank && t > p.knock + 0.1;
+            headMat.color.setHex(knocked ? 0x55524d : 0x00bfb4); headMat.emissive.setHex(knocked ? 0x000000 : 0x00bfb4); headMat.emissiveIntensity = 0.9 + 1.6 * lit;
+            head.updateWorldMatrix(true, false); hg.position.setFromMatrixPosition(head.matrixWorld);
+            hg.material.opacity = g.visible ? (knocked ? 0 : 0.35 + 0.5 * Math.exp(-Math.max(0, land) * 4) + 0.5 * lit) : 0; hg.scale.setScalar(0.9 * Math.max(0.3, sc));
+            // the three rings: payoff, cost, risk
+            rings.forEach((m, j) => {
+              const a = t - (p.drop + 0.08 + 0.1 * j), o = a > 0 ? 1 : 0;
+              const s = a > 0 ? 1 + 1.6 * Math.exp(-a * 5) * Math.cos(a * 10) : 2.6;
+              m.position.set(p.x, base.y * sk + 0.1 + 0.03 * j, p.z); m.scale.set(s, 1, s);
+              const fade = p.rank ? 1 - r(t, p.rankT - 0.2, p.rankT + 0.2) : 1 - r(t, p.knock + 0.3, p.knock + 0.8);
+              m.material.opacity = o * (0.95 * cl(a * 4)) * fade; m.visible = m.material.opacity > 0.002;
+            });
+            // the label over the head
+            head.getWorldPosition(p3);
+            const lo = r(t, p.drop + 0.15, p.drop + 0.45) * (1 - r(t, T.rank - 0.3, T.rank + 0.1));
+            lab.position.copy(p.rank ? p3 : V3(p.x, base.y + p.h, p.z)).add(V3(0, 0.42, 0)); lab.material.opacity = p.rank ? lo : lo * (1 - r(t, p.knock, p.knock + 0.2));
+            if (labX) { labX.position.copy(base).add(V3(0, 0.75, 0)); labX.material.opacity = r(t, p.knock + 0.25, p.knock + 0.5) * (1 - r(t, T.rank - 0.3, T.rank + 0.1)); }
+            if (MARK[k]) { const mo = r(t, p.rankT + 0.2, p.rankT + 0.5) * (1 - r(t, T.sink[0], T.sink[0] + 0.4)); MARK[k].position.set(p.x, base.y * sk + 0.3, p.z); MARK[k].material.opacity = mo; }
+            if (TAGS[k]) {
+              const tu = t - (T.tags + 0.15 * (p.rank - 1)), tm = TAGS[k];
+              tm.material.opacity = cl(tu * 5) * (1 - r(t, T.sink[0], T.sink[0] + 0.4)); tm.visible = tm.material.opacity > 0.002;
+              tm.rotation.x = tu > 0 ? -0.42 + 0.9 * Math.exp(-tu * 3.2) * Math.cos(tu * 9) : -Math.PI / 2;
+              const lit2 = legOf(t) === phaseOf(p.rank) ? 1 : 0; tm.material.emissiveIntensity = 0; tm.material.color.setScalar(1 + 0.25 * lit2);
+            }
+          });
+
+          // the route: the dividers walk it, the pen rules it in teal
+          const sPen = penArc(t), dOn = r(t, T.dividers, T.dividers + 0.4) * (1 - r(t, T.legs[2][1] + 0.2, T.legs[2][1] + 0.6));
+          const lift = 1.25 * eIO(r(t, T.sink[0], T.lift[1]));
+          route.position.y = lift;
+          routeGeo.setDrawRange(0, Math.floor((ROUTE_IDX * sPen) / LTOT / 6) * 6);
+          route.visible = sPen > 0.01 && t < T.word[1] + 0.3;
+          routeMat.opacity = 1 - r(t, T.word[0] + 0.2, T.word[0] + 1.0);
+          pen.position.copy(atArc(sPen)).add(V3(0, 0.02, 0)); pen.material.opacity = t > T.legs[0][0] && t < T.legs[2][1] + 0.3 ? 0.85 : 0;
+          divG.visible = dOn > 0.001;
+          if (divG.visible) {
+            const st = t < TB.strides[0][0] ? { u: 0, from: 0, plant: 0, to: 0 } : strideAt(t);
+            const plant = atArc(st.plant), sw = atArc(lerp(st.from, st.to, eIO(st.u))); sw.y += 0.32 * Math.sin(Math.PI * st.u);
+            const drop = 2.4 * (1 - eOut(dOn)); plant.y += drop; sw.y += drop;
+            const mid = plant.clone().add(sw).multiplyScalar(0.5), d = plant.distanceTo(sw), hgt = Math.sqrt(Math.max(0.01, LEG_L * LEG_L - (d / 2) ** 2));
+            const hp = mid.clone().add(V3(0, hgt, 0));
+            aim(legA, hp, plant); aim(legB, hp, sw);
+            hinge.position.copy(hp); hinge.lookAt(camera.position); knob.position.copy(hp).add(V3(0, 0.2, 0));
+          }
+          PLAB.forEach((lb, k) => { lb.position.copy(legMid[k]); lb.material.opacity = r(t, T.legs[k][1] - 0.15, T.legs[k][1] + 0.25) * (1 - r(t, T.sink[0], T.sink[0] + 0.4)); });
+
+          // the compass needle swings and settles on the first leg
+          const cu = t - T.compass[0];
+          needleG.rotation.y = cu < 0 ? nTarget + 1.7 + 0.12 * Math.sin(t * 1.3) : nTarget + (1.7 + 0.12 * Math.sin(T.compass[0] * 1.3)) * Math.exp(-cu * 3.6) * Math.cos(cu * 11);
+
+          // the roadmap: the print shows through as the relief settles, the paper rolls up and is tied
+          printU.value = eIO(r(t, T.sink[0] + 0.2, T.sink[1]));
+          const z0 = lerp(-PD / 2, PD / 2, E("power1.inOut")(r(t, T.roll[0], T.roll[1])));
+          rollPaper(z0);
+          const tied = t > T.tie[0] - 0.05;
+          ribbons.forEach((m, j) => { m.visible = tied; const tu = eBack(r(t, T.tie[0] + 0.08 * j, T.tie[0] + 0.3 + 0.08 * j)); m.position.set(m.position.x, rOut, PD / 2); const rr = (rOut + 0.012) * lerp(1.8, 1, tu); m.scale.set(1, rr, rr); });
+          rtag.material.opacity = r(t, T.tie[0] + 0.2, T.tie[1]);
+          rtag.position.set(-2.05, 0.02 + 0.3 * (1 - eOut(r(t, T.tie[0] + 0.2, T.tie[1]))), PD / 2 + 0.85); rtag.rotation.set(-Math.PI / 2 + 0.5, 0, 0.12);
+          tieFlash.position.set(-2.05, rOut + 0.2, PD / 2); tieFlash.material.opacity = t > T.tie[0] ? 0.8 * Math.exp(-(t - T.tie[0]) * 4) : 0;
+
+          // the word: points leave the route in order and draw "mapped" in light
+          WP.forEach((w, j) => {
+            const sr = WSRC[j], u = eIO(r(t, sr.t0, sr.t0 + 0.9));
+            const src = atArc(sr.s); src.y += lift;
+            const mid = src.clone().lerp(w, 0.5); mid.y += sr.lift;
+            const a = src.lerp(mid, u), b = mid.lerp(w, u); WNOW[j].copy(a.lerp(b, u));
+            s3.setScalar(u > 0 ? (u < 1 ? 0.8 : 0.9 + 0.1 * Math.sin(t * 3 + j)) : 1e-4);
+            m4.compose(WNOW[j], q4.identity(), s3); beads.setMatrixAt(j, m4);
+            beads.setColorAt(j, tc3.copy(WCOL[j]).multiplyScalar(u > 0 ? 1 : 0));
+          });
+          beads.instanceMatrix.needsUpdate = true; if (beads.instanceColor) beads.instanceColor.needsUpdate = true;
+          WSEG.forEach(([a, b], k) => {
+            const ua = r(t, WSRC[a].t0, WSRC[a].t0 + 0.9), ub = r(t, WSRC[b].t0, WSRC[b].t0 + 0.9), o = Math.min(ua, ub) ** 2 * 0.9;
+            wPos.set([WNOW[a].x, WNOW[a].y, WNOW[a].z, WNOW[b].x, WNOW[b].y, WNOW[b].z], k * 6);
+            wCol.set([WCOL[a].r * o, WCOL[a].g * o, WCOL[a].b * o, WCOL[b].r * o, WCOL[b].g * o, WCOL[b].b * o], k * 6);
+          });
+          wGeo.attributes.position.needsUpdate = true; wGeo.attributes.color.needsUpdate = true;
+          wordLight.intensity = 18 * r(t, T.word[0] + 0.6, T.word[1]);
+
+          post.render();
+        }
+
+        for (const tt of [0, 2.0, 4.5, 6.5, 9.4, 11.9, 12.6, 14.5, 16.0, 18.6, 20.5, 22.9, 24.2, 25.6, 26.5, 27.6, DUR - 0.5]) renderAt(tt);   // warm every pipeline
+        let last = -1;
+        glRender = (t) => { if (t !== last) { last = t; renderAt(t); } };
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(window.__hfThreeTime || 0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = window.__hf.buildReady || {};
+      window.__hf.buildReady["cartographer"] = build();
+    </script>
+  </body>
+</html>
