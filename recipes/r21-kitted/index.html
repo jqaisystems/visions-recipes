@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <!--
+      R21 · Kitted. One take, 32 s, Three.js (WebGPURenderer, WebGL2 backend, TSL bloom).
+      An AI stack setup as a precision tool kit in a dark workshop: a pile of loose tools in clashing colours is audited,
+      duplicates and clutter slide off into the bin, the seven tools the work needs rise and hover, a laser cuts a two-tone
+      foam insert to the exact outline of each one, and each clicks into its own cutout, its name engraved and its edge
+      turned teal. A box of prompt cards fills; the same kit opens at five benches, each running a real job; a playbook
+      lands in the last slot and the laser engraves "equipped" into the foam of the lid. Every tool, cut, card and bench is
+      one row of a baked table (assets/table.js, from bake/table.py); score/compose.py reads the same table. No tool,
+      vendor or model names: the tools are symbols. Any frame renders on its own.
+    -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/word.js"></script>
+    <script src="assets/table.js"></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "./assets/vendor/three.webgpu.js",
+          "three/webgpu": "./assets/vendor/three.webgpu.js",
+          "three/tsl": "./assets/vendor/three.tsl.js"
+        }
+      }
+    </script>
+    <style>
+      @font-face { font-family: "Inter"; src: url("assets/fonts/inter-400.woff2") format("woff2"); font-weight: 400; }
+      @font-face { font-family: "Inter"; src: url("assets/fonts/inter-500.woff2") format("woff2"); font-weight: 500; }
+      @font-face { font-family: "Inter"; src: url("assets/fonts/inter-600.woff2") format("woff2"); font-weight: 600; }
+      @font-face { font-family: "JBM"; src: url("assets/fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 100 800; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #050505; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #050505; color: #f2f4f5; font-family: "Inter", sans-serif; }
+      #ct-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #ct-gl { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #ct-ui { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+
+      .hud { position: absolute; top: 48px; font: 500 19px "JBM", monospace; letter-spacing: 0.1em; white-space: nowrap; color: #a3a9ad; }
+      #hud-l { left: 64px; color: #f2f4f5; font: 600 19px "Inter", sans-serif; letter-spacing: 0.18em; }
+      #hud-l span { font: 500 19px "JBM", monospace; letter-spacing: 0.1em; color: #00BFB4; margin-left: 16px; }
+      #hud-r { right: 64px; }
+      #hud-r b { font-weight: 500; color: #00BFB4; margin-right: 26px; }
+      #hud-band { position: absolute; left: 0; right: 0; top: 0; height: 170px; background: linear-gradient(rgba(5, 5, 5, 0.9), rgba(5, 5, 5, 0.7) 55%, rgba(5, 5, 5, 0)); }
+
+      .st { position: absolute; left: 92px; bottom: 96px; opacity: 0; }
+      .st i { display: block; font: 600 22px "JBM", monospace; font-style: normal; letter-spacing: 0.24em; color: #00BFB4; }
+      .st b { display: block; margin-top: 10px; font: 600 98px/1 "Inter", sans-serif; letter-spacing: -0.035em; color: #f2f4f5; white-space: nowrap; }
+      .st span { display: block; margin-top: 18px; font: 400 28px "Inter", sans-serif; color: #c9cfd2; white-space: nowrap; }
+      #st-shade { position: absolute; left: 0; bottom: 0; width: 1400px; height: 460px; opacity: 0;
+        background: radial-gradient(ellipse 70% 90% at 0% 100%, rgba(5, 5, 5, 0.9) 0%, rgba(5, 5, 5, 0.6) 50%, rgba(5, 5, 5, 0) 100%); }
+
+      #z-shade { position: absolute; left: 0; right: 0; bottom: 0; height: 520px; opacity: 0; background: linear-gradient(rgba(5, 5, 5, 0), rgba(5, 5, 5, 0.88) 40%, rgba(5, 5, 5, 0.95)); }
+      #z-title { position: absolute; left: 0; right: 0; top: 700px; text-align: center; opacity: 0; font: 600 74px/1.1 "Inter", sans-serif; letter-spacing: -0.03em; white-space: nowrap; }
+      #z-sub { position: absolute; left: 0; right: 0; top: 800px; text-align: center; opacity: 0; font: 400 30px/1.45 "Inter", sans-serif; color: #c9cfd2; }
+      #z-url { position: absolute; left: 0; right: 0; top: 872px; text-align: center; font: 500 30px "JBM", monospace; color: #f2f4f5; white-space: nowrap; }
+      #z-rule { position: absolute; left: 610px; top: 926px; width: 700px; height: 4px; border-radius: 2px; background: #00BFB4; transform: scaleX(0); }
+      #z-note { position: absolute; left: 0; right: 0; top: 960px; text-align: center; opacity: 0; font: 500 19px "JBM", monospace; letter-spacing: 0.3em; color: #a3a9ad; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="32" data-width="1920" data-height="1080">
+      <div id="ct-stage" class="clip" data-start="0" data-duration="32" data-track-index="0">
+        <canvas id="ct-gl" width="1920" height="1080"></canvas>
+      </div>
+      <div id="ct-ui" class="clip" data-start="0" data-duration="32" data-track-index="1">
+        <div id="st-shade" data-layout-allow-occlusion></div>
+        <div class="st" id="st-0" data-layout-allow-occlusion><i>01 · SCATTERED</i><b>Everyone, their own way</b><span>Personal accounts and pasted prompts.</span></div>
+        <div class="st" id="st-1" data-layout-allow-occlusion><i>02 · AUDIT</i><b>The audit</b><span>What the team actually does.</span></div>
+        <div class="st" id="st-2" data-layout-allow-occlusion><i>03 · CUT TO FIT</i><b>Cut to fit</b><span>Only the tools the work needs.</span></div>
+        <div class="st" id="st-3" data-layout-allow-occlusion><i>04 · INSTALLED</i><b>Installed and configured</b><span>Skills and a prompt library, set to your formats.</span></div>
+        <div class="st" id="st-4" data-layout-allow-occlusion><i>05 · ONBOARDING</i><b>Onboarding</b><span>The whole team, on real tasks.</span></div>
+        <div id="hud-band" data-layout-allow-occlusion></div>
+        <div class="hud" id="hud-l" data-layout-allow-occlusion>JQ AI SYSTEMS<span>ai stack setup &amp; enablement</span></div>
+        <div class="hud" id="hud-r" data-layout-allow-occlusion><b id="hud-st">everyone's using AI differently</b><span id="hud-tc">00:00:00:00</span></div>
+        <div id="z-shade" data-layout-allow-occlusion></div>
+        <div id="z-title" data-layout-allow-occlusion>AI Stack Setup &amp; Enablement</div>
+        <div id="z-sub" data-layout-allow-occlusion>Your AI stack, installed and running properly.</div>
+        <div id="z-url" data-layout-allow-occlusion></div>
+        <div id="z-rule" data-layout-allow-occlusion></div>
+        <div id="z-note" data-layout-allow-occlusion>FILM AND SCORE BUILT IN CODE</div>
+      </div>
+      <audio id="score" src="assets/bgm/score.wav" data-start="0" data-duration="32" data-track-index="7" data-volume="0.8"></audio>
+    </div>
+
+    <script type="module">
+      import * as THREE from "three/webgpu";
+      import { pass } from "three/tsl";
+      import { bloom } from "./assets/vendor/BloomNode.js";
+      import { RoomEnvironment } from "./assets/vendor/RoomEnvironment.js";
+
+      const W = 1920, H = 1080, DUR = 32;
+      // ---- the one table (bake/table.py): the tools, the cut, the bin, the cards, the benches and the clock
+      const TB = window.TABLE, T = TB.T, CASE = TB.case, TOOLS = TB.tools, BOOK = TB.book, EXTRAS = TB.extras;
+
+      const cl = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+      const r = (t, a, b) => cl((t - a) / (b - a));
+      const lerp = (a, b, u) => a + (b - a) * u;
+      const E = (n) => gsap.parseEase(n);
+      const eOut = E("power3.out"), eIO = E("power2.inOut"), eIn = E("power2.in"), eBack = E("back.out(1.6)"), eExpo = E("expo.out");
+      const hash = (n) => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+      const V3 = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
+      const FOAM_TOP = CASE.h, FLOOR = CASE.h - CASE.foam, SEAT = CASE.h - 0.13;  // the foam's top, its teal under-layer, and where a tool sits (just proud of the foam)
+      const LID_OPEN = 1.86;
+      const CUTS = [...TOOLS, BOOK];
+      const cutEnd = BOOK.cutT[1];
+
+      // ================= DOM painter =================
+      const $ = (s) => document.querySelector(s);
+      const STS = [[$("#st-0"), 0.9, 3.4], [$("#st-1"), 4.1, 6.1], [$("#st-2"), 9.2, 11.3], [$("#st-3"), 14.0, 16.6], [$("#st-4"), 19.3, 22.2]];
+      const STATE = [[0, () => "everyone's using AI differently"], [T.audit[0], () => "audit · what the team actually does"], [T.bin[0], () => "7 kept · no over-buying"],
+        [T.cut0, () => "cut to fit · 8 outlines"], [T.install, () => "installed · skills engraved"], [T.cards[0], () => "prompt library · 20 tasks"],
+        [T.lights[0], () => "onboarding · 5 seats · real tasks"], [T.book[0], () => "handover · playbook"], [T.word[0], () => "equipped"]];
+      const tc = (t) => { const f = Math.floor(t * 30 + 1e-6); return `00:00:${String(Math.floor(f / 30)).padStart(2, "0")}:${String(f % 30).padStart(2, "0")}`; };
+      const URL_TEXT = "ai.joaoqueiros.com/services/ai-stack-setup";
+      let glRender = null;
+      function paint(t) {
+        if (glRender) glRender(t);
+        const hudO = r(t, 0.4, 0.9) * (1 - r(t, T.end - 0.5, T.end));
+        $("#hud-l").style.opacity = hudO; $("#hud-r").style.opacity = hudO; $("#hud-band").style.opacity = hudO;
+        let st = STATE[0][1]; for (const [a, s] of STATE) if (t >= a) st = s;
+        $("#hud-st").textContent = st(t); $("#hud-tc").textContent = tc(t);
+        let shade = 0;
+        STS.forEach(([el, t0, t1]) => {
+          const a = eOut(r(t, t0, t0 + 0.55)), b = r(t, t1, t1 + 0.35);
+          el.style.opacity = a * (1 - b);
+          el.style.clipPath = `inset(0 ${(100 * (1 - a)).toFixed(1)}% 0 0)`;
+          el.style.transform = `translateX(${(-40 * (1 - a) - 60 * eIO(b)).toFixed(1)}px)`;
+          shade = Math.max(shade, a * (1 - b));
+        });
+        $("#st-shade").style.opacity = shade;
+        $("#z-shade").style.opacity = r(t, T.end - 0.4, T.end + 0.4);
+        const show = (s, a, b, y) => { const u = r(t, a, b); $(s).style.opacity = u; $(s).style.transform = `translateY(${(y * (1 - eOut(u))).toFixed(1)}px)`; };
+        show("#z-title", T.end, T.end + 0.7, 40);
+        show("#z-sub", T.end + 0.45, T.end + 1.1, 20);
+        $("#z-url").textContent = URL_TEXT.slice(0, Math.round(URL_TEXT.length * r(t, T.end + 1.0, T.end + 2.0)));
+        $("#z-rule").style.transform = `scaleX(${E("expo.inOut")(r(t, T.end + 1.8, T.end + 2.6)).toFixed(3)})`;
+        show("#z-note", T.end + 2.4, T.end + 2.9, 0);
+      }
+      const tl = gsap.timeline({ paused: true });
+      const clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+
+      // ================= the 3D film =================
+      async function build() {
+        await Promise.all([document.fonts.load('600 98px "Inter"'), document.fonts.load('400 40px "Inter"'), document.fonts.load('500 40px "Inter"'), document.fonts.load('500 30px "JBM"')]);
+        const canvas = $("#ct-gl");
+        // Hide KHR_parallel_shader_compile so every program links before its first draw (see R01, R07, R13).
+        const gl = canvas.getContext("webgl2", { antialias: true, alpha: false, depth: true, stencil: false, preserveDrawingBuffer: true });
+        const getExt = gl.getExtension.bind(gl), getSup = gl.getSupportedExtensions.bind(gl);
+        gl.getExtension = (name) => (name === "KHR_parallel_shader_compile" ? null : getExt(name));
+        gl.getSupportedExtensions = () => getSup().filter((n) => n !== "KHR_parallel_shader_compile");
+        const renderer = new THREE.WebGPURenderer({ canvas, context: gl, antialias: true, forceWebGL: true });
+        renderer.setPixelRatio(1); renderer.setSize(W, H, false);
+        renderer.setClearColor(0x050505, 1);
+        renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
+        await renderer.init();
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x050505);
+        scene.fog = new THREE.Fog(0x050505, 30, 80);
+        const pmrem = new THREE.PMREMGenerator(renderer);
+        scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture; scene.environmentIntensity = 0.0;
+        const camera = new THREE.PerspectiveCamera(36, W / H, 0.05, 400);
+        const hemi = new THREE.HemisphereLight(0x8fa3b0, 0x070809, 0.0); scene.add(hemi);
+        const rim = new THREE.SpotLight(0xffc48a, 0, 40, 0.7, 0.9, 1.2); rim.position.set(-3, 7, -10); rim.target.position.set(0.4, 0, 0.3); scene.add(rim, rim.target);
+
+        // ---- textures and helpers ----
+        const tex = (w, h, draw) => { const c = document.createElement("canvas"); c.width = w; c.height = h; draw(c.getContext("2d"), w, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; t.userData.canvas = c; return t; };
+        const glowTex = tex(256, 256, (g) => { const gr = g.createRadialGradient(128, 128, 0, 128, 128, 128); gr.addColorStop(0, "rgba(255,255,255,1)"); gr.addColorStop(0.2, "rgba(255,255,255,0.5)"); gr.addColorStop(0.55, "rgba(255,255,255,0.1)"); gr.addColorStop(1, "rgba(255,255,255,0)"); g.fillStyle = gr; g.fillRect(0, 0, 256, 256); });
+        const smokeTex = tex(256, 256, (g) => { for (let k = 0; k < 40; k++) { const x = 128 + (hash(k) - 0.5) * 120, y = 128 + (hash(k + 9) - 0.5) * 120, rr = 30 + 60 * hash(k + 3); const gr = g.createRadialGradient(x, y, 0, x, y, rr); gr.addColorStop(0, "rgba(255,255,255,0.12)"); gr.addColorStop(1, "rgba(255,255,255,0)"); g.fillStyle = gr; g.fillRect(0, 0, 256, 256); } });
+        const glow = (c, s, o = 0) => { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: c, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, opacity: o })); sp.scale.setScalar(s); scene.add(sp); return sp; };
+        const rrect = (g, x, y, w, h, rad) => { g.beginPath(); g.moveTo(x + rad, y); g.arcTo(x + w, y, x + w, y + h, rad); g.arcTo(x + w, y + h, x, y + h, rad); g.arcTo(x, y + h, x, y, rad); g.arcTo(x, y, x + w, y, rad); g.closePath(); };
+        const add = (parent, geo, mat, x = 0, y = 0, z = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); parent.add(m); return m; };
+        const box = (w, h, d, mat, x, y, z, parent = scene) => add(parent, new THREE.BoxGeometry(w, h, d), mat, x, y, z);
+        const label = (w, h, draw, sx) => { const m = tex(w, h, draw); const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: m, transparent: true, depthWrite: false, fog: false, opacity: 0 })); sp.scale.set(sx, sx * h / w, 1); scene.add(sp); return sp; };
+        // an outline from the table becomes a flat shape; shape space is [x, -z] so it lands at +z after rotateX(-90°)
+        const toShape = (pts, holes = []) => { const s = new THREE.Shape(pts.map(([x, z]) => new THREE.Vector2(x, -z))); holes.forEach((h) => s.holes.push(new THREE.Path(h.map(([x, z]) => new THREE.Vector2(x, -z))))); return s; };
+        const flat = (shape, depth, bevel = 0) => new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: bevel > 0, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 2, curveSegments: 8 }).rotateX(-Math.PI / 2);
+        const bboxOf = (pts) => { const xs = pts.map((p) => p[0]), zs = pts.map((p) => p[1]); return { x0: Math.min(...xs), x1: Math.max(...xs), z0: Math.min(...zs), z1: Math.max(...zs) }; };
+
+        const brushed = (w, h, base) => tex(w, h, (g) => { g.fillStyle = base; g.fillRect(0, 0, w, h); for (let k = 0; k < 900; k++) { const y = hash(k * 1.7) * h; g.strokeStyle = `rgba(${hash(k) > 0.5 ? "255,255,255" : "0,0,0"},${0.03 + 0.05 * hash(k + 3)})`; g.lineWidth = 1 + 2 * hash(k + 5); g.beginPath(); g.moveTo(0, y); g.lineTo(w, y + (hash(k + 7) - 0.5) * 6); g.stroke(); } });
+        const steelTex = brushed(1024, 512, "#80878c"); steelTex.wrapS = steelTex.wrapT = THREE.RepeatWrapping;
+        const steel = new THREE.MeshPhysicalMaterial({ color: 0xc4ccd2, map: steelTex, metalness: 1, roughness: 0.34, clearcoat: 0.2, clearcoatRoughness: 0.4 });
+        const darkSteel = new THREE.MeshStandardMaterial({ color: 0x2b3034, map: steelTex, metalness: 0.85, roughness: 0.48 });
+        const blued = new THREE.MeshStandardMaterial({ color: 0x1b2328, metalness: 0.9, roughness: 0.38 });
+        const shell = new THREE.MeshPhysicalMaterial({ color: 0x15181b, metalness: 0.2, roughness: 0.55, clearcoat: 0.6, clearcoatRoughness: 0.35 });
+        const foamTex = tex(512, 512, (g, w, h) => { g.fillStyle = "#1b1d1f"; g.fillRect(0, 0, w, h); for (let k = 0; k < 9000; k++) { g.fillStyle = `rgba(${hash(k) > 0.5 ? "255,255,255" : "0,0,0"},${0.04 + 0.06 * hash(k + 1)})`; g.fillRect(hash(k * 1.3) * w, hash(k * 2.7) * h, 2, 2); } });
+        foamTex.wrapS = foamTex.wrapT = THREE.RepeatWrapping; foamTex.repeat.set(0.6, 0.6);
+        const foam = new THREE.MeshStandardMaterial({ color: 0x9aa0a4, map: foamTex, roughness: 1, metalness: 0 });
+        const foamTeal = new THREE.MeshStandardMaterial({ color: 0x00a79d, map: foamTex, roughness: 1, metalness: 0, emissive: 0x00bfb4, emissiveIntensity: 0.18 });
+        const TEAL_HOT = new THREE.Color(0.0, 2.6, 2.4);
+
+        // ================= the workshop: a floor, five benches in a row, a bin =================
+        const floorTex = tex(1024, 1024, (g, w, h) => { g.fillStyle = "#121314"; g.fillRect(0, 0, w, h); for (let k = 0; k < 400; k++) { const x = hash(k * 3.1) * w, y = hash(k * 5.3) * h, rr = 20 + 120 * hash(k); const gr = g.createRadialGradient(x, y, 0, x, y, rr); gr.addColorStop(0, `rgba(${hash(k + 2) > 0.5 ? "40,42,44" : "4,4,5"},0.25)`); gr.addColorStop(1, "rgba(0,0,0,0)"); g.fillStyle = gr; g.fillRect(x - rr, y - rr, rr * 2, rr * 2); } });
+        floorTex.wrapS = floorTex.wrapT = THREE.RepeatWrapping; floorTex.repeat.set(10, 4);
+        add(scene, new THREE.PlaneGeometry(140, 60).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.85, metalness: 0.1 }), 0, -3.2, 0);
+        const benchTop = new THREE.MeshStandardMaterial({ color: 0x4a5257, map: steelTex, metalness: 0.75, roughness: 0.42 });
+        const BENCH = TB.benches.map((b, k) => {
+          const g = new THREE.Group(); g.position.x = b.x; scene.add(g);
+          box(9.4, 0.3, 6.0, benchTop, 0, -0.15, 0.2, g);
+          box(9.4, 0.12, 0.2, blued, 0, -0.36, 3.1, g);
+          for (const [x, z] of [[-4.4, -2.5], [4.4, -2.5], [-4.4, 2.9], [4.4, 2.9]]) box(0.22, 2.9, 0.22, blued, x, -1.75, z, g);
+          box(8.6, 0.12, 5.2, darkSteel, 0, -2.6, 0.2, g);
+          // the work light: a long fixture overhead, its tube and the spot it throws
+          const fx = box(5.8, 0.18, 0.5, blued, CASE.x, 8.9, 0.9, g);
+          const tubeMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0, 0, 0), toneMapped: false });
+          box(5.4, 0.06, 0.2, tubeMat, CASE.x, 8.79, 0.9, g);
+          const sp = new THREE.SpotLight(0xe4eef6, 0, 30, 0.72, 0.65, 1.15); sp.position.set(b.x + CASE.x, 8.7, 1.8); sp.target.position.set(b.x + CASE.x, 0, 0.2); scene.add(sp, sp.target);
+          return { b, g, sp, tubeMat };
+        });
+        const HERO = BENCH.find((x) => x.b.x === 0);
+        // the bin, on the floor just off the hero bench's right edge
+        const BIN = V3(5.9, -3.2, 0.9);
+        add(scene, new THREE.CylinderGeometry(0.95, 0.8, 2.3, 48, 1, true), new THREE.MeshStandardMaterial({ color: 0x23282c, metalness: 0.8, roughness: 0.5, side: THREE.DoubleSide }), BIN.x, BIN.y + 1.15, BIN.z);
+        add(scene, new THREE.TorusGeometry(0.95, 0.04, 10, 64).rotateX(Math.PI / 2), darkSteel, BIN.x, BIN.y + 2.3, BIN.z);
+
+        // ================= the case: a shell, two-tone foam with every cutout, plugs, a lid =================
+        const cutShape = (c) => toShape(c.cut);
+        const makeCase = (withCuts) => {
+          const g = new THREE.Group();
+          const w = CASE.w, d = CASE.d;
+          // the shell: walls and a floor, open at the top
+          box(w + 0.3, 0.2, d + 0.3, shell, 0, 0.1, 0, g);
+          box(w + 0.3, CASE.h, 0.15, shell, 0, CASE.h / 2, -d / 2 - 0.075, g); box(w + 0.3, CASE.h, 0.15, shell, 0, CASE.h / 2, d / 2 + 0.075, g);
+          box(0.15, CASE.h, d, shell, -w / 2 - 0.075, CASE.h / 2, 0, g); box(0.15, CASE.h, d, shell, w / 2 + 0.075, CASE.h / 2, 0, g);
+          // a thin rim around the opening
+          box(w + 0.32, 0.05, 0.17, blued, 0, CASE.h + 0.025, -d / 2 - 0.075, g); box(w + 0.32, 0.05, 0.17, blued, 0, CASE.h + 0.025, d / 2 + 0.075, g);
+          box(0.17, 0.05, d, blued, -w / 2 - 0.075, CASE.h + 0.025, 0, g); box(0.17, 0.05, d, blued, w / 2 + 0.075, CASE.h + 0.025, 0, g);
+          for (const x of [-1.8, 1.8]) box(0.5, 0.26, 0.1, new THREE.MeshStandardMaterial({ color: 0x00a99f, emissive: 0x00bfb4, emissiveIntensity: 0.35, metalness: 0.6, roughness: 0.35 }), x, CASE.h - 0.2, d / 2 + 0.17, g);
+          // the foam: a teal under-layer and a charcoal top layer with every cutout in it
+          add(g, new THREE.BoxGeometry(w, FLOOR - 0.2, d), foamTeal, 0, 0.2 + (FLOOR - 0.2) / 2, 0);
+          const top = toShape([[-w / 2, -d / 2], [w / 2, -d / 2], [w / 2, d / 2], [-w / 2, d / 2]], withCuts ? CUTS.map((c) => c.cut.map(([x, z]) => [x + c.fit[0], z + c.fit[1]])) : []);
+          add(g, flat(top, CASE.foam), foam, 0, FLOOR, 0);
+          // the lid, hinged at the back edge; its inner face is foam too
+          const lid = new THREE.Group(); lid.position.set(0, CASE.h + 0.03, -d / 2 - 0.15); g.add(lid);
+          box(w + 0.3, 0.32, d + 0.3, shell, 0, 0.16, (d + 0.3) / 2, lid);
+          const lidFoam = add(lid, new THREE.PlaneGeometry(w - 0.1, d - 0.1).rotateX(Math.PI / 2), foam, 0, -0.002, (d + 0.3) / 2);
+          lidFoam.material = foam;
+          return { g, lid };
+        };
+
+        // the hero case, cut live; the plugs fill each cutout until the laser frees them
+        const hero = makeCase(true);
+        scene.add(hero.g);
+        const PLUGS = CUTS.map((c) => { const m = add(hero.g, flat(cutShape(c), CASE.foam), foam, c.fit[0], FLOOR, c.fit[1]); return m; });
+        // the cut lines: a cooled seam behind the beam and a hot stretch at it
+        const CUTL = CUTS.map((c, k) => {
+          const path = new THREE.CurvePath(), P = c.cut.map(([x, z]) => V3(x + c.fit[0], FOAM_TOP + 0.006, z + c.fit[1]));
+          for (let i = 0; i < P.length; i++) path.add(new THREE.LineCurve3(P[i], P[(i + 1) % P.length]));
+          const n = 360;
+          const seamGeo = new THREE.TubeGeometry(path, n, 0.011, 5, false), hotGeo = new THREE.TubeGeometry(path, n, 0.02, 6, false);
+          const seam = add(hero.g, seamGeo, new THREE.MeshBasicMaterial({ color: new THREE.Color(0.0, 0.32, 0.3), toneMapped: false }));
+          const hot = add(hero.g, hotGeo, new THREE.MeshBasicMaterial({ color: TEAL_HOT, toneMapped: false, transparent: true }));
+          seam.frustumCulled = hot.frustumCulled = false;
+          return { c, path, seam, hot, seamN: seamGeo.index.count / n, hotN: hotGeo.index.count / n, n };
+        });
+
+        // ================= the tools: steel bodies, coloured edges, engraved names =================
+        const ENG = { pen: [-0.25, 0, 0.17], spanner: [-0.32, 0, 0.17], lens: [0.5, 0, 0.1], gear: [0, -0.33, 0.1], film: [0, 0.335, 0.085], report: [-0.04, 0.08, 0.13], page: [0, 0.06, 0.17] };
+        const capMat = (spec, engrave) => {
+          const bb = bboxOf(spec.shape), bw = bb.x1 - bb.x0, bd = bb.z1 - bb.z0, PX = 900, ph = Math.round(PX * bd / bw);
+          const e = engrave ? ENG[spec.id] : null;
+          const write = (g, fill) => { if (!e) return; g.fillStyle = fill; g.textAlign = "center"; g.textBaseline = "middle"; g.font = `600 ${Math.round(e[2] * PX / bw)}px "JBM"`; g.letterSpacing = `${Math.round(0.02 * PX / bw)}px`; g.fillText(spec.name.toUpperCase(), (e[0] - bb.x0) / bw * PX, (e[1] - bb.z0) / bd * ph); };
+          const map = tex(PX, ph, (g, w, h) => { g.drawImage(steelTex.userData.canvas, 0, 0, w, h); write(g, "rgba(20,24,27,0.85)"); });
+          const em = tex(PX, ph, (g, w, h) => { g.fillStyle = "#000"; g.fillRect(0, 0, w, h); write(g, "#fff"); });
+          // cap UVs are shape coordinates [x, -z]; fit the canvas to the outline's box
+          for (const t of [map, em]) { t.repeat.set(1 / bw, 1 / bd); t.offset.set(-bb.x0 / bw, bb.z1 / bd); }
+          return new THREE.MeshPhysicalMaterial({ map, emissive: 0x00bfb4, emissiveMap: em, emissiveIntensity: 0, color: 0xeef2f4, metalness: 0.55, roughness: 0.42, clearcoat: 0.08, clearcoatRoughness: 0.5, envMapIntensity: 2.6 });
+        };
+        const edgeMat = (hex) => new THREE.MeshStandardMaterial({ color: new THREE.Color(hex), emissive: new THREE.Color(hex), emissiveIntensity: 0.3, metalness: 0.5, roughness: 0.3 });
+        const toolMesh = (spec, engrave, hex) => {
+          const geo = new THREE.ExtrudeGeometry(toShape(spec.shape, spec.holes), { depth: 0.16, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.02, bevelSegments: 2, curveSegments: 10 }).rotateX(-Math.PI / 2).translate(0, 0.02, 0);
+          const cap = capMat(spec, engrave), edge = edgeMat(hex);
+          const m = new THREE.Mesh(geo, [cap, edge]); return { m, cap, edge };
+        };
+        const qHover = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, 0, Math.PI / 2, "ZYX"));
+        const KEPT = TOOLS.map((spec, k) => {
+          const { m, cap, edge } = toolMesh(spec, true, spec.heap);
+          const g = new THREE.Group(); g.add(m); scene.add(g);
+          const heapQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(...spec.heapRot));
+          const lab = label(560, 120, (gg, w, h) => { gg.fillStyle = "rgba(8,10,11,0.86)"; rrect(gg, 4, 4, w - 8, h - 8, 18); gg.fill(); gg.strokeStyle = "rgba(0,191,180,0.8)"; gg.lineWidth = 3; rrect(gg, 4, 4, w - 8, h - 8, 18); gg.stroke();
+            gg.fillStyle = "#f2f4f5"; gg.font = '600 46px "Inter"'; gg.textAlign = "left"; gg.fillText(spec.name, 34, 77); gg.fillStyle = "#3fe0d5"; gg.font = '600 24px "JBM"'; gg.letterSpacing = "3px"; gg.textAlign = "right"; gg.fillText("KEEP", w - 30, 74); }, 1.35);
+          return { spec, g, cap, edge, heapQ, lab, heapC: new THREE.Color(spec.heap) };
+        });
+        const TEALC = new THREE.Color(0x00bfb4);
+
+        // ================= the clutter: duplicates, a key ring, sticky notes, cables =================
+        const keyShape = [[-0.32, -0.13], [-0.1, -0.13], [-0.1, -0.04], [0.3, -0.04], [0.3, 0.02], [0.24, 0.02], [0.24, 0.07], [0.18, 0.07], [0.18, 0.02], [0.12, 0.02], [0.12, 0.07], [0.06, 0.07], [0.06, 0.04], [-0.1, 0.04], [-0.1, 0.13], [-0.32, 0.13]];
+        const JUNK = EXTRAS.map((e, k) => {
+          const g = new THREE.Group(); scene.add(g);
+          if (e.kind === "tool") { const { m } = toolMesh({ id: e.of, shape: e.shape, holes: e.holes }, false, e.heap); g.add(m); }
+          if (e.kind === "keys") {
+            add(g, new THREE.TorusGeometry(0.26, 0.025, 10, 48).rotateX(Math.PI / 2), steel, 0, 0.03, 0);
+            [0, 1, 2, 3].forEach((j) => { const km = new THREE.Mesh(flat(toShape(keyShape), 0.03), [steel, edgeMat(["#ffd36b", "#ff6b6b", "#6bb8ff", "#b46bff"][j])]); km.position.set(0.26 * Math.cos(j * 1.2 + 0.4) + 0.3 * Math.cos(j * 1.2 + 0.4), 0.02 + 0.01 * j, 0.26 * Math.sin(j * 1.2 + 0.4) + 0.3 * Math.sin(j * 1.2 + 0.4)); km.rotation.y = -(j * 1.2 + 0.4); g.add(km); });
+          }
+          if (e.kind === "note") {
+            const nt = tex(320, 320, (gg, w, h) => { gg.fillStyle = e.heap; gg.fillRect(0, 0, w, h); gg.fillStyle = "rgba(0,0,0,0.08)"; gg.fillRect(0, 0, w, 46); gg.fillStyle = "#1c1c1c"; gg.font = '500 46px "Inter"'; gg.textAlign = "center"; gg.save(); gg.translate(w / 2, h / 2 + 10); gg.rotate(-0.06); const words = e.text.split(" "); words.forEach((wd, i) => gg.fillText(wd, 0, (i - (words.length - 1) / 2) * 56)); gg.restore(); });
+            const pg = new THREE.PlaneGeometry(0.78, 0.78, 6, 6).rotateX(-Math.PI / 2); const pp = pg.attributes.position; for (let i = 0; i < pp.count; i++) pp.setY(i, 0.03 * (pp.getZ(i) + 0.39) ** 2 * 4); pg.computeVertexNormals();
+            add(g, pg, new THREE.MeshStandardMaterial({ map: nt, roughness: 0.9, side: THREE.DoubleSide }));
+          }
+          if (e.kind === "cable") {
+            const pts = []; for (let i = 0; i < 9; i++) { const a = i * 1.1 + k; pts.push(V3(Math.cos(a) * (0.3 + 0.5 * hash(k + i)) + (i - 4) * 0.12, 0.04 + 0.05 * (i % 2), Math.sin(a) * (0.25 + 0.4 * hash(k * 3 + i)))); }
+            add(g, new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 120, 0.035, 8, false), new THREE.MeshStandardMaterial({ color: new THREE.Color(e.heap), emissive: new THREE.Color(e.heap), emissiveIntensity: 0.25, roughness: 0.5 }));
+          }
+          const heapQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(...e.heapRot));
+          const lab = e.label ? label(620, 120, (gg, w, h) => { gg.fillStyle = "rgba(14,10,8,0.86)"; rrect(gg, 4, 4, w - 8, h - 8, 18); gg.fill(); gg.strokeStyle = "rgba(240,140,70,0.85)"; gg.lineWidth = 3; rrect(gg, 4, 4, w - 8, h - 8, 18); gg.stroke();
+            gg.fillStyle = "#f0a46a"; gg.font = '600 34px "JBM"'; gg.letterSpacing = "4px"; gg.textAlign = "center"; gg.fillText(e.label, w / 2, 74); }, 1.45) : null;
+          const spin = V3(hash(k * 2.3) - 0.5, hash(k * 4.1) - 0.5, hash(k * 6.7) - 0.5).normalize();
+          return { e, g, heapQ, lab, spin };
+        });
+
+        // ================= the audit: a light sheet that crosses the bench =================
+        const scanTex = tex(64, 256, (g, w, h) => { const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, "rgba(0,255,240,0)"); gr.addColorStop(0.75, "rgba(0,255,240,0.22)"); gr.addColorStop(1, "rgba(150,255,250,0.85)"); g.fillStyle = gr; g.fillRect(0, 0, w, h); });
+        const scan = add(scene, new THREE.PlaneGeometry(6.2, 1.6).rotateY(Math.PI / 2).translate(0, 0.8, 0.3), new THREE.MeshBasicMaterial({ map: scanTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false, opacity: 0 }));
+        const scanLine = add(scene, new THREE.BoxGeometry(0.03, 0.01, 6.2), new THREE.MeshBasicMaterial({ color: TEAL_HOT, toneMapped: false, transparent: true, opacity: 0 }), 0, 0.01, 0.3);
+
+        // ================= the laser: a head that hangs over the case, its beam, sparks and smoke =================
+        const head = new THREE.Group(); scene.add(head);
+        add(head, new THREE.CylinderGeometry(0.26, 0.3, 0.9, 32), blued, 0, 0.45, 0);
+        add(head, new THREE.CylinderGeometry(0.12, 0.2, 0.2, 32), steel, 0, -0.08, 0);
+        add(head, new THREE.TorusGeometry(0.28, 0.03, 10, 48).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: TEAL_HOT, toneMapped: false }), 0, 0.12, 0);
+        add(head, new THREE.CylinderGeometry(0.04, 0.04, 6, 12), darkSteel, 0, 3.9, 0);
+        const beamMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.4, 3.0, 2.8), toneMapped: false, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending });
+        const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 1, 8).translate(0, 0.5, 0), beamMat); beam.frustumCulled = false; scene.add(beam);
+        const beamHalo = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1, 12, 1, true).translate(0, 0.5, 0), new THREE.MeshBasicMaterial({ color: new THREE.Color(0, 0.5, 0.48), toneMapped: false, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending })); beamHalo.frustumCulled = false; scene.add(beamHalo);
+        const bead = glow(0xbffff8, 0.55), beadWide = glow(0x40fff0, 1.6);
+        const cutLight = new THREE.PointLight(0x7ffff2, 0, 5, 1.6); scene.add(cutLight);
+        const UPV = V3(0, 1, 0);
+        const aimBeam = (from, to, o) => { for (const m of [beam, beamHalo]) { const d = to.clone().sub(from); m.position.copy(from); m.quaternion.setFromUnitVectors(UPV, d.clone().normalize()); m.scale.set(1, d.length(), 1); m.material.opacity = o * (m === beam ? 1 : 0.8); m.visible = o > 0.001; } };
+        const NSP = 700, sparks = new THREE.InstancedMesh(new THREE.SphereGeometry(0.012, 6, 4), new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }), NSP); sparks.frustumCulled = false; scene.add(sparks);
+        const SMK = Array.from({ length: 48 }, () => { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: smokeTex, color: 0x9fa6aa, transparent: true, depthWrite: false, opacity: 0 })); scene.add(s); return s; });
+
+        // ================= the prompt library: a box of index cards =================
+        const CARDBOX = V3(-3.75, 0, 0.7);
+        const cb = new THREE.Group(); cb.position.copy(CARDBOX); scene.add(cb);
+        box(1.3, 0.08, 1.25, shell, 0, 0.04, 0, cb); box(1.3, 0.55, 0.06, shell, 0, 0.3, -0.6, cb); box(1.3, 0.38, 0.06, shell, 0, 0.21, 0.6, cb);
+        box(0.06, 0.5, 1.25, shell, -0.62, 0.27, 0, cb); box(0.06, 0.5, 1.25, shell, 0.62, 0.27, 0, cb);
+        add(cb, new THREE.PlaneGeometry(1.0, 0.24), new THREE.MeshBasicMaterial({ map: tex(512, 120, (g, w, h) => { g.fillStyle = "#101315"; g.fillRect(0, 0, w, h); g.fillStyle = "#3fe0d5"; g.font = '600 46px "JBM"'; g.letterSpacing = "6px"; g.textAlign = "center"; g.fillText("PROMPTS", w / 2, 78); }), toneMapped: false }), 0, 0.22, 0.635);
+        const CARD = TB.cards.map((txt, i) => {
+          const m = add(cb, new THREE.PlaneGeometry(1.08, 0.78), new THREE.MeshStandardMaterial({ map: tex(432, 312, (g, w, h) => {
+            g.fillStyle = "#c9ced1"; g.fillRect(0, 0, w, h); g.fillStyle = i % 3 === 0 ? "#00a99f" : "#c9d0d4"; g.fillRect(0, 0, w, 14);
+            g.fillStyle = "#14181b"; g.font = '600 40px "Inter"'; g.fillText(txt, 24, 66); g.fillStyle = "#7a8389"; g.font = '500 20px "JBM"'; g.letterSpacing = "2px"; g.fillText("PROMPT · v1", 24, 102); g.letterSpacing = "0px";
+            g.strokeStyle = "#cfd5d9"; g.lineWidth = 2; for (let y = 140; y < h - 20; y += 34) { g.beginPath(); g.moveTo(24, y); g.lineTo(w - 24, y); g.stroke(); } }), roughness: 0.8, side: THREE.DoubleSide }), 0, 0.42, -0.5 + 0.05 * i);
+          m.rotation.x = -0.12; return m;
+        });
+
+        // ================= onboarding: the same kit at every other bench, and a job in light over each =================
+        const KITS = BENCH.filter((x) => x !== HERO).map(({ b }) => {
+          const c = makeCase(true); c.g.position.set(b.x + CASE.x, 0, CASE.z); scene.add(c.g);
+          CUTS.forEach((spec) => { if (spec === BOOK) return; const { m } = toolMesh(spec, true, "#00bfb4"); m.material[0].emissiveIntensity = 0.9; m.material[1].emissiveIntensity = 0.9; m.position.set(spec.fit[0], SEAT, spec.fit[1]); c.g.add(m); });
+          return { b, ...c };
+        });
+        const JOBW = 720, JOBH = 420;
+        const JOBS = TB.benches.map((b, k) => {
+          const c = document.createElement("canvas"); c.width = JOBW; c.height = JOBH; const tx = new THREE.CanvasTexture(c); tx.colorSpace = THREE.SRGBColorSpace;
+          const m = add(scene, new THREE.PlaneGeometry(4.6, 4.6 * JOBH / JOBW), new THREE.MeshBasicMaterial({ map: tx, transparent: true, depthWrite: false, toneMapped: false, opacity: 0, fog: false }), b.x + CASE.x, 6.3, -1.4);
+          return { b, c, g: c.getContext("2d"), tx, m };
+        });
+        const drawJob = (J, u) => {
+          const g = J.g, w = JOBW, h = JOBH; g.clearRect(0, 0, w, h);
+          g.fillStyle = "rgba(4,22,22,0.82)"; rrect(g, 6, 6, w - 12, h - 12, 22); g.fill(); g.strokeStyle = "rgba(0,220,205,0.95)"; g.lineWidth = 4; rrect(g, 6, 6, w - 12, h - 12, 22); g.stroke();
+          const title = { report: "WEEKLY REPORT", image: "PRODUCT SHOT", page: "LANDING PAGE", clip: "SOCIAL CUT", automation: "INVOICE CHECK" }[J.b.job];
+          g.fillStyle = "#5ff3e8"; g.font = '600 26px "JBM"'; g.letterSpacing = "4px"; g.fillText(title, 34, 56); g.letterSpacing = "0px";
+          g.fillStyle = u >= 1 ? "#5ff3e8" : "#9fb4b6"; g.textAlign = "right"; g.fillText(u >= 1 ? "DONE ✓" : `${Math.round(u * 100)}%`, w - 34, 56); g.textAlign = "left";
+          g.fillStyle = "rgba(0,191,180,0.25)"; g.fillRect(34, 76, w - 68, 6); g.fillStyle = "#00e5d6"; g.fillRect(34, 76, (w - 68) * u, 6);
+          const X = 34, Y = 104, BW = w - 68, BH = h - 140;
+          if (J.b.job === "report") {
+            const n = Math.floor(u * 9); g.fillStyle = "#e9f4f3"; g.fillRect(X, Y, BW, BH);
+            g.fillStyle = "#14201f"; g.font = '600 30px "Inter"'; if (u > 0.05) g.fillText("Week 43 · summary", X + 24, Y + 46);
+            for (let i = 0; i < Math.min(n, 4); i++) { g.fillStyle = "#b7c4c3"; g.fillRect(X + 24, Y + 72 + i * 26, 300 - 50 * (i % 2), 12); }
+            for (let i = 0; i < 6; i++) { const bh = 30 + 110 * hash(i + 4) * cl(u * 1.6 - i * 0.12); g.fillStyle = i === 3 ? "#00a99f" : "#5b6b6a"; g.fillRect(X + 380 + i * 44, Y + BH - 30 - bh, 30, bh); }
+          } else if (J.b.job === "image") {
+            g.save(); rrect(g, X, Y, BW, BH, 10); g.clip();
+            const gr = g.createLinearGradient(0, Y, 0, Y + BH); gr.addColorStop(0, "#0e3a40"); gr.addColorStop(1, "#d8b38a"); g.fillStyle = gr; g.fillRect(X, Y, BW, BH);
+            g.fillStyle = "#f6e7cf"; g.beginPath(); g.arc(X + BW * 0.68, Y + BH * 0.42, 54, 0, 7); g.fill();
+            g.fillStyle = "#13262a"; g.beginPath(); g.moveTo(X, Y + BH); g.lineTo(X + BW * 0.3, Y + BH * 0.55); g.lineTo(X + BW * 0.55, Y + BH * 0.8); g.lineTo(X + BW * 0.8, Y + BH * 0.5); g.lineTo(X + BW, Y + BH * 0.75); g.lineTo(X + BW, Y + BH); g.fill();
+            // the image develops: a grain that clears from the top down
+            for (let i = 0; i < 1400 * (1 - u); i++) { const yy = Y + hash(i * 1.7 + Math.floor(u * 30)) * BH; if ((yy - Y) / BH < u * 1.2 - 0.2) continue; g.fillStyle = `rgba(${hash(i) > 0.5 ? 255 : 0},${hash(i) > 0.5 ? 255 : 30},${hash(i) > 0.5 ? 250 : 30},0.6)`; g.fillRect(X + hash(i * 3.3 + u) * BW, yy, 8, 8); }
+            g.restore();
+          } else if (J.b.job === "page") {
+            g.fillStyle = "#eaf1f1"; rrect(g, X, Y, BW, BH, 10); g.fill(); g.fillStyle = "#c6d2d2"; g.fillRect(X, Y, BW, 26); [0, 1, 2].forEach((i) => { g.fillStyle = ["#ff6b6b", "#ffd36b", "#6bff8e"][i]; g.beginPath(); g.arc(X + 20 + i * 20, Y + 13, 6, 0, 7); g.fill(); });
+            const parts = [[X + 20, Y + 40, BW - 40, 26, "#14201f"], [X + 20, Y + 80, BW * 0.55, 74, "#00a99f"], [X + 20 + BW * 0.6, Y + 80, BW * 0.4 - 40, 74, "#5b6b6a"], [X + 20, Y + 168, (BW - 60) / 3, 90, "#b7c4c3"], [X + 30 + (BW - 60) / 3, Y + 168, (BW - 60) / 3, 90, "#b7c4c3"], [X + 40 + 2 * (BW - 60) / 3, Y + 168, (BW - 60) / 3, 90, "#b7c4c3"]];
+            parts.forEach(([px, py, pw, phh, c], i) => { const a = cl(u * 7 - i); if (a <= 0) return; g.globalAlpha = a; g.fillStyle = c; g.fillRect(px, py + 18 * (1 - eOut(a)), pw, phh); g.globalAlpha = 1; });
+          } else if (J.b.job === "clip") {
+            g.fillStyle = "#0b1414"; rrect(g, X, Y, BW, BH, 10); g.fill();
+            const bx = X + 60 + (BW - 120) * (0.5 + 0.5 * Math.sin(u * 9)), by = Y + BH - 70 - 150 * Math.abs(Math.sin(u * 14));
+            g.fillStyle = "#00e5d6"; g.beginPath(); g.arc(bx, by, 26, 0, 7); g.fill(); g.fillStyle = "#24403f"; g.fillRect(X + 20, Y + BH - 44, BW - 40, 4);
+            g.fillStyle = "#e9f4f3"; g.fillRect(X + 20, Y + BH - 30, (BW - 40) * u, 8); g.font = '500 22px "JBM"'; g.fillText(`00:${String(Math.floor(u * 15)).padStart(2, "0")} / 00:15`, X + 20, Y + 34);
+          } else {
+            const steps = ["Fetch", "Match", "Check", "File"];
+            steps.forEach((s, i) => { const cx = X + 70 + i * (BW - 140) / 3, cy = Y + BH / 2, on = u * 4.4 > i + 0.6;
+              if (i < 3) { g.strokeStyle = u * 4.4 > i + 1 ? "#00e5d6" : "#2c4b4a"; g.lineWidth = 6; g.beginPath(); g.moveTo(cx + 46, cy); g.lineTo(cx + (BW - 140) / 3 - 46, cy); g.stroke(); }
+              g.fillStyle = on ? "#00a99f" : "#1d3433"; g.beginPath(); g.arc(cx, cy, 44, 0, 7); g.fill(); g.strokeStyle = on ? "#8ff9f0" : "#3b5857"; g.lineWidth = 4; g.stroke();
+              g.fillStyle = "#e9f4f3"; g.font = '600 40px "Inter"'; g.textAlign = "center"; g.fillText(on ? "✓" : String(i + 1), cx, cy + 14); g.font = '500 24px "Inter"'; g.fillText(s, cx, cy + 92); g.textAlign = "left"; });
+            const tk = cl(u * 4.4 - 0.6, 0, 3), tx2 = X + 70 + tk * (BW - 140) / 3; g.fillStyle = "#ffffff"; g.beginPath(); g.arc(tx2, Y + BH / 2 - 60, 9, 0, 7); g.fill();
+          }
+          J.tx.needsUpdate = true;
+        };
+
+        // ================= the handover: a playbook for the last slot =================
+        const book = new THREE.Group(); scene.add(book);
+        const bookTex = tex(720, 480, (g, w, h) => { g.fillStyle = "#007f77"; g.fillRect(0, 0, w, h); g.strokeStyle = "rgba(255,255,255,0.35)"; g.lineWidth = 4; g.strokeRect(28, 28, w - 56, h - 56);
+          g.fillStyle = "#eafffd"; g.font = '600 92px "Inter"'; g.textAlign = "center"; g.fillText("Playbook", w / 2, 230); g.font = '500 30px "JBM"'; g.letterSpacing = "6px"; g.fillText("HOW WE USE IT", w / 2, 300); });
+        const bookMats = [darkSteel, darkSteel, new THREE.MeshStandardMaterial({ map: bookTex, roughness: 0.6, emissive: 0x00bfb4, emissiveIntensity: 0.12 }), darkSteel, new THREE.MeshStandardMaterial({ color: 0xe9ecee, roughness: 0.8 }), new THREE.MeshStandardMaterial({ color: 0xe9ecee, roughness: 0.8 })];
+        add(book, new THREE.BoxGeometry(1.42, 0.2, 0.92), bookMats, 0, 0.1, 0);
+
+        // ================= the word: the laser engraves "equipped" into the foam of the hero's lid =================
+        const svgNS = "http://www.w3.org/2000/svg", host = document.createElementNS(svgNS, "svg");
+        host.setAttribute("width", "0"); host.setAttribute("height", "0"); host.style.position = "absolute"; document.body.appendChild(host);
+        const WS = 0.0039, WZ = 2.25, WP = [], WL = [];          // word scale (lid units per font unit), the word's centre along the lid
+        let wlen = 0;
+        window.WORD.contours.forEach((d) => {
+          const p = document.createElementNS(svgNS, "path"); p.setAttribute("d", d); host.appendChild(p);
+          const len = p.getTotalLength(), n = Math.max(8, Math.round(len / 4.2));
+          for (let i = 0; i <= n; i++) { const q = p.getPointAtLength((len * i) / n); WP.push(V3(q.x * WS, -0.012, WZ - q.y * WS)); WL.push(wlen + (len * i) / n); }
+          wlen += len;
+        });
+        const NW = WP.length;
+        const dots = new THREE.InstancedMesh(new THREE.SphereGeometry(0.017, 6, 4), new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }), NW); dots.frustumCulled = false; hero.lid.add(dots);
+        const wordT = (j) => T.word[0] + (T.word[1] - T.word[0] - 0.3) * (WL[j] / wlen);
+        const wordLight = new THREE.PointLight(0x7ffff2, 0, 9, 1.4); scene.add(wordLight);
+
+        // ================= camera: [film t, look target, position, fov] =================
+        const KF = [
+          [0, [-0.8, 0.25, 0.6], [-3.4, 1.5, 4.4], 30], [3.4, [0.2, 0.25, 0.5], [1.4, 2.0, 5.2], 32],
+          [4.2, [0, 0.3, 0.4], [-0.6, 4.6, 8.4], 38], [6.1, [0.6, 0.3, 0.4], [1.4, 4.8, 8.6], 38],
+          [7.0, [0.2, 5.6, 0.3], [0.6, 4.6, 10.6], 44], [7.7, [0.3, 5.9, 0.3], [1.0, 5.4, 9.4], 42], [8.3, [0.6, 1.6, 0.3], [2.2, 4.0, 10.2], 38],
+          [8.9, [0.4, 0.9, 0.3], [0.9, 4.4, 7.4], 36], [9.4, [-0.9, 0.8, -1.0], [-0.3, 2.5, 1.7], 30], [10.3, [-0.6, 0.8, -1.0], [0.2, 2.4, 1.6], 30],
+          [10.8, [0.4, 0.8, 0.3], [0.6, 6.8, 5.2], 36], [12.9, [0.4, 0.8, 0.3], [0.3, 7.0, 5.4], 36],
+          [13.6, [0.4, 1.2, 0.3], [-3.4, 3.6, 6.4], 36], [17.2, [0.4, 1.2, 0.3], [2.9, 3.4, 6.6], 36],
+          [17.8, [-3.7, 0.7, 0.7], [-2.2, 2.2, 4.0], 34], [18.7, [-3.4, 0.7, 0.7], [-1.9, 2.4, 4.2], 34],
+          [20.0, [0, 2.6, 0], [3.0, 5.4, 19.0], 40], [22.2, [8, 3.4, 0], [14.0, 7.0, 25.0], 42], [24.2, [0, 3.6, 0], [0, 9.0, 42.0], 42],
+          [25.0, [0.8, 1.0, 0.6], [2.4, 4.0, 6.2], 34], [25.8, [0.8, 1.0, 0.6], [2.2, 3.8, 6.0], 34],
+          [26.6, [0.4, 2.9, -2.0], [0.6, 3.3, 7.6], 34], [28.6, [0.4, 2.9, -2.0], [0.4, 3.2, 9.8], 34], [DUR, [0.4, 2.9, -2.0], [0.4, 3.2, 10.6], 34],
+        ];
+        const camAt = (t) => {
+          let i = 0; while (i < KF.length - 2 && t >= KF[i + 1][0]) i++;
+          const a = KF[i], b = KF[i + 1], u = eIO(r(t, a[0], b[0]));
+          const look = V3(...a[1]).lerp(V3(...b[1]), u), pos = V3(...a[2]).lerp(V3(...b[2]), u), fov = lerp(a[3], b[3], u);
+          pos.x += 0.03 * Math.sin(t * 0.6); pos.y += 0.025 * Math.sin(t * 0.9 + 1);
+          return { pos, look, fov };
+        };
+
+        // ================= post =================
+        const post = new THREE.PostProcessing(renderer);
+        const sceneColor = pass(scene, camera).getTextureNode("output");
+        post.outputNode = sceneColor.add(bloom(sceneColor, 0.6, 0.45, 0.88));
+        const m4 = new THREE.Matrix4(), q4 = new THREE.Quaternion(), s3 = V3(), tc3 = new THREE.Color(), p3 = V3();
+        const bez = (a, c, b, u) => { const p = a.clone().multiplyScalar((1 - u) * (1 - u)); return p.add(c.clone().multiplyScalar(2 * u * (1 - u))).add(b.clone().multiplyScalar(u * u)); };
+        const fitPos = (spec, cx = CASE.x) => V3(cx + spec.fit[0], SEAT, CASE.z + spec.fit[1]);
+        const heroX = () => hero.g.position.x;
+        // where the laser is at time t, in world space (null when it is off)
+        const cutAt = (t) => { for (const L of CUTL) { const [a, b] = L.c.cutT; if (t >= a && t < b) return { L, u: (t - a) / (b - a) }; } return null; };
+        const ptOnCut = (L, u) => L.path.getPointAt(cl(u, 0, 0.9999)).add(hero.g.position);
+
+        function renderAt(t) {
+          clock.t = t;
+          const C = camAt(t);
+          camera.position.copy(C.pos); camera.lookAt(C.look); camera.fov = C.fov; camera.updateProjectionMatrix(); camera.updateMatrixWorld();
+
+          // the work lights: the hero's flickers on, the others snap on for onboarding
+          const flick = t < T.light[0] ? 0 : t < T.light[1] ? [1, 0, 0.7, 0, 1][Math.floor(r(t, T.light[0], T.light[1]) * 5) % 5] : 1;
+          BENCH.forEach(({ b, sp, tubeMat }) => {
+            const on = b.x === 0 ? flick : (t < b.lightT ? 0 : t < b.lightT + 0.18 ? [1, 0.2, 1][Math.floor((t - b.lightT) / 0.06) % 3] : 1);
+            sp.intensity = 78 * on; tubeMat.color.setRGB(2.2 * on, 2.4 * on, 2.6 * on);
+          });
+          rim.intensity = 22 * flick; hemi.intensity = 0.32 * flick; scene.environmentIntensity = 0.45 * flick;
+
+          // the audit: the light sheet crosses the bench
+          const su = r(t, T.audit[0], T.audit[1]), sx = lerp(TB.scan[0], TB.scan[1], su), so = t > T.audit[0] - 0.2 && t < T.audit[1] + 0.2 ? r(t, T.audit[0] - 0.2, T.audit[0] + 0.1) * (1 - r(t, T.audit[1] - 0.1, T.audit[1] + 0.2)) : 0;
+          scan.position.x = sx; scan.material.opacity = 0.9 * so; scanLine.position.x = sx; scanLine.material.opacity = so;
+
+          // the case slides in from the right and its lid swings open
+          const ci = eOut(r(t, T.caseIn[0], T.caseIn[1]));
+          hero.g.position.set(CASE.x + 13 * (1 - ci), 0, CASE.z); hero.g.visible = ci > 0.001;
+          hero.lid.rotation.x = -LID_OPEN * eBack(r(t, T.lid[0], T.lid[1]));
+
+          // the kept tools: heap, tagged, rise to hover upright, drop into their cutouts on the beat
+          KEPT.forEach(({ spec, g, cap, edge, heapQ, lab, heapC }, k) => {
+            const heapP = V3(...spec.heapPos), hov = V3(...spec.hover);
+            const sway = new THREE.Quaternion().setFromAxisAngle(UPV, 0.35 * Math.sin(t * 0.9 + k * 1.3));
+            const hq = sway.multiply(qHover.clone());
+            const ru = eIO(r(t, spec.riseT, spec.riseT + 0.95));
+            let pos = heapP.clone(), q = heapQ.clone();
+            if (ru > 0) { pos = bez(heapP, heapP.clone().lerp(hov, 0.5).add(V3(0, 1.4, 1.2)), hov, ru); q = heapQ.clone().slerp(hq, ru); pos.y += 0.06 * Math.sin(t * 2 + k) * ru; }
+            const above = fitPos(spec, heroX()).add(V3(0, 1.1, 0)), ua = eIO(r(t, spec.dropT - 0.6, spec.dropT - 0.14)), ub = r(t, spec.dropT - 0.14, spec.dropT);
+            if (ua > 0) { pos = bez(pos, pos.clone().lerp(above, 0.5).add(V3(0, 0.6, 0)), above, ua); q = q.slerp(new THREE.Quaternion(), ua); }
+            if (ub > 0) pos = above.clone().lerp(fitPos(spec, heroX()), eIn(ub));
+            const land = t - spec.dropT;
+            if (land > 0) pos.y = SEAT + 0.025 * Math.abs(Math.sin(land * 22)) * Math.exp(-land * 14);
+            g.position.copy(pos); g.quaternion.copy(q);
+            // landed: the edge turns teal and the engraving lights
+            const lit = r(t, spec.dropT, spec.dropT + 0.25);
+            edge.color.copy(heapC).lerp(TEALC, lit); edge.emissive.copy(heapC).lerp(TEALC, lit); edge.emissiveIntensity = 0.3 + (land > 0 ? 1.8 * Math.exp(-land * 5) : 0) + 0.6 * lit;
+            cap.emissiveIntensity = land > 0 ? 0.9 + 2.5 * Math.exp(-land * 4) : 0;
+            const lo = r(t, spec.tagT, spec.tagT + 0.25) * (1 - r(t, spec.dropT - 0.6, spec.dropT - 0.3));
+            lab.material.opacity = lo; lab.visible = lo > 0.002;
+            if (ru > 0) lab.position.copy(pos).add(V3(0, -1.85, 0.6)); else lab.position.copy(heapP).add(V3(0, 0.75, 0));
+            if (ru > 0 && t > T.caseIn[0]) lab.material.opacity = lo * (1 - r(t, T.caseIn[0], T.caseIn[0] + 0.3));
+          });
+
+          // the clutter: tagged, then off the edge and into the bin, tumbling
+          JUNK.forEach(({ e, g, heapQ, lab, spin }) => {
+            const p0 = V3(...e.heapPos), edge = V3(4.75, p0.y, lerp(p0.z, BIN.z, 0.5));
+            const sl = eIn(r(t, e.binT, e.binT + 0.35)), fa = r(t, e.binT + 0.35, e.binT + 0.85);
+            let pos = p0.clone().lerp(edge, sl), q = heapQ.clone();
+            if (fa > 0) { pos = edge.clone().lerp(BIN.clone().add(V3(0, 1.6, 0)), fa); pos.y = edge.y + (BIN.y + 1.4 - edge.y) * fa * fa + 0.5 * Math.sin(Math.PI * fa) * (1 - fa); q = new THREE.Quaternion().setFromAxisAngle(spin, 6 * fa).multiply(heapQ); }
+            g.position.copy(pos); g.quaternion.copy(q); g.visible = t < e.binT + 0.9;
+            if (lab) { lab.position.copy(p0).add(V3(0, 0.7, 0)); lab.material.opacity = r(t, e.tagT, e.tagT + 0.25) * (1 - r(t, e.binT - 0.1, e.binT + 0.15)); lab.visible = lab.material.opacity > 0.002; }
+          });
+
+          // the laser: the head comes down, cuts every outline, the plugs pop out with a puff of smoke
+          const hd = eOut(r(t, T.headIn[0], T.headIn[1])) * (1 - eIn(r(t, T.headOut[0], T.headOut[1])));
+          const wordOn = t > T.word[0] - 0.6 && t < T.word[1] + 0.4;
+          const headCut = V3(heroX(), 4.3 + 6 * (1 - hd), CASE.z + 0.4);
+          const lidM = hero.lid.matrixWorld; hero.g.updateMatrixWorld(true);
+          const headWord = V3(0, -1.7, 3.9).applyMatrix4(lidM);
+          const wd = eOut(r(t, T.word[0] - 0.6, T.word[0])) * (1 - eIn(r(t, T.word[1], T.word[1] + 0.4)));
+          head.visible = hd > 0.001 || wd > 0.001;
+          head.position.copy(wordOn ? headWord.clone().add(V3(0, 6 * (1 - wd), 0)) : headCut);
+          const ca = cutAt(t);
+          let beamTo = null;
+          if (ca && hd > 0.99) beamTo = ptOnCut(ca.L, ca.u);
+          CUTL.forEach((L) => {
+            const [a, b] = L.c.cutT, u = r(t, a, b);
+            const seg = Math.floor(L.n * u);
+            L.seam.geometry.setDrawRange(0, seg * L.seamN); L.seam.visible = u > 0 && t < b + 0.5;
+            const h0 = Math.max(0, seg - Math.floor(L.n * 0.3)); L.hot.geometry.setDrawRange(h0 * L.hotN, (seg - h0) * L.hotN);
+            L.hot.visible = u > 0 && t < b + 0.35; L.hot.material.opacity = 1 - r(t, b, b + 0.35);
+          });
+          // the plugs: still while the cut runs, then they lift, shrink and are gone
+          CUTS.forEach((c, k) => {
+            const pu = r(t, c.cutT[1] + 0.02, c.cutT[1] + 0.4), m = PLUGS[k];
+            m.position.y = FLOOR + 0.5 * eOut(pu); m.scale.setScalar(1 - 0.6 * pu); m.rotation.y = 0.4 * pu * (k % 2 ? 1 : -1);
+            m.position.x = c.fit[0]; m.position.z = c.fit[1]; m.visible = pu < 0.98;
+          });
+          // the word: dots light up as the beam passes, in contour order
+          let wj = -1;
+          if (wordOn) for (let j = 0; j < NW; j++) if (wordT(j) <= t) wj = j;
+          if (wordOn && t < T.word[1] - 0.25 && wj >= 0 && wd > 0.99) beamTo = WP[wj].clone().applyMatrix4(lidM);
+          aimBeam(head.position.clone().add(V3(0, -0.18, 0)), beamTo || head.position, beamTo ? 1 : 0);
+          bead.visible = beadWide.visible = !!beamTo; cutLight.intensity = beamTo ? 6 + 2 * Math.sin(t * 90) : 0;
+          if (beamTo) { bead.position.copy(beamTo); beadWide.position.copy(beamTo); bead.material.opacity = 1; beadWide.material.opacity = 0.55 + 0.2 * Math.sin(t * 70); cutLight.position.copy(beamTo).add(V3(0, 0.25, 0)); }
+
+          // sparks: every spark is born on the cut or the word at its own time and flies out under gravity
+          for (let i = 0; i < NSP; i++) {
+            let o = null, tb;
+            if (i < 440) { const L = CUTL[i % CUTL.length], [a, b] = L.c.cutT, u = (Math.floor(i / CUTL.length) + hash(i)) / (440 / CUTL.length); tb = a + u * (b - a); if (t >= tb && t < tb + 0.5) o = ptOnCut(L, u); }
+            else { const j = Math.floor(((i - 440) / (NSP - 440)) * (NW - 1)); tb = wordT(j); if (t >= tb && t < tb + 0.5 && wordOn) o = WP[j].clone().applyMatrix4(lidM); }
+            if (!o) { m4.makeScale(0, 0, 0); sparks.setMatrixAt(i, m4); continue; }
+            const dt = t - tb, an = hash(i * 3.7) * Math.PI * 2, sp = 0.6 + 1.6 * hash(i * 5.1), up = 1.2 + 2.2 * hash(i * 7.9);
+            const ln = i < 440 ? V3(0, 1, 0) : V3(0, 0.3, 1);
+            p3.set(o.x + Math.cos(an) * sp * dt, o.y + (up * ln.y) * dt - 4.9 * dt * dt, o.z + Math.sin(an) * sp * dt + up * ln.z * dt * 0.6);
+            s3.setScalar(1 - dt / 0.5); m4.compose(p3, q4.identity(), s3); sparks.setMatrixAt(i, m4);
+            sparks.setColorAt(i, tc3.setRGB(3.2, 2.2 + 0.8 * hash(i), 1.2 + 1.6 * hash(i + 1)).multiplyScalar(1 - dt / 0.5));
+          }
+          sparks.instanceMatrix.needsUpdate = true; if (sparks.instanceColor) sparks.instanceColor.needsUpdate = true;
+          // smoke: a puff where the beam has been, and one for each plug
+          SMK.forEach((s, i) => {
+            let o = null, tb, big = 1;
+            if (i < 32) { const L = CUTL[i % CUTL.length], [a, b] = L.c.cutT, u = (Math.floor(i / CUTL.length) + 0.5) / 4; tb = a + u * (b - a); o = ptOnCut(L, u); }
+            else if (i < 40) { const c = CUTS[i - 32]; tb = c.cutT[1] + 0.05; o = fitPos(c, heroX()).setY(FOAM_TOP + 0.2); big = 1.5; }
+            else { const j = Math.floor(((i - 40) / 8) * (NW - 1)); tb = wordT(j); o = WP[j].clone().applyMatrix4(lidM); }
+            const dt = t - tb, live = dt > 0 && dt < 1.4 && (i < 40 || wordOn);
+            s.visible = live; if (!live) return;
+            s.position.copy(o).add(V3(0.1 * Math.sin(i), 0.5 * dt, 0)); s.scale.setScalar((0.2 + 0.5 * dt) * big); s.material.opacity = 0.32 * Math.sin(Math.PI * dt / 1.4) * (big > 1 ? 1.2 : 1);
+          });
+
+          // the prompt cards riffle in
+          CARD.forEach((m, i) => { const u = r(t, TB.cardT[i], TB.cardT[i] + 0.28); m.position.y = 0.42 + 2.6 * (1 - eIn(u)) ** 1; m.visible = u > 0; m.rotation.z = 0.25 * (1 - u) * (i % 2 ? 1 : -1); });
+
+          // onboarding: every bench's case slides forward and opens in sync; each runs its job in light
+          const sl = eOut(r(t, T.cases[0], T.cases[1])), lo2 = eBack(r(t, T.lids[0], T.lids[1]));
+          KITS.forEach((K) => { K.g.position.z = CASE.z - 9 * (1 - sl); K.g.visible = sl > 0.001; K.lid.rotation.x = -LID_OPEN * lo2; });
+          JOBS.forEach((J) => {
+            const a = r(t, J.b.jobT - 0.3, J.b.jobT), out = r(t, T.jobsEnd, T.jobsEnd + 0.5), u = r(t, J.b.jobT, J.b.jobT + 2.4);
+            J.m.material.opacity = a * (1 - out); J.m.visible = J.m.material.opacity > 0.002;
+            J.m.position.y = 6.3 - 0.6 * (1 - eOut(a));
+            if (J.m.visible) drawJob(J, u);
+          });
+
+          // the playbook lands in its slot
+          const bu = r(t, T.book[0], T.book[1]), bl = t - T.book[1];
+          const bTo = fitPos(BOOK, heroX()), bFrom = bTo.clone().add(V3(0.6, 3.2, 1.6));
+          book.position.copy(bFrom.lerp(bTo, eIn(bu))); if (bl > 0) book.position.y = SEAT + 0.02 * Math.abs(Math.sin(bl * 20)) * Math.exp(-bl * 12);
+          book.rotation.set(0.5 * (1 - bu), 0.3 * (1 - bu), 0); book.visible = bu > 0;
+
+          // the word: each dot glows hot as it is cut, then settles to teal
+          for (let j = 0; j < NW; j++) {
+            const dt = t - wordT(j);
+            if (dt < 0 || !(t > T.word[0])) { m4.makeScale(0, 0, 0); dots.setMatrixAt(j, m4); continue; }
+            m4.makeTranslation(WP[j].x, WP[j].y, WP[j].z); dots.setMatrixAt(j, m4);
+            const hot = Math.exp(-dt * 5);
+            dots.setColorAt(j, tc3.setRGB(0.1 + 2.6 * hot, 1.9 + 1.2 * hot, 1.8 + 1.0 * hot));
+          }
+          dots.instanceMatrix.needsUpdate = true; if (dots.instanceColor) dots.instanceColor.needsUpdate = true;
+          wordLight.position.copy(V3(0, -1.2, WZ).applyMatrix4(lidM)); wordLight.intensity = 10 * r(t, T.word[0] + 0.4, T.word[1]);
+
+          post.render();
+        }
+
+        for (const tt of [0, 2.0, 4.5, 6.5, 7.2, 8.6, 9.6, 11.0, 12.7, 14.0, 16.4, 17.9, 19.6, 21.3, 23.4, 25.3, 26.8, 28.0, DUR - 0.5]) renderAt(tt);   // warm every pipeline
+        let last = -1;
+        glRender = (t) => { if (t !== last) { last = t; renderAt(t); } };
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(window.__hfThreeTime || 0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = window.__hf.buildReady || {};
+      window.__hf.buildReady["kitted"] = build();
+    </script>
+  </body>
+</html>

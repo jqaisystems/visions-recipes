@@ -1,0 +1,613 @@
+{
+ "T": {
+  "light": [
+   0.2,
+   0.6
+  ],
+  "audit": [
+   3.8,
+   6.0
+  ],
+  "bin": [
+   6.2,
+   7.6
+  ],
+  "hover": [
+   6.4,
+   7.6
+  ],
+  "caseIn": [
+   7.6,
+   8.4
+  ],
+  "lid": [
+   8.2,
+   8.9
+  ],
+  "headIn": [
+   8.6,
+   9.0
+  ],
+  "cut0": 9.1,
+  "cutFirst": 1.2,
+  "cutEach": 0.36,
+  "headOut": [
+   13.0,
+   13.4
+  ],
+  "install": 13.6,
+  "beat": 0.6,
+  "cards": [
+   17.5,
+   18.7
+  ],
+  "lights": [
+   18.9,
+   19.5
+  ],
+  "cases": [
+   19.4,
+   20.2
+  ],
+  "lids": [
+   20.0,
+   20.7
+  ],
+  "jobs": 20.8,
+  "jobsEnd": 24.4,
+  "book": [
+   25.0,
+   25.6
+  ],
+  "word": [
+   26.0,
+   28.4
+  ],
+  "end": 29.0
+ },
+ "scan": [
+  -4.6,
+  4.6
+ ],
+ "case": {
+  "w": 6.0,
+  "d": 4.0,
+  "h": 0.8,
+  "foam": 0.3,
+  "x": 0.4,
+  "z": 0.3,
+  "lid": 4.0,
+  "margin": 0.055
+ },
+ "tools": [
+  {
+   "id": "pen",
+   "name": "Writing",
+   "skill": "house voice",
+   "heap": "#ff5d5d",
+   "fit": [
+    -1.27,
+    -1.3,
+    0
+   ],
+   "cutT": [
+    9.1,
+    10.3
+   ],
+   "cutLen": 5.4413,
+   "heapPos": [
+    -2.077,
+    0.02,
+    0.907
+   ],
+   "heapRot": [
+    0.032,
+    -0.131,
+    -0.068
+   ],
+   "tagT": 4.403,
+   "hover": [
+    -4.05,
+    6.6,
+    0.3
+   ],
+   "riseT": 6.4,
+   "dropT": 13.6
+  },
+  {
+   "id": "spanner",
+   "name": "Code",
+   "skill": "review rules",
+   "heap": "#ffad3b",
+   "fit": [
+    1.5,
+    -1.28,
+    0
+   ],
+   "cutT": [
+    10.4,
+    10.76
+   ],
+   "cutLen": 5.9538,
+   "heapPos": [
+    1.814,
+    0.09,
+    1.285
+   ],
+   "heapRot": [
+    0.003,
+    0.032,
+    -0.063
+   ],
+   "tagT": 5.334,
+   "hover": [
+    -2.7,
+    6.6,
+    0.3
+   ],
+   "riseT": 6.5,
+   "dropT": 14.2
+  },
+  {
+   "id": "lens",
+   "name": "Images",
+   "skill": "brand looks",
+   "heap": "#c46bff",
+   "fit": [
+    -1.7,
+    0.0,
+    0
+   ],
+   "cutT": [
+    10.76,
+    11.12
+   ],
+   "cutLen": 4.8468,
+   "heapPos": [
+    -3.08,
+    0.16,
+    -0.113
+   ],
+   "heapRot": [
+    0.02,
+    -2.706,
+    0.071
+   ],
+   "tagT": 4.163,
+   "hover": [
+    -1.35,
+    6.6,
+    0.3
+   ],
+   "riseT": 6.6,
+   "dropT": 14.8
+  },
+  {
+   "id": "gear",
+   "name": "Automations",
+   "skill": "starter recipes",
+   "heap": "#ffe04a",
+   "fit": [
+    0.3,
+    -0.05,
+    0
+   ],
+   "cutT": [
+    11.12,
+    11.48
+   ],
+   "cutLen": 4.7222,
+   "heapPos": [
+    -1.66,
+    0.23,
+    -0.555
+   ],
+   "heapRot": [
+    -0.11,
+    3.126,
+    0.057
+   ],
+   "tagT": 4.503,
+   "hover": [
+    0.0,
+    6.6,
+    0.3
+   ],
+   "riseT": 6.7,
+   "dropT": 15.4
+  },
+  {
+   "id": "film",
+   "name": "Video",
+   "skill": "your formats",
+   "heap": "#5c9cff",
+   "fit": [
+    1.95,
+    0.08,
+    0
+   ],
+   "cutT": [
+    11.48,
+    11.84
+   ],
+   "cutLen": 6.22,
+   "heapPos": [
+    -0.015,
+    0.02,
+    -0.929
+   ],
+   "heapRot": [
+    0.108,
+    -0.827,
+    -0.083
+   ],
+   "tagT": 4.896,
+   "hover": [
+    1.35,
+    6.6,
+    0.3
+   ],
+   "riseT": 6.8,
+   "dropT": 16.0
+  },
+  {
+   "id": "report",
+   "name": "Reports",
+   "skill": "weekly, monthly",
+   "heap": "#62f08a",
+   "fit": [
+    -2.25,
+    1.3,
+    0
+   ],
+   "cutT": [
+    11.84,
+    12.2
+   ],
+   "cutLen": 2.89,
+   "heapPos": [
+    1.969,
+    0.09,
+    -0.9
+   ],
+   "heapRot": [
+    0.103,
+    -0.295,
+    0.012
+   ],
+   "tagT": 5.371,
+   "hover": [
+    2.7,
+    6.6,
+    0.3
+   ],
+   "riseT": 6.9,
+   "dropT": 16.6
+  },
+  {
+   "id": "page",
+   "name": "Pages",
+   "skill": "templates",
+   "heap": "#ff6bd0",
+   "fit": [
+    -0.85,
+    1.36,
+    0
+   ],
+   "cutT": [
+    12.2,
+    12.56
+   ],
+   "cutLen": 7.4738,
+   "heapPos": [
+    -0.974,
+    0.16,
+    0.251
+   ],
+   "heapRot": [
+    -0.075,
+    -2.908,
+    0.088
+   ],
+   "tagT": 4.667,
+   "hover": [
+    4.05,
+    6.6,
+    0.3
+   ],
+   "riseT": 7.0,
+   "dropT": 17.2
+  }
+ ],
+ "book": {
+  "id": "book",
+  "name": "Playbook",
+  "fit": [
+   1.65,
+   1.32,
+   0
+  ],
+  "cutT": [
+   12.56,
+   12.92
+  ],
+  "cutLen": 4.5408
+ },
+ "extras": [
+  {
+   "kind": "tool",
+   "of": "pen",
+   "heap": "#ff8a3b",
+   "label": "DUPLICATE",
+   "scale": 0.92,
+   "heapPos": [
+    -0.147,
+    0.23,
+    1.346
+   ],
+   "heapRot": [
+    -0.072,
+    2.659,
+    0.093
+   ],
+   "tagT": 4.865,
+   "binT": 6.83
+  },
+  {
+   "kind": "tool",
+   "of": "lens",
+   "heap": "#ff4fa3",
+   "label": "DUPLICATE",
+   "scale": 0.82,
+   "heapPos": [
+    3.068,
+    0.02,
+    -0.063
+   ],
+   "heapRot": [
+    -0.114,
+    -2.556,
+    0.052
+   ],
+   "tagT": 5.634,
+   "binT": 6.29
+  },
+  {
+   "kind": "tool",
+   "of": "gear",
+   "heap": "#b6ff4a",
+   "label": "NOT NEEDED",
+   "scale": 0.74,
+   "heapPos": [
+    0.675,
+    0.09,
+    0.481
+   ],
+   "heapRot": [
+    0.029,
+    -2.006,
+    -0.079
+   ],
+   "tagT": 5.061,
+   "binT": 6.74
+  },
+  {
+   "kind": "tool",
+   "of": "report",
+   "heap": "#8a7dff",
+   "label": "DUPLICATE",
+   "scale": 0.9,
+   "heapPos": [
+    1.698,
+    0.16,
+    0.246
+   ],
+   "heapRot": [
+    0.081,
+    -2.814,
+    -0.058
+   ],
+   "tagT": 5.306,
+   "binT": 6.47
+  },
+  {
+   "kind": "keys",
+   "heap": "#ffd36b",
+   "label": "PERSONAL LOGINS",
+   "heapPos": [
+    2.997,
+    0.23,
+    1.087
+   ],
+   "heapRot": [
+    -0.005,
+    -1.557,
+    0.11
+   ],
+   "tagT": 5.617,
+   "binT": 6.38
+  },
+  {
+   "kind": "note",
+   "text": "pasted prompt",
+   "heap": "#ffe66b",
+   "label": "PASTED PROMPTS",
+   "heapPos": [
+    -2.512,
+    0.14,
+    -0.999
+   ],
+   "heapRot": [
+    -0.114,
+    -0.334,
+    -0.086
+   ],
+   "tagT": 4.299,
+   "binT": 7.01
+  },
+  {
+   "kind": "note",
+   "text": "ask Ana",
+   "heap": "#ff9ecf",
+   "label": "",
+   "heapPos": [
+    -1.182,
+    0.21,
+    1.582
+   ],
+   "heapRot": [
+    -0.049,
+    0.02,
+    0.012
+   ],
+   "tagT": 4.617,
+   "binT": 6.92
+  },
+  {
+   "kind": "note",
+   "text": "v3 final",
+   "heap": "#9fe8ff",
+   "label": "",
+   "heapPos": [
+    0.817,
+    0.28,
+    1.782
+   ],
+   "heapRot": [
+    -0.1,
+    -0.128,
+    -0.002
+   ],
+   "tagT": 5.095,
+   "binT": 6.65
+  },
+  {
+   "kind": "note",
+   "text": "which login?",
+   "heap": "#c6ff9e",
+   "label": "",
+   "heapPos": [
+    0.95,
+    0.35,
+    -0.794
+   ],
+   "heapRot": [
+    -0.095,
+    2.707,
+    0.009
+   ],
+   "tagT": 5.127,
+   "binT": 6.56
+  },
+  {
+   "kind": "cable",
+   "heap": "#ff6b6b",
+   "label": "TANGLED",
+   "heapPos": [
+    3.075,
+    0.02,
+    -1.032
+   ],
+   "heapRot": [
+    0.111,
+    2.629,
+    -0.009
+   ],
+   "tagT": 5.635,
+   "binT": 6.2
+  },
+  {
+   "kind": "cable",
+   "heap": "#6bb8ff",
+   "label": "",
+   "heapPos": [
+    -3.078,
+    0.09,
+    1.884
+   ],
+   "heapRot": [
+    -0.039,
+    -2.879,
+    -0.008
+   ],
+   "tagT": 4.164,
+   "binT": 7.1
+  }
+ ],
+ "cards": [
+  "Weekly report",
+  "Client reply",
+  "Meeting notes",
+  "Product shot",
+  "Social cut",
+  "Landing page",
+  "Brief to deck",
+  "Invoice check",
+  "Welcome email",
+  "Proposal draft",
+  "Blog outline",
+  "Data cleanup",
+  "Release notes",
+  "FAQ answer",
+  "Ad variants",
+  "Style check",
+  "Code review",
+  "Job post",
+  "Price sheet",
+  "Board summary"
+ ],
+ "cardT": [
+  17.5,
+  17.574,
+  17.633,
+  17.687,
+  17.739,
+  17.789,
+  17.838,
+  17.885,
+  17.931,
+  17.977,
+  18.022,
+  18.066,
+  18.109,
+  18.152,
+  18.194,
+  18.236,
+  18.278,
+  18.319,
+  18.36,
+  18.4
+ ],
+ "benches": [
+  {
+   "x": -22.0,
+   "job": "report",
+   "lightT": 19.2,
+   "jobT": 20.8
+  },
+  {
+   "x": -11.0,
+   "job": "image",
+   "lightT": 19.05,
+   "jobT": 21.12
+  },
+  {
+   "x": 0.0,
+   "job": "page",
+   "lightT": 0.2,
+   "jobT": 21.44
+  },
+  {
+   "x": 11.0,
+   "job": "clip",
+   "lightT": 19.05,
+   "jobT": 21.76
+  },
+  {
+   "x": 22.0,
+   "job": "automation",
+   "lightT": 19.2,
+   "jobT": 22.08
+  }
+ ]
+}
