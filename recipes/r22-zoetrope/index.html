@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <!--
+      R22 · Zoetrope. 32 s, Three.js (WebGPURenderer, WebGL2 backend, TSL bloom).
+      The oldest machines made to make pictures move, playing the loops from the Motion page under a strobe: a brass
+      drum spins as a blur under a plain lamp, the strobe stutters on and locks to the spin, the drum stands still and a
+      horse gallops inside it; the camera drops into the drum and into the loop itself; a cabinet of machines (a mirror
+      drum, a spinning disc, a flip book) each plays a loop; the strobe drifts out of phase, everything smears and slows,
+      then one flash locks it all again. The film's own frame clock is the strobe: a machine that turns exactly one slot
+      per film frame reads as still while its pictures move. Off the lock, a frame is several renders averaged into real
+      motion blur. The clock, the flashes and the spin are one baked table (assets/table.js, from bake/table.py);
+      score/compose.py reads the same table. Any frame renders on its own.
+    -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/table.js"></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "./assets/vendor/three.webgpu.js",
+          "three/webgpu": "./assets/vendor/three.webgpu.js",
+          "three/tsl": "./assets/vendor/three.tsl.js"
+        }
+      }
+    </script>
+    <style>
+      @font-face { font-family: "IBM Plex Mono"; src: url("assets/fonts/IBMPlexMono-Regular.ttf") format("truetype"); font-weight: 400; }
+      @font-face { font-family: "IBM Plex Mono"; src: url("assets/fonts/IBMPlexMono-Medium.ttf") format("truetype"); font-weight: 500; }
+      @font-face { font-family: "Fraunces"; src: url("assets/fonts/Fraunces-latin.woff2") format("woff2"); font-weight: 100 900; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #0b0a09; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #0b0a09; color: #ece7dd; font-family: "Fraunces", serif; }
+      #ct-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #ct-gl { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #ct-ui { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      .clipvid { position: absolute; inset: 0; width: 1920px; height: 1080px; object-fit: cover; opacity: 0; }
+
+      .hud { position: absolute; top: 48px; font: 500 19px "IBM Plex Mono", monospace; letter-spacing: 0.1em; white-space: nowrap; color: #99917f; }
+      #hud-l { left: 64px; color: #ece7dd; letter-spacing: 0.22em; }
+      #hud-l span { color: #ff6d3b; margin-left: 16px; letter-spacing: 0.1em; }
+      #hud-r { right: 64px; }
+      #hud-r b { font-weight: 500; color: #ff6d3b; margin-right: 26px; }
+      #hud-band { position: absolute; left: 0; right: 0; top: 0; height: 170px; background: linear-gradient(rgba(11, 10, 9, 0.85), rgba(11, 10, 9, 0.55) 55%, rgba(11, 10, 9, 0)); }
+
+      .st { position: absolute; left: 92px; bottom: 92px; opacity: 0; }
+      .st i { display: block; font: 500 21px "IBM Plex Mono", monospace; font-style: normal; letter-spacing: 0.26em; color: #ff6d3b; }
+      .st b { display: block; margin-top: 12px; font: 380 104px/1 "Fraunces", serif; letter-spacing: -0.025em; color: #ece7dd; white-space: nowrap; }
+      .st span { display: block; margin-top: 18px; font: 400 23px "IBM Plex Mono", monospace; color: #c9c2b4; white-space: nowrap; }
+      #st-shade { position: absolute; left: 0; bottom: 0; width: 1500px; height: 480px; opacity: 0;
+        background: radial-gradient(ellipse 70% 90% at 0% 100%, rgba(11, 10, 9, 0.9) 0%, rgba(11, 10, 9, 0.6) 50%, rgba(11, 10, 9, 0) 100%); }
+
+      #flash { position: absolute; inset: 0; background: #f4f6ff; opacity: 0; }
+      #z-shade { position: absolute; inset: 0; opacity: 0; background: radial-gradient(ellipse 80% 70% at 50% 58%, rgba(11, 10, 9, 0.78), rgba(11, 10, 9, 0.45) 60%, rgba(11, 10, 9, 0.2)); }
+      #z-title { position: absolute; left: 0; right: 0; top: 300px; text-align: center; opacity: 0; font: 360 250px/1 "Fraunces", serif; letter-spacing: -0.035em; white-space: nowrap; }
+      #z-sub { position: absolute; left: 0; right: 0; top: 600px; text-align: center; opacity: 0; font: 380 46px/1.3 "Fraunces", serif; color: #ece7dd; }
+      #z-url { position: absolute; left: 0; right: 0; top: 700px; text-align: center; font: 500 30px "IBM Plex Mono", monospace; color: #ece7dd; white-space: nowrap; }
+      #z-rule { position: absolute; left: 660px; top: 760px; width: 600px; height: 3px; border-radius: 2px; background: #ff6d3b; transform: scaleX(0); }
+      #z-note { position: absolute; left: 0; right: 0; top: 792px; text-align: center; opacity: 0; font: 500 18px "IBM Plex Mono", monospace; letter-spacing: 0.3em; color: #b3aa97; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="32" data-width="1920" data-height="1080">
+      <div id="ct-stage" class="clip" data-start="0" data-duration="32" data-track-index="0">
+        <canvas id="ct-gl" width="1920" height="1080"></canvas>
+      </div>
+      <video id="v-horse" class="clip clipvid" src="assets/clips/thermal-horse.mp4" muted playsinline data-start="9.6" data-duration="2.8" data-media-start="3.2" data-track-index="2"></video>
+      <video id="v-carousel" class="clip clipvid" src="assets/clips/burning-carousel.mp4" muted playsinline data-start="26" data-duration="6" data-media-start="3.0" data-track-index="3"></video>
+      <div id="ct-ui" class="clip" data-start="0" data-duration="32" data-track-index="4">
+        <div id="st-shade" data-layout-allow-occlusion></div>
+        <div class="st" id="st-0" data-layout-allow-occlusion><i>I · SPIN</i><b>Too fast to see</b><span>A drum of pictures under a plain lamp.</span></div>
+        <div class="st" id="st-1" data-layout-allow-occlusion><i>II · LOCK</i><b>One flash a frame</b><span>The drum stands still, and the horse runs.</span></div>
+        <div class="st" id="st-2" data-layout-allow-occlusion><i>III · THE CABINET</i><b>Machines for moving pictures</b><span>Each one plays a loop from the Motion page.</span></div>
+        <div class="st" id="st-3" data-layout-allow-occlusion><i>IV · OUT OF PHASE</i><b>Lose the beat</b><span>and it all turns back into a blur.</span></div>
+        <div id="hud-band" data-layout-allow-occlusion></div>
+        <div class="hud" id="hud-l" data-layout-allow-occlusion>JQ VISIONS<span>/motion</span></div>
+        <div class="hud" id="hud-r" data-layout-allow-occlusion><b id="hud-st">continuous light</b><span id="hud-tc">00:00:00:00</span></div>
+        <div id="z-shade" data-layout-allow-occlusion></div>
+        <div id="z-title" data-layout-allow-occlusion>Motion</div>
+        <div id="z-sub" data-layout-allow-occlusion>Worlds that refused to hold still.</div>
+        <div id="z-url" data-layout-allow-occlusion></div>
+        <div id="z-rule" data-layout-allow-occlusion></div>
+        <div id="z-note" data-layout-allow-occlusion>MACHINES, LIGHT AND SCORE BUILT IN CODE</div>
+        <div id="flash" data-layout-allow-occlusion></div>
+      </div>
+      <audio id="score" src="assets/bgm/score.wav" data-start="0" data-duration="32" data-track-index="7" data-volume="0.7"></audio>
+    </div>
+
+    <script type="module">
+      import * as THREE from "three/webgpu";
+      import { texture, uniform, uv, vec2, float } from "three/tsl";
+      import { bloom } from "./assets/vendor/BloomNode.js";
+      import { RoomEnvironment } from "./assets/vendor/RoomEnvironment.js";
+
+      const W = 1920, H = 1080, DUR = 32;
+      // ---- the one table (bake/table.py): the clock, the strobe's flash frames, the spin and its phase
+      const TB = window.TABLE, T = TB.T, FPS = TB.fps, STEP = TB.step, FLASH = new Set(TB.flash);
+      const cl = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+      const r = (t, a, b) => cl((t - a) / (b - a));
+      const lerp = (a, b, u) => a + (b - a) * u;
+      const E = (n) => gsap.parseEase(n);
+      const eOut = E("power3.out"), eIO = E("power2.inOut"), eIn = E("power2.in");
+      const hash = (n) => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+      const V3 = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
+      const TAU = Math.PI * 2;
+      // the phase (in slots) at any time, from the table's samples
+      const phaseAt = (t) => { const x = cl(t, 0, DUR) * FPS * STEP, i = Math.floor(x), u = x - i; return lerp(TB.phase[i], TB.phase[Math.min(i + 1, TB.phase.length - 1)], u); };
+      const frameOf = (t) => Math.round(t * FPS + 1e-6);
+      // locked: the strobe fires every frame and the machines turn one slot per flash
+      const locked = (t) => (t >= T.lock && t < T.video[0]) || (t >= T.cabinet && t < T.drift[0]) || (t >= T.relock);
+
+      // ================= DOM painter =================
+      const $ = (s) => document.querySelector(s);
+      const STS = [[$("#st-0"), 0.9, 2.3], [$("#st-1"), 5.1, 7.6], [$("#st-2"), 13.0, 15.2], [$("#st-3"), 20.6, 22.8]];
+      const STATE = [[0, "continuous light"], [T.stutter[0], "strobe · finding the frame"], [T.lock, "locked · one flash per frame"], [T.video[0], "inside the loop"],
+        [T.cabinet, "the cabinet · locked"], [T.drift[0], "out of phase"], [T.dark[0], "strobe off"], [T.relock, "locked"], [T.end, "motion"]];
+      const tc = (t) => { const f = Math.floor(t * 30 + 1e-6); return `00:00:${String(Math.floor(f / 30)).padStart(2, "0")}:${String(f % 30).padStart(2, "0")}`; };
+      const URL_TEXT = "visions.joaoqueiros.com/motion";
+      const POPS = [T.lock, T.video[0], T.cabinet, T.relock, T.end];   // the hard flashes that carry a cut or a lock
+      let glRender = null;
+      function paint(t) {
+        if (glRender) glRender(t);
+        const hudO = r(t, 0.4, 0.9) * (1 - r(t, T.end, T.end + 0.4));
+        $("#hud-l").style.opacity = hudO; $("#hud-r").style.opacity = hudO; $("#hud-band").style.opacity = hudO;
+        let st = STATE[0][1]; for (const [a, s] of STATE) if (t >= a) st = s;
+        $("#hud-st").textContent = st; $("#hud-tc").textContent = tc(t);
+        let shade = 0;
+        STS.forEach(([el, t0, t1]) => {
+          const a = eOut(r(t, t0, t0 + 0.55)), b = r(t, t1, t1 + 0.35);
+          el.style.opacity = a * (1 - b);
+          el.style.clipPath = `inset(0 ${(100 * (1 - a)).toFixed(1)}% 0 0)`;
+          el.style.transform = `translateX(${(-40 * (1 - a) - 60 * eIO(b)).toFixed(1)}px)`;
+          shade = Math.max(shade, a * (1 - b));
+        });
+        $("#st-shade").style.opacity = shade;
+        // a white pop on every cut or lock, gone in four frames
+        let pop = 0; for (const p of POPS) if (t >= p - 1e-6 && t < p + 0.14) pop = Math.max(pop, 0.85 * (1 - (t - p) / 0.14));
+        $("#flash").style.opacity = pop;
+        // inside the loop: the clip itself, settling from a push
+        const vh = $("#v-horse"), hu = r(t, T.video[0], T.video[1]);
+        vh.style.opacity = t >= T.video[0] && t < T.video[1] ? 1 : 0; vh.style.transform = `scale(${(1.12 - 0.08 * eOut(hu)).toFixed(4)})`;
+        const vc = $("#v-carousel"), cu = r(t, T.end, DUR);
+        vc.style.opacity = t >= T.end ? 1 : 0; vc.style.transform = `scale(${(1.16 - 0.1 * eOut(cu)).toFixed(4)})`;
+        $("#z-shade").style.opacity = r(t, T.end + 0.3, T.end + 1.0);
+        const show = (s, a, b, y) => { const u = r(t, a, b); $(s).style.opacity = u; $(s).style.transform = `translateY(${(y * (1 - eOut(u))).toFixed(1)}px)`; };
+        show("#z-title", T.end + 0.5, T.end + 1.3, 50);
+        show("#z-sub", T.end + 1.0, T.end + 1.7, 24);
+        $("#z-url").textContent = URL_TEXT.slice(0, Math.round(URL_TEXT.length * r(t, T.end + 1.6, T.end + 2.5)));
+        $("#z-rule").style.transform = `scaleX(${E("expo.inOut")(r(t, T.end + 2.3, T.end + 3.1)).toFixed(3)})`;
+        show("#z-note", T.end + 2.9, T.end + 3.4, 0);
+      }
+      const tl = gsap.timeline({ paused: true });
+      const clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+
+      // ================= the 3D film =================
+      async function build() {
+        await Promise.all([document.fonts.load('500 26px "IBM Plex Mono"'), document.fonts.load('380 104px "Fraunces"')]);
+        const canvas = $("#ct-gl");
+        // Hide KHR_parallel_shader_compile so every program links before its first draw (see R01, R07, R13).
+        const gl = canvas.getContext("webgl2", { antialias: true, alpha: false, depth: true, stencil: false, preserveDrawingBuffer: true });
+        const getExt = gl.getExtension.bind(gl), getSup = gl.getSupportedExtensions.bind(gl);
+        gl.getExtension = (name) => (name === "KHR_parallel_shader_compile" ? null : getExt(name));
+        gl.getSupportedExtensions = () => getSup().filter((n) => n !== "KHR_parallel_shader_compile");
+        const renderer = new THREE.WebGPURenderer({ canvas, context: gl, antialias: true, forceWebGL: true });
+        renderer.setPixelRatio(1); renderer.setSize(W, H, false);
+        renderer.setClearColor(0x000000, 0);
+        renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
+        await renderer.init();
+
+        const INK = 0x0b0a09;
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(INK);
+        scene.fog = new THREE.Fog(INK, 16, 46);
+        const pmrem = new THREE.PMREMGenerator(renderer);
+        scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture; scene.environmentIntensity = 0.0;
+        const camera = new THREE.PerspectiveCamera(34, W / H, 0.03, 200);
+
+        // ---- textures and helpers ----
+        const tex = (w, h, draw) => { const c = document.createElement("canvas"); c.width = w; c.height = h; draw(c.getContext("2d"), w, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; };
+        const add = (parent, geo, mat, x = 0, y = 0, z = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); parent.add(m); return m; };
+        const lathe = (pts, seg = 64) => new THREE.LatheGeometry(pts.map(([x, y]) => new THREE.Vector2(x, y)), seg);
+        const loader = new THREE.TextureLoader();
+        const ATLAS = {};
+        await Promise.all(["zoetrope", "praxinoscope", "disc", "flipbook"].map(async (id) => {
+          const t = await loader.loadAsync(`assets/frames/${id}.jpg`); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; ATLAS[id] = t;
+        }));
+        const glowTex = tex(256, 256, (g) => { const gr = g.createRadialGradient(128, 128, 0, 128, 128, 128); gr.addColorStop(0, "rgba(255,255,255,1)"); gr.addColorStop(0.2, "rgba(255,255,255,0.45)"); gr.addColorStop(0.6, "rgba(255,255,255,0.08)"); gr.addColorStop(1, "rgba(255,255,255,0)"); g.fillStyle = gr; g.fillRect(0, 0, 256, 256); });
+
+        // ---- materials: walnut, brass, black lacquer, velvet ----
+        const walnutTex = tex(1024, 512, (g, w, h) => { g.fillStyle = "#3a2618"; g.fillRect(0, 0, w, h);
+          for (let k = 0; k < 260; k++) { const y = hash(k * 1.9) * h, a = 0.05 + 0.12 * hash(k + 4); g.strokeStyle = hash(k) > 0.5 ? `rgba(20,10,4,${a})` : `rgba(120,78,44,${a})`; g.lineWidth = 1 + 4 * hash(k + 2); g.beginPath(); g.moveTo(0, y);
+            for (let x = 0; x <= w; x += 32) g.lineTo(x, y + 9 * Math.sin(x * 0.006 + k) + 4 * Math.sin(x * 0.021 + k * 2)); g.stroke(); } });
+        walnutTex.wrapS = walnutTex.wrapT = THREE.RepeatWrapping;
+        const walnut = new THREE.MeshPhysicalMaterial({ color: 0xb08868, map: walnutTex, roughness: 0.42, clearcoat: 0.7, clearcoatRoughness: 0.25 });
+        const brass = new THREE.MeshStandardMaterial({ color: 0xd2a35c, metalness: 1, roughness: 0.28 });
+        const brassDark = new THREE.MeshStandardMaterial({ color: 0x8a6634, metalness: 1, roughness: 0.4 });
+        const lacquer = new THREE.MeshPhysicalMaterial({ color: 0x0d0b09, roughness: 0.4, clearcoat: 1, clearcoatRoughness: 0.2, envMapIntensity: 0.35, side: THREE.DoubleSide });
+        // the zoetrope's painted band: numerals and lozenges that streak when it spins
+        const bandTex = tex(4096, 512, (g, w, h) => { g.fillStyle = "#0d0b09"; g.fillRect(0, 0, w, h);
+          g.fillStyle = "#c99a52"; g.fillRect(0, 26, w, 6); g.fillRect(0, h - 32, w, 6); g.fillStyle = "#ff6d3b"; g.fillRect(0, 44, w, 3); g.fillRect(0, h - 47, w, 3);
+          const NUM = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
+          for (let j = 0; j < 12; j++) { const x = (j + 0.5) * w / 12; g.fillStyle = "#ece7dd"; g.font = '380 190px "Fraunces"'; g.textAlign = "center"; g.fillText(NUM[j], x, 320);
+            g.fillStyle = "#ff6d3b"; g.save(); g.translate(j * w / 12, h / 2); g.rotate(Math.PI / 4); g.fillRect(-26, -26, 52, 52); g.restore(); } });
+        const band = new THREE.MeshPhysicalMaterial({ map: bandTex, roughness: 0.4, clearcoat: 1, clearcoatRoughness: 0.2, envMapIntensity: 0.35 });
+        const lacquerIn = new THREE.MeshStandardMaterial({ color: 0x1c1712, roughness: 0.8, side: THREE.DoubleSide });
+        const velvetTex = tex(1024, 256, (g, w, h) => { const gr = g.createLinearGradient(0, 0, w, 0); for (let i = 0; i <= 24; i++) gr.addColorStop(i / 24, i % 2 ? "#140f0c" : "#070605"); g.fillStyle = gr; g.fillRect(0, 0, w, h); });
+        velvetTex.wrapS = THREE.RepeatWrapping; velvetTex.repeat.set(4, 1);
+        const velvet = new THREE.MeshStandardMaterial({ color: 0x3a2820, map: velvetTex, roughness: 1 });
+
+        // a picture from an atlas cell: one material per slot, its cell set every render; crop is [x0, w] of the cell
+        const frameMat = (id, crop, { flipX = false, glow = 0.35, rough = 0.55, gloss = false, cropY = [0, 1] } = {}) => {
+          const info = TB.frames[id], cols = info.cols, rows = info.rows;
+          const cell = uniform(0), bright = uniform(glow);
+          const u0 = uv(), ux = flipX ? float(1).sub(u0.x) : u0.x;
+          const lx = float(crop[0] + 0.004).add(ux.mul(crop[1] - 0.008)), ly = float(cropY[0] + 0.006).add(u0.y.mul(cropY[1] - 0.012));
+          const col = cell.mod(cols), row = cell.div(cols).floor();
+          const c = texture(ATLAS[id], vec2(col.add(lx).div(cols), float(rows - 1).sub(row).add(ly).div(rows)));
+          const m = gloss ? new THREE.MeshPhysicalNodeMaterial({ roughness: 0.08, metalness: 0.0, clearcoat: 1, clearcoatRoughness: 0.05 }) : new THREE.MeshStandardNodeMaterial({ roughness: rough, metalness: 0 });
+          const cc = id === "praxinoscope" ? c.mul(0.72) : c;
+          m.colorNode = cc; m.emissiveNode = cc.mul(bright);
+          m.userData.cell = cell; m.userData.bright = bright;
+          return m;
+        };
+
+        // ================= the room: a walnut cabinet table, velvet behind, a floor =================
+        const TABLE_X0 = -3.2, TABLE_X1 = 15.8;
+        const top = add(scene, new THREE.BoxGeometry(TABLE_X1 - TABLE_X0, 0.16, 4.4), walnut, (TABLE_X0 + TABLE_X1) / 2, -0.08, 0);
+        walnutTex.repeat.set(4, 1);
+        add(scene, new THREE.BoxGeometry(TABLE_X1 - TABLE_X0 + 0.04, 0.05, 0.05), brass, (TABLE_X0 + TABLE_X1) / 2, -0.02, 2.2);
+        add(scene, new THREE.BoxGeometry(TABLE_X1 - TABLE_X0 - 0.4, 1.6, 4.0), new THREE.MeshStandardMaterial({ color: 0x1d140e, roughness: 0.7 }), (TABLE_X0 + TABLE_X1) / 2, -0.96, 0);
+        add(scene, new THREE.PlaneGeometry(80, 18), velvet, 6, 6, -5.5);
+        add(scene, new THREE.PlaneGeometry(90, 50).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x050403, roughness: 0.95 }), 6, -1.76, 0);
+
+        // ================= the machines =================
+        const N = 12, SLOT = TAU / N;
+        // 1 · the zoetrope: a lacquered drum on a walnut pedestal, slits in its upper band, twelve frames inside
+        const ZR = 1.3, ZB = 0.55, ZLOW = 0.55, ZUP = 0.42;
+        const zoe = new THREE.Group(); scene.add(zoe);
+        add(zoe, lathe([[0, 0], [0.62, 0], [0.62, 0.05], [0.48, 0.09], [0.2, 0.16], [0.13, 0.3], [0.16, 0.46], [0.3, 0.5], [0.3, ZB], [0, ZB]]), walnut);
+        const zDrum = new THREE.Group(); zDrum.position.y = ZB; zoe.add(zDrum);
+        add(zDrum, new THREE.CylinderGeometry(ZR, ZR, 0.04, 96), walnut, 0, 0.02, 0);
+        add(zDrum, new THREE.CylinderGeometry(ZR, ZR, ZLOW, 96, 1, true), [band], 0, ZLOW / 2, 0).material = band;
+        add(zDrum, new THREE.CylinderGeometry(ZR - 0.002, ZR - 0.002, ZLOW, 96, 1, true), lacquerIn, 0, ZLOW / 2, 0).material.side = THREE.BackSide;
+        const SLIT = 0.05;   // a slit's share of a slot
+        for (let j = 0; j < N; j++) {
+          // each upper piece runs between two slits, and the slits sit over the panels
+          add(zDrum, new THREE.CylinderGeometry(ZR, ZR, ZUP, 12, 1, true, j * SLOT + SLOT * 0.5 - SLOT * (0.5 - SLIT), SLOT * (1 - 2 * SLIT)), lacquer, 0, ZLOW + ZUP / 2, 0);
+        }
+        add(zDrum, new THREE.TorusGeometry(ZR, 0.025, 10, 128).rotateX(Math.PI / 2), brass, 0, ZLOW + ZUP, 0);
+        add(zDrum, new THREE.TorusGeometry(ZR, 0.03, 10, 128).rotateX(Math.PI / 2), brass, 0, 0.0, 0);
+        add(zDrum, new THREE.TorusGeometry(ZR + 0.004, 0.008, 6, 128).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: new THREE.Color(1.4, 0.5, 0.25), toneMapped: false }), 0, ZLOW, 0);
+        add(zDrum, new THREE.CylinderGeometry(0.05, 0.05, 0.5, 16), brass, 0, 0.25, 0);
+        add(zDrum, lathe([[0, 0], [0.11, 0], [0.11, 0.03], [0.06, 0.06], [0.04, 0.12], [0, 0.15]], 32), brass, 0, 0.5, 0);
+        const ZP = [];
+        for (let j = 0; j < N; j++) {
+          const mat = frameMat("zoetrope", [0.075, 0.85], { flipX: true, glow: 0.3 });
+          const m = add(zDrum, new THREE.CylinderGeometry(ZR - 0.012, ZR - 0.012, 0.45, 16, 1, true, j * SLOT - SLOT * 0.48, SLOT * 0.96), mat, 0, 0.3, 0);
+          mat.side = THREE.BackSide; ZP.push({ j, mat });
+        }
+        // 2 · the praxinoscope: a shallow drum of frames and a twelve-sided mirror at its centre
+        const PX = 4.2, PR = 1.0, PB = 0.36;
+        const prax = new THREE.Group(); prax.position.x = PX; scene.add(prax);
+        add(prax, lathe([[0, 0], [0.5, 0], [0.5, 0.05], [0.36, 0.1], [0.12, 0.2], [0.1, 0.3], [0.2, PB], [0, PB]]), walnut);
+        const pDrum = new THREE.Group(); pDrum.position.y = PB; prax.add(pDrum);
+        add(pDrum, new THREE.CylinderGeometry(PR, PR, 0.04, 96), walnut, 0, 0.02, 0);
+        add(pDrum, new THREE.CylinderGeometry(PR, PR, 0.6, 96, 1, true), lacquer, 0, 0.3, 0);
+        add(pDrum, new THREE.TorusGeometry(PR, 0.022, 10, 128).rotateX(Math.PI / 2), brass, 0, 0.6, 0);
+        add(pDrum, new THREE.TorusGeometry(PR, 0.026, 10, 128).rotateX(Math.PI / 2), brass, 0, 0, 0);
+        const PP = [], PM = [];
+        const AP = 0.5, FW = 2 * AP * Math.tan(SLOT / 2);
+        for (let j = 0; j < N; j++) {
+          const mat = frameMat("praxinoscope", [0, 1], { flipX: true, glow: 0.06 });
+          add(pDrum, new THREE.CylinderGeometry(PR - 0.01, PR - 0.01, 0.48, 16, 1, true, j * SLOT - SLOT * 0.48, SLOT * 0.96), mat, 0, 0.3, 0);
+          mat.side = THREE.BackSide; PP.push({ j, mat });
+          // the mirror facing this frame shows its reflection
+          const mm = frameMat("praxinoscope", [0.22, 0.56], { glow: 0.14, gloss: true });
+          const f = add(pDrum, new THREE.PlaneGeometry(FW * 0.97, 0.5), mm, AP * Math.sin(j * SLOT), 0.33, AP * Math.cos(j * SLOT));
+          f.rotation.y = j * SLOT; PM.push({ j, mat: mm });
+        }
+        add(pDrum, new THREE.CylinderGeometry(AP / Math.cos(SLOT / 2) + 0.03, AP / Math.cos(SLOT / 2) + 0.03, 0.04, N), brass, 0, 0.6, 0).rotation.y = SLOT / 2;
+        add(pDrum, lathe([[0, 0], [0.12, 0], [0.05, 0.12], [0.08, 0.26], [0, 0.34]], 32), brass, 0, 0.62, 0);
+        // 3 · the phenakistiscope: a painted disc on a brass stand, twelve frames around it and slits at its rim
+        const DX = 8.4, DY = 1.62, DR = 1.15;
+        const disc = new THREE.Group(); disc.position.set(DX, 0, 0.1); scene.add(disc);
+        add(disc, lathe([[0, 0], [0.42, 0], [0.42, 0.05], [0.18, 0.1], [0.08, 0.16], [0, 0.16]]), walnut);
+        add(disc, new THREE.CylinderGeometry(0.035, 0.035, DY - 0.1, 16), brass, 0, (DY - 0.1) / 2 + 0.1, -0.12);
+        add(disc, new THREE.CylinderGeometry(0.05, 0.05, 0.2, 16).rotateX(Math.PI / 2), brass, 0, DY, -0.06);
+        const dFace = tex(1024, 1024, (g, w, h) => { const c = w / 2;
+          g.fillStyle = "#16120e"; g.beginPath(); g.arc(c, c, c, 0, TAU); g.fill();
+          const rg = (rad, col, lw) => { g.strokeStyle = col; g.lineWidth = lw; g.beginPath(); g.arc(c, c, rad, 0, TAU); g.stroke(); };
+          rg(c - 6, "#c99a52", 8); rg(c * 0.83, "#5a4128", 3); rg(c * 0.42, "#5a4128", 3); rg(c * 0.18, "#c99a52", 5);
+          for (let j = 0; j < N; j++) { const a = (j + 0.5) * SLOT; g.save(); g.translate(c, c); g.rotate(a); g.fillStyle = "#020202"; g.fillRect(-9, -c * 0.97, 18, c * 0.11); g.restore(); }
+          for (let j = 0; j < 48; j++) { const a = j * TAU / 48; g.fillStyle = j % 4 ? "#3b2a1a" : "#ff6d3b"; g.beginPath(); g.arc(c + Math.sin(a) * c * 0.3, c - Math.cos(a) * c * 0.3, j % 4 ? 3 : 5, 0, TAU); g.fill(); } });
+        const dSpin = new THREE.Group(); dSpin.position.set(0, DY, 0); disc.add(dSpin);
+        add(dSpin, new THREE.CylinderGeometry(DR, DR, 0.025, 128).rotateX(Math.PI / 2), [new THREE.MeshStandardMaterial({ color: 0x8a6634, metalness: 0.8, roughness: 0.4 }), new THREE.MeshPhysicalMaterial({ map: dFace, roughness: 0.4, clearcoat: 0.6 }), new THREE.MeshStandardMaterial({ color: 0x16120e })]);
+        const DP = [];
+        for (let j = 0; j < N; j++) {
+          const mat = frameMat("disc", [0.16, 0.6], { glow: 0.04, cropY: [0.36, 0.64] });
+          const a = j * SLOT, rr = 0.78;
+          const p = add(dSpin, new THREE.PlaneGeometry(0.38, 0.3), mat, Math.sin(a) * rr, Math.cos(a) * rr, 0.016);
+          p.rotation.z = -a; DP.push({ j, mat });
+        }
+        add(dSpin, new THREE.CylinderGeometry(0.07, 0.07, 0.06, 24).rotateX(Math.PI / 2), brass, 0, 0, 0.03);
+        // 4 · the flip book: a fat little book on a brass cradle, its pages riffling off the thumb
+        const FX = 12.6;
+        const flip = new THREE.Group(); flip.position.set(FX, 0.0, 0.2); scene.add(flip);
+        add(flip, new THREE.BoxGeometry(1.9, 0.08, 1.2), walnut, 0, 0.04, 0);
+        const book = new THREE.Group(); book.position.set(0, 0.3, 0); book.rotation.x = 0.62; flip.add(book);
+        add(flip, new THREE.BoxGeometry(0.06, 0.46, 0.06), brass, -0.86, 0.26, -0.18); add(flip, new THREE.BoxGeometry(0.06, 0.46, 0.06), brass, 0.86, 0.26, -0.18);
+        const PGW = 1.5, PGH = 0.84;
+        const pageEdge = new THREE.MeshStandardMaterial({ color: 0xe8dcc4, roughness: 0.9 });
+        add(book, new THREE.BoxGeometry(PGW, 0.14, PGH), [pageEdge, pageEdge, pageEdge, pageEdge, pageEdge, pageEdge], PGW / 2, -0.07, 0);
+        add(book, new THREE.BoxGeometry(PGW + 0.04, 0.03, PGH + 0.04), new THREE.MeshStandardMaterial({ color: 0x2a1d14, roughness: 0.6 }), PGW / 2, -0.155, 0);
+        add(book, new THREE.BoxGeometry(0.06, 0.2, PGH + 0.06), brassDark, 0, -0.06, 0);
+        const topMat = frameMat("flipbook", [0, 1], { glow: 0.12 });
+        add(book, new THREE.PlaneGeometry(PGW - 0.04, PGH - 0.04).rotateX(-Math.PI / 2), topMat, PGW / 2, 0.002, 0);
+        const FLIPS = [0, 1, 2].map((i) => {
+          const mat = frameMat("flipbook", [0, 1], { glow: 0.12 }); mat.side = THREE.DoubleSide;
+          const pivot = new THREE.Group(); book.add(pivot);
+          add(pivot, new THREE.PlaneGeometry(PGW - 0.04, PGH - 0.04).rotateX(-Math.PI / 2), mat, PGW / 2, 0.004 + 0.002 * i, 0);
+          return { i, mat, pivot };
+        });
+
+        // brass plaques in front of each machine
+        const plaque = (x, z, name, year, loop) => {
+          const m = tex(900, 220, (g, w, h) => { g.fillStyle = "#b98d4c"; g.fillRect(0, 0, w, h); g.strokeStyle = "#6e5128"; g.lineWidth = 6; g.strokeRect(14, 14, w - 28, h - 28);
+            g.fillStyle = "#2a1e10"; g.font = '500 58px "IBM Plex Mono"'; g.letterSpacing = "10px"; g.textAlign = "center"; g.fillText(name, w / 2, 104); g.font = '400 34px "IBM Plex Mono"'; g.letterSpacing = "6px"; g.fillText(`${year} · ${loop}`, w / 2, 168); });
+          const p = add(scene, new THREE.BoxGeometry(1.2, 0.29, 0.03), [brassDark, brassDark, brassDark, brassDark, new THREE.MeshStandardMaterial({ map: m, metalness: 0.7, roughness: 0.35 }), brassDark], x, 0.12, z);
+          p.rotation.x = -0.9; return p;
+        };
+        plaque(0, 1.85, "ZOETROPE", 1834, "THERMAL HORSE"); plaque(PX, 1.7, "PRAXINOSCOPE", 1877, "BALLERINA");
+        plaque(DX, 1.7, "PHENAKISTISCOPE", 1833, "KINGFISHER"); plaque(FX, 1.7, "FLIP BOOK", 1868, "THE RUINS");
+
+        // ================= light: a warm lamp, and the strobe =================
+        const hemi = new THREE.HemisphereLight(0x6d6a66, 0x0a0806, 0.0); scene.add(hemi);
+        const lamp = new THREE.SpotLight(0xffb072, 0, 26, 0.75, 0.8, 1.2); lamp.position.set(-2.6, 4.2, 3.2); lamp.target.position.set(1.0, 0.8, 0); scene.add(lamp, lamp.target);
+        const lamp2 = new THREE.SpotLight(0xffa868, 0, 34, 0.95, 0.85, 1.1); lamp2.position.set(6.3, 7.5, 6.0); lamp2.target.position.set(6.3, 0.6, 0); scene.add(lamp2, lamp2.target);
+        const strobe = new THREE.SpotLight(0xe4ebff, 0, 30, 0.7, 0.5, 1.1); strobe.position.set(-1.6, 4.6, 4.2); strobe.target.position.set(0, 0.9, 0); scene.add(strobe, strobe.target);
+        const strobe2 = new THREE.SpotLight(0xe4ebff, 0, 40, 1.0, 0.6, 1.0); strobe2.position.set(6.3, 8.5, 7.5); strobe2.target.position.set(6.3, 0.8, 0); scene.add(strobe2, strobe2.target);
+        // the strobe unit itself, on a stand at the left of the zoetrope
+        const unit = new THREE.Group(); unit.position.set(-2.4, 0, 1.0); scene.add(unit);
+        add(unit, new THREE.CylinderGeometry(0.03, 0.03, 2.6, 12), brassDark, 0, 1.3, 0);
+        const head = add(unit, new THREE.BoxGeometry(0.5, 0.3, 0.34), lacquer, 0.05, 2.7, 0.05); head.rotation.set(-0.3, 0.5, 0);
+        const bulbMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.05, 0.05, 0.06), toneMapped: false });
+        const bulb = add(unit, new THREE.SphereGeometry(0.1, 24, 12), bulbMat, 0.14, 2.66, 0.2);
+        const bulbGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xdfe8ff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, opacity: 0 }));
+        bulbGlow.scale.setScalar(2.2); bulbGlow.position.set(-2.26, 2.66, 1.2); scene.add(bulbGlow);
+
+        // ================= camera: [film t, look target, position, fov] =================
+        const KF = [
+          [0, [0, 0.95, 0], [-0.4, 1.25, 4.9], 32], [2.4, [0, 0.95, 0], [1.1, 1.45, 4.5], 32],
+          [4.6, [0, 0.9, 0], [0.9, 2.1, 3.9], 34], [5.4, [0, 0.82, -1.0], [0, 2.7, 2.4], 36],
+          [8.6, [0, 0.82, -1.15], [0, 2.3, 1.25], 36], [9.6, [0, 0.85, -1.3], [0, 0.86, -0.5], 32],
+          [12.4, [0, 0.9, 0], [0.4, 3.4, 4.6], 36], [13.4, [PX - 0.3, 0.7, 0.2], [PX - 1.1, 1.75, 2.6], 32],
+          [15.0, [PX, 0.68, 0.3], [PX + 0.25, 1.5, 1.7], 30], [15.4, [DX, DY - 0.05, 0], [DX + 1.7, 2.0, 3.8], 32],
+          [17.0, [DX, DY - 0.05, 0], [DX + 0.6, 1.8, 3.7], 30], [17.4, [FX - 0.1, 0.5, 0.2], [FX - 1.0, 2.0, 3.4], 32],
+          [18.9, [FX + 0.1, 0.45, 0.2], [FX + 1.2, 1.9, 3.2], 32], [20.4, [6.3, 0.9, 0], [6.3, 3.4, 13.0], 38],
+          [24.0, [6.3, 0.9, 0], [6.3, 3.0, 11.4], 38], [26.0, [6.3, 0.5, 0], [6.3, 6.2, 11.6], 40], [DUR, [6.3, 0.5, 0], [6.3, 6.6, 11.6], 40],
+        ];
+        const camAt = (t) => {
+          let i = 0; while (i < KF.length - 2 && t >= KF[i + 1][0]) i++;
+          const a = KF[i], b = KF[i + 1], u = eIO(r(t, a[0], b[0]));
+          const look = V3(...a[1]).lerp(V3(...b[1]), u), pos = V3(...a[2]).lerp(V3(...b[2]), u), fov = lerp(a[3], b[3], u);
+          pos.x += 0.02 * Math.sin(t * 0.6); pos.y += 0.015 * Math.sin(t * 0.9 + 1);
+          return { pos, look, fov };
+        };
+
+        // ================= the frame: several renders averaged when the light is continuous =================
+        const rtS = new THREE.RenderTarget(W, H, { type: THREE.HalfFloatType, samples: 4 });
+        const rtA = new THREE.RenderTarget(W, H, { type: THREE.HalfFloatType });
+        const wgt = uniform(1);
+        const accMat = new THREE.MeshBasicNodeMaterial();
+        accMat.colorNode = texture(rtS.texture).mul(wgt);
+        accMat.blending = THREE.CustomBlending; accMat.blendSrc = THREE.OneFactor; accMat.blendDst = THREE.OneFactor; accMat.blendEquation = THREE.AddEquation;
+        accMat.depthTest = false; accMat.depthWrite = false;
+        const quad = new THREE.QuadMesh(accMat);
+        const post = new THREE.PostProcessing(renderer);
+        const acc = texture(rtA.texture);
+        post.outputNode = acc.add(bloom(acc, 0.42, 0.45, 0.9));
+
+        // where each machine is turned to at time t, and what its slots show
+        const PLAY = (t) => frameOf(t);   // the playhead: one source frame per film frame
+        const setMachines = (ts, t) => {
+          const ph = phaseAt(ts), lockNow = locked(t), base = Math.round(phaseAt(t));
+          const P = PLAY(t);
+          const turn = ph * SLOT;
+          zDrum.rotation.y = -turn; pDrum.rotation.y = -turn; dSpin.rotation.z = turn;
+          // locked, a slot shows the frame for the place it stands in; off the lock it keeps its own frame
+          const show = (list, n, step, dir = 1) => list.forEach(({ j, mat }) => {
+            const pos = ((j - base) % N + N) % N;
+            mat.userData.cell.value = lockNow ? (((P + dir * pos * step) % n) + n) % n : (j * 5) % n;
+          });
+          show(ZP, 60, 1); show(PP, 60, 1); show(PM, 60, 1); show(DP, 60, 1, -1);
+          // the flip book: the top page and three pages in the air
+          const fpg = ph * 1.0 + 0.35, k = Math.floor(fpg);
+          topMat.userData.cell.value = lockNow ? P % 60 : (k * 3) % 60;
+          FLIPS.forEach(({ i, mat, pivot }) => {
+            const u = ((fpg - k + i / 3) % 1 + 1) % 1;
+            pivot.rotation.z = Math.PI * (u ** 0.8);
+            mat.userData.cell.value = lockNow ? (P + 59 - i) % 60 : ((k - i) * 3 + 60) % 60;
+          });
+        };
+
+        function renderAt(t) {
+          clock.t = t;
+          const f = frameOf(t), fl = FLASH.has(f);
+          const C = camAt(t);
+          camera.position.copy(C.pos); camera.lookAt(C.look); camera.fov = C.fov; camera.updateProjectionMatrix(); camera.updateMatrixWorld();
+          // the light: the lamp is always there, dimmer under the strobe; the strobe only on its frames
+          const lampOn = r(t, T.lamp[0], T.lamp[1]);
+          const lampK = fl ? 0.35 : 1.0;
+          lamp.intensity = 40 * lampOn * lampK; lamp2.intensity = (t > T.cabinet - 0.5 ? 45 : 0) * lampK;
+          strobe.intensity = fl ? 110 : 0; strobe2.intensity = fl && t > T.video[0] ? 55 : 0;
+          hemi.intensity = fl ? 0.25 : 0.1 * lampOn; scene.environmentIntensity = fl ? 0.55 : 0.3 * lampOn;
+          bulbMat.color.setRGB(fl ? 6 : 0.05, fl ? 6.4 : 0.05, fl ? 7 : 0.06); bulbGlow.material.opacity = fl ? 0.9 : 0;
+          // samples: one under a flash (it freezes everything), eight across half a frame under the lamp
+          const hidden = (t >= T.video[0] && t < T.video[1]) || t >= T.end + 0.2;   // a clip covers the frame
+          const S = fl || hidden ? 1 : 8, shutter = fl ? 0 : 0.5 / FPS;
+          renderer.setRenderTarget(rtA); renderer.clear();
+          wgt.value = 1 / S;
+          for (let k = 0; k < S; k++) {
+            const ts = t + (S > 1 ? (k / (S - 1) - 0.5) * shutter : 0);
+            setMachines(ts, t);
+            renderer.setRenderTarget(rtS); renderer.render(scene, camera);
+            renderer.setRenderTarget(rtA); renderer.autoClear = false; quad.render(renderer); renderer.autoClear = true;
+          }
+          renderer.setRenderTarget(null);
+          post.render();
+        }
+
+        for (const tt of [0, 1.0, 3.1, 4.7, 7.0, 9.2, 12.5, 14.5, 16.4, 18.2, 20.0, 21.0, 22.5, 24.5, 27.0, DUR - 0.5]) renderAt(tt);   // warm every pipeline
+        let last = -1;
+        glRender = (t) => { if (t !== last) { last = t; renderAt(t); } };
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(window.__hfThreeTime || 0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = window.__hf.buildReady || {};
+      window.__hf.buildReady["zoetrope"] = build();
+    </script>
+  </body>
+</html>

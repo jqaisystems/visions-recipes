@@ -1,0 +1,34 @@
+{
+ "zoetrope": {
+  "loop": "thermal-horse",
+  "start": 11,
+  "seam": 21.5,
+  "n": 60,
+  "cols": 10,
+  "rows": 6
+ },
+ "praxinoscope": {
+  "loop": "minimalist-pixel-art-dancing-ballerina-composed",
+  "start": 43,
+  "seam": 6.37,
+  "n": 60,
+  "cols": 10,
+  "rows": 6
+ },
+ "disc": {
+  "loop": "vibrant-kingfisher-bird-bursting-out-water",
+  "start": 99,
+  "seam": 21.09,
+  "n": 60,
+  "cols": 10,
+  "rows": 6
+ },
+ "flipbook": {
+  "loop": "young-child-run-dusty-ruins-warm",
+  "start": 133,
+  "seam": 37.04,
+  "n": 60,
+  "cols": 10,
+  "rows": 6
+ }
+}

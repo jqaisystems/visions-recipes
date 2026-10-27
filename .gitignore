@@ -17,3 +17,6 @@ Thumbs.db
 
 # R10 placeholder clips: six small colour cards made with ffmpeg so the timeline scene runs, not renders
 !recipes/r10-one-line/assets/clips/clip-*.mp4
+
+# R22 loops: two small clips of João Queirós' own loops so the film runs (not licensed, see the recipe README)
+!recipes/r22-zoetrope/assets/clips/*.mp4
