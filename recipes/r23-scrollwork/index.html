@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <!--
+      R23 · Scrollwork. 32 s, cel-shaded anime in Three.js (WebGPURenderer, WebGL2 backend, TSL).
+      An anime transformation for a web design studio: the mark's rod slams down, the spiral unfurls out of it and
+      spins into a pose, unrolls into a scroll that flies through a painted sky with the studio's six featured sites on
+      it, rides the rod as a scroll thumb while the page scrolls beside it, then a page of manga panels with seven more
+      sites, and the lockup. The look: a three-band toon ramp, ink outlines (inverted hull), screentone dots printed
+      into the shadow band, a painted backdrop, the 3D animated on twos (12 fps) with the camera on ones, smear
+      frames, impact frames and speed lines. The clock, the impacts and the smears are one baked table
+      (assets/table.js, from bake/table.py); score/compose.py reads the same table. Any frame renders on its own.
+    -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/table.js"></script>
+    <script type="importmap">
+      { "imports": { "three": "./assets/vendor/three.webgpu.js", "three/webgpu": "./assets/vendor/three.webgpu.js", "three/tsl": "./assets/vendor/three.tsl.js" } }
+    </script>
+    <style>
+      @font-face { font-family: "Fraunces"; src: url("assets/fonts/fraunces-var-latin.woff2") format("woff2"); font-weight: 100 900; font-style: normal; }
+      @font-face { font-family: "Fraunces"; src: url("assets/fonts/fraunces-italic-var-latin.woff2") format("woff2"); font-weight: 100 900; font-style: italic; }
+      @font-face { font-family: "IBM Plex Mono"; src: url("assets/fonts/ibmplexmono-400-latin.woff2") format("woff2"); font-weight: 400; }
+      @font-face { font-family: "IBM Plex Mono"; src: url("assets/fonts/ibmplexmono-500-latin.woff2") format("woff2"); font-weight: 500; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #0b1426; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #0b1426; color: #f4efe6; font-family: "Fraunces", serif; }
+      #ct-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #ct-gl, #fx { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #ct-ui { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+
+      .hud { position: absolute; top: 46px; font: 500 19px "IBM Plex Mono", monospace; letter-spacing: 0.12em; white-space: nowrap; color: #c9a66b; }
+      #hud-l { left: 64px; color: #f4efe6; letter-spacing: 0.24em; }
+      #hud-l span { color: #c9a66b; margin-left: 16px; letter-spacing: 0.1em; }
+      #hud-r { right: 64px; }
+
+      .st { position: absolute; left: 84px; bottom: 84px; opacity: 0; }
+      .st i { display: inline-block; padding: 8px 16px 7px; background: #f4efe6; color: #0a0f1c; font: 500 20px "IBM Plex Mono", monospace; font-style: normal; letter-spacing: 0.24em; border: 4px solid #0a0f1c; }
+      .st b { display: block; margin-top: 10px; font: italic 640 112px/1 "Fraunces", serif; letter-spacing: -0.03em; color: #f4efe6; white-space: nowrap;
+        -webkit-text-stroke: 3px #0a0f1c; paint-order: stroke fill; text-shadow: 7px 7px 0 #0a0f1c; }
+
+      #title { position: absolute; inset: 0; background: #14213d; opacity: 0; }
+      #t-logo { position: absolute; left: 510px; top: 300px; width: 900px; height: auto; }
+      #t-line { position: absolute; left: 0; right: 0; top: 640px; text-align: center; font: italic 400 50px/1.2 "Fraunces", serif; color: #f4efe6; white-space: nowrap; opacity: 0; }
+      #t-url { position: absolute; left: 0; right: 0; top: 736px; text-align: center; font: 500 30px "IBM Plex Mono", monospace; color: #c9a66b; white-space: nowrap; }
+      #t-rule { position: absolute; left: 690px; top: 800px; width: 540px; height: 3px; background: #c9a66b; transform: scaleX(0); }
+      #t-note { position: absolute; left: 0; right: 0; top: 830px; text-align: center; font: 500 18px "IBM Plex Mono", monospace; letter-spacing: 0.3em; color: #9aa4ba; white-space: nowrap; opacity: 0; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="32" data-width="1920" data-height="1080">
+      <div id="ct-stage" class="clip" data-start="0" data-duration="32" data-track-index="0">
+        <canvas id="ct-gl" width="1920" height="1080"></canvas>
+        <canvas id="fx" width="1920" height="1080"></canvas>
+      </div>
+      <div id="ct-ui" class="clip" data-start="0" data-duration="32" data-track-index="1">
+        <div class="hud" id="hud-l" data-layout-allow-occlusion>SCROLLWORK<span>/scrollwork</span></div>
+        <div class="hud" id="hud-r" data-layout-allow-occlusion><span id="hud-st">plate 0 · the mark</span></div>
+        <div class="st" id="st-0" data-layout-allow-occlusion><i>I · THE ROD</i><b>Drawn by hand</b></div>
+        <div class="st" id="st-1" data-layout-allow-occlusion><i>II · THE SCROLL</i><b>Six sites, one roll</b></div>
+        <div class="st" id="st-2" data-layout-allow-occlusion><i>III · THE THUMB</i><b>Scroll it, play it</b></div>
+        <div id="title" data-layout-allow-occlusion>
+          <img id="t-logo" src="assets/brand/scrollwork-logo-horizontal-brass-white.svg" alt="Scrollwork">
+          <div id="t-line">Websites you play by scrolling.</div>
+          <div id="t-url"></div>
+          <div id="t-rule"></div>
+          <div id="t-note">DRAWN, INKED AND SCORED IN CODE</div>
+        </div>
+      </div>
+      <audio id="score" src="assets/bgm/score.wav" data-start="0" data-duration="32" data-track-index="7" data-volume="0.7"></audio>
+    </div>
+
+    <script type="module">
+      import * as THREE from "three/webgpu";
+      import { toonOutlinePass, screenUV, screenSize, vec2, vec3, vec4, float, dot, fract, length, step, mix, clamp, max, normalView, positionViewDirection, output, diffuseColor } from "three/tsl";
+      import { SVGLoader } from "./assets/vendor/SVGLoader.js";
+
+      const W = 1920, H = 1080, PORTRAIT = H > W;
+      const TB = window.TABLE, T = TB.T, FPS = TB.fps, DUR = TB.dur;
+      const SMEAR = new Set(TB.smears);
+      const cl = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+      const r = (t, a, b) => cl((t - a) / (b - a));
+      const lerp = (a, b, u) => a + (b - a) * u;
+      const E = (n) => gsap.parseEase(n);
+      const eOut = E("power3.out"), eIO = E("power2.inOut"), eIn = E("power3.in"), eBack = E("back.out(2.2)"), eExpo = E("expo.out");
+      const hash = (n) => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+      const TAU = Math.PI * 2;
+      const frameOf = (t) => Math.round(t * FPS + 1e-6);
+      const twos = (t) => Math.floor(t * 12 + 1e-6) / 12;                 // the drawings change 12 times a second
+      const NAVY = "#14213d", VAULT = "#0b1426", BRASS = "#9a7339", BRASSL = "#c9a66b", PAPER = "#f4efe6", INK = "#0a0f1c", SLATE = "#6b7385";
+      const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII"];
+      // the impact in force at t: frames since it began, or -1
+      const impactAt = (t) => { const f = frameOf(t); for (const d of TB.impacts) { const f0 = frameOf(d.t); if (f >= f0 && f < f0 + d.n) return f - f0; } return -1; };
+      // camera shake after every impact, on ones
+      const shakeAt = (t) => { let s = 0; for (const d of TB.impacts) { const u = (t - d.t) / 0.3; if (u >= 0 && u < 1) s = Math.max(s, (1 - u) * (1 - u)); } return s; };
+      const scene_ = (t) => t < T.mark[0] ? "open" : t < T.scroll[0] ? "mark" : t < T.thumb[0] ? "scroll" : t < T.cabinet[0] ? "thumb" : t < T.title ? "cabinet" : "title";
+      const seg = (t, list) => { let k = -1; list.forEach((a, i) => { if (t >= a) k = i; }); return k; };
+
+      // ================= images for the painted layers =================
+      const IMG = {};
+      const loadImg = (k, src) => new Promise((res) => { const im = new Image(); im.onload = () => { IMG[k] = im; res(); }; im.onerror = () => res(); im.src = src; });
+
+      // ================= 2D layer: brush, speed lines, sparks, stamps, manga panels =================
+      const fx = document.querySelector("#fx").getContext("2d");
+      function speedLines(g, t, cx, cy, n, r0, r1, col, seed) {
+        const k = Math.floor(t * 15); g.fillStyle = col;
+        for (let i = 0; i < n; i++) {
+          const a = hash(i * 3.1 + seed + k * 0.37) * TAU, a0 = r0 + 220 * hash(i + k * 1.7 + seed), a1 = a0 + r1 * (0.5 + hash(i * 7 + k)), w = 1.5 + 6 * hash(i * 11 + k + seed);
+          const ca = Math.cos(a), sa = Math.sin(a);
+          g.beginPath(); g.moveTo(cx + ca * a0, cy + sa * a0); g.lineTo(cx + ca * a1 - sa * w, cy + sa * a1 + ca * w); g.lineTo(cx + ca * a1 + sa * w, cy + sa * a1 - ca * w); g.fill();
+        }
+      }
+      function brush(g, u, seed) {   // a dry-brush stroke across the frame, drawn to fraction u
+        const P = (s) => [W / 2 + 26 * Math.sin(s * 4.0) - 40 * s, lerp(-90, H + 90, s)];
+        for (let j = 0; j < 46; j++) {
+          const off = (j - 23) * 4.2, gap0 = hash(j + seed) * 0.9, gap1 = gap0 + 0.04 + 0.1 * hash(j * 3 + seed);
+          g.strokeStyle = PAPER; g.lineWidth = 3 + 3 * hash(j * 5); g.lineCap = "round"; g.beginPath();
+          let pen = false; const end = u * (0.94 + 0.06 * hash(j * 9));
+          for (let s = 0; s <= end; s += 0.01) { const [x, y] = P(s); const skip = s > gap0 && s < gap1 && Math.abs(off) > 40;
+            if (skip) { pen = false; continue; } if (!pen) { g.moveTo(x + off, y + off * 0.3); pen = true; } else g.lineTo(x + off, y + off * 0.3); }
+          g.stroke();
+        }
+      }
+      function stamp(g, x, y, k, name, u) {   // a brass seal with the plate's numeral and the site's name
+        const s = 1 + 0.7 * (1 - eBack(cl(u * 4))); g.save(); g.translate(x, y); g.rotate(-0.06); g.scale(s, s);
+        g.fillStyle = INK; g.fillRect(-6, -6, 132, 132); g.fillStyle = BRASSL; g.fillRect(-14, -14, 132, 132);
+        g.fillStyle = INK; g.font = 'italic 700 74px "Fraunces"'; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(ROMAN[k], 52, 56);
+        g.textAlign = "left"; g.font = 'italic 640 58px "Fraunces"'; g.lineWidth = 8; g.strokeStyle = INK; g.strokeText(name, 150, 52); g.fillStyle = PAPER; g.fillText(name, 150, 52);
+        g.restore();
+      }
+      // the manga page for the cabinet: seven panels, each slammed in on the beat
+      const PANELS = PORTRAIT ? [
+        [[40, 40], [1040, 40], [1040, 420], [40, 470]], [[40, 500], [600, 490], [560, 860], [40, 860]], [[630, 488], [1040, 480], [1040, 860], [590, 860]],
+        [[40, 890], [1040, 890], [1040, 1180], [40, 1230]], [[40, 1260], [520, 1250], [480, 1600], [40, 1600]], [[550, 1248], [1040, 1240], [1040, 1600], [510, 1600]],
+        [[40, 1630], [1040, 1630], [1040, 1880], [40, 1880]]] : [
+        [[40, 40], [760, 40], [700, 520], [40, 520]], [[790, 40], [1880, 40], [1880, 330], [740, 330]],
+        [[740, 360], [1300, 360], [1260, 620], [710, 620]], [[1330, 360], [1880, 360], [1880, 620], [1290, 620]],
+        [[40, 550], [690, 550], [620, 1040], [40, 1040]], [[650, 650], [1250, 650], [1200, 1040], [600, 1040]], [[1280, 650], [1880, 650], [1880, 1040], [1230, 1040]]];
+      // panels that pan down the full-page capture through its most visual stretch: [x0, x1, top from, top to] as fractions of the page
+      const PAN = { 1: [0.12, 0.88, 0.081, 0.097], 2: [0.12, 0.88, 0.135, 0.2], 3: [0, 1, 0.115, 0.27], 6: [0, 1, 0.155, 0.36] };
+      function mangaPage(g, t) {
+        g.fillStyle = INK; g.fillRect(0, 0, W, H);   // ink gutters, brass screentone
+        g.fillStyle = "rgba(201,166,107,0.22)"; for (let y = 0; y < H; y += 10) for (let x = (y / 10) % 2 ? 5 : 0; x < W; x += 10) g.fillRect(x, y, 2.5, 2.5);
+        TB.panels.forEach((t0, k) => {
+          if (t < t0) return;
+          const u = r(t, t0, t0 + 0.2), poly = PANELS[k], cx = poly.reduce((a, p) => a + p[0], 0) / 4, cy = poly.reduce((a, p) => a + p[1], 0) / 4;
+          const s = 1 + 0.18 * (1 - eOut(u)), dx = (k % 2 ? 1 : -1) * 120 * (1 - eOut(u));
+          g.save(); g.translate(cx + dx, cy); g.scale(s, s); g.translate(-cx, -cy);
+          const outline = () => { g.beginPath(); poly.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath(); };
+          outline(); g.save(); g.clip();
+          const im = IMG["cab" + k], pan = r(t, t0, T.title);
+          const sc2 = IMG["cabs" + k], pz = PAN[k];
+          if (sc2 && pz) {   // a moving crop down the page's best stretch
+            const bx0 = Math.min(...poly.map((p) => p[0])), bx1 = Math.max(...poly.map((p) => p[0])), by0 = Math.min(...poly.map((p) => p[1])), by1 = Math.max(...poly.map((p) => p[1]));
+            const sx = pz[0] * sc2.width, sw = (pz[1] - pz[0]) * sc2.width, sh = sw * (by1 - by0) / (bx1 - bx0);
+            const sy = lerp(pz[2], pz[3], E("sine.inOut")(pan)) * sc2.height;
+            g.drawImage(sc2, sx, sy, sw, sh, bx0, by0, bx1 - bx0, by1 - by0);
+          } else if (im) { const bw = Math.max(...poly.map((p) => p[0])) - Math.min(...poly.map((p) => p[0])), bh = Math.max(...poly.map((p) => p[1])) - Math.min(...poly.map((p) => p[1]));
+            const sc = Math.max(bw / im.width, bh / im.height) * 1.22, iw = im.width * sc, ih = im.height * sc;
+            g.drawImage(im, cx - iw / 2 + (k % 2 ? -1 : 1) * 60 * (pan - 0.5), cy - ih / 2 - 30 * pan, iw, ih); }
+          if (u < 1) { g.fillStyle = `rgba(244,239,230,${(1 - u) * 0.9})`; g.fillRect(0, 0, W, H); }
+          if (k === TB.panels.length - 1 || t > 26.4) speedLines(g, t, cx, cy, 26, 160, 380, "rgba(244,239,230,0.7)", k * 13);
+          g.restore();
+          outline(); g.lineWidth = 9; g.strokeStyle = PAPER; g.stroke();
+          g.font = 'italic 640 34px "Fraunces"'; g.lineWidth = 7; const lx = poly[3][0] + 22, ly = poly[3][1] - 26, name = TB.cabnames[k];
+          const tw = g.measureText(name).width; g.fillStyle = INK; g.fillRect(lx - 14, ly - 34, tw + 28, 46);   // a caption box
+          g.fillStyle = PAPER; g.fillText(name, lx, ly);
+          g.restore();
+        });
+      }
+      function paintFx(t, P) {
+        fx.clearRect(0, 0, W, H);
+        const sc = scene_(t), f = frameOf(t);
+        if (sc === "open") {
+          if (t >= 0.3) { fx.globalAlpha = 1 - 0.7 * r(t, 1.2, 1.75); brush(fx, eOut(r(t, 0.3, 1.0)), 7); fx.globalAlpha = 1; }
+          if (t >= 1.1) speedLines(fx, t, W / 2, -0.83 * H, 40, 900, 900, "rgba(244,239,230,0.55)", 3);
+        }
+        if (sc === "mark") {
+          const sp = r(t, T.spin[0], T.spin[0] + 0.4) * (1 - r(t, T.pose - 0.8, T.pose));
+          if (sp > 0) speedLines(fx, t, W / 2, H / 2, Math.round(60 * sp), 470, 700, "rgba(244,239,230,0.75)", 1);
+          if (SMEAR.has(f) && t < T.pose) { fx.fillStyle = "rgba(244,239,230,0.85)";   // horizontal motion lines through the smear
+            for (let i = 0; i < 18; i++) { const y = H * (0.24 + 0.52 * hash(i + f)), x = W / 2 + (hash(i * 5 + f) - 0.5) * 700; fx.fillRect(x - 200, y, 400 + 300 * hash(i + 3), 3 + 4 * hash(i * 7)); } }
+          if (t >= T.pose && t < T.pose + 0.6) speedLines(fx, t, W / 2, H / 2, 70, 380, 900, "rgba(10,15,28,0.8)", 9);
+        }
+        if (sc === "scroll") {
+          const k = seg(t, TB.stamps);
+          if (k >= 0 && t < TB.stamps[k] + 1.1) stamp(fx, PORTRAIT ? 90 : 1180, PORTRAIT ? 380 : 880, k, TB.names[k], t - TB.stamps[k]);
+        }
+        if (sc === "thumb" && P.spark) {   // sparks where the thumb grinds the rod
+          const [sx, sy] = P.spark; const k = Math.floor(t * 30);
+          for (let i = 0; i < 26; i++) { const a = -Math.PI / 2 + (hash(i + k * 7.3) - 0.5) * 2.2, l = 30 + 150 * hash(i * 3 + k), x0 = sx + Math.cos(a) * l * 0.3, y0 = sy - Math.sin(a) * l * 0.3;
+            fx.strokeStyle = i % 3 ? "#ffe7b0" : PAPER; fx.lineWidth = 2 + 3 * hash(i + k); fx.beginPath(); fx.moveTo(x0, y0); fx.lineTo(x0 + Math.cos(a) * l, y0 - Math.sin(a) * l); fx.stroke(); }
+          const kk = seg(t, TB.swaps); if (kk >= 0) stamp(fx, PORTRAIT ? 90 : 120, PORTRAIT ? 380 : 170, kk, TB.names[kk], t - TB.swaps[kk]);
+        }
+        if (sc === "cabinet") mangaPage(fx, t);
+        // the impact frame's burst: ink lines from the centre
+        const im = impactAt(t); if (im >= 0) speedLines(fx, t + im, W / 2, H / 2, 90, 120, 1200, INK, im * 5);
+      }
+
+      // ================= DOM painter =================
+      const $ = (s) => document.querySelector(s);
+      const STS = [[$("#st-0"), 2.0, 4.4], [$("#st-1"), 8.8, 11.0], [$("#st-2"), 17.2, 19.4]];
+      const STATE = [[0, "plate 0 · the mark"], [T.scroll[0], "the roll · six plates"], [T.thumb[0], "the thumb · scroll to play"], [T.cabinet[0], "the cabinet"], [T.title, "scrollwork"]];
+      const URL_TEXT = "ai.joaoqueiros.com/scrollwork";
+      let glRender = null, lastP = {};
+      function paint(t) {
+        if (glRender) lastP = glRender(t) || {};
+        paintFx(t, lastP);
+        // impact frames print the whole stage in ink and paper
+        const im = impactAt(t);
+        $("#ct-stage").style.filter = im >= 0 ? (im % 2 ? "grayscale(1) contrast(9)" : "invert(1) grayscale(1) contrast(9)") : "none";
+        const sh = shakeAt(t), f = frameOf(t);
+        $("#ct-stage").style.transform = sh > 0 ? `translate(${((hash(f) - 0.5) * 34 * sh).toFixed(1)}px, ${((hash(f + 9) - 0.5) * 34 * sh).toFixed(1)}px) scale(1.03)` : "none";
+        const hudO = r(t, 0.6, 1.0) * (1 - r(t, T.title, T.title + 0.3));
+        $("#hud-l").style.opacity = hudO; $("#hud-r").style.opacity = hudO;
+        let st = STATE[0][1]; for (const [a, s] of STATE) if (t >= a) st = s;
+        $("#hud-st").textContent = st;
+        STS.forEach(([el, t0, t1]) => {
+          const a = r(t, t0, t0 + 0.25), b = r(t, t1, t1 + 0.2), on = t >= t0 && t < t1 + 0.2;
+          el.style.opacity = on ? 1 : 0;
+          el.style.transform = `translateX(${(-260 * (1 - eExpo(a)) - 400 * eIn(b)).toFixed(1)}px) skewX(${(-12 * (1 - eExpo(a))).toFixed(1)}deg)`;
+        });
+        // the lockup: flat brass on navy, as the brand draws it
+        const tu = T.title + 1.5;
+        $("#title").style.opacity = t >= tu ? 1 : 0;
+        const lw = eExpo(r(t, tu, tu + 0.7));
+        $("#t-logo").style.clipPath = `inset(0 ${(100 * (1 - lw)).toFixed(1)}% 0 0)`;
+        $("#t-logo").style.transform = `translateX(${(-40 * (1 - lw)).toFixed(1)}px)`;
+        const lu = r(t, tu + 0.6, tu + 1.2); $("#t-line").style.opacity = lu; $("#t-line").style.transform = `translateY(${(20 * (1 - eOut(lu))).toFixed(1)}px)`;
+        $("#t-url").textContent = URL_TEXT.slice(0, Math.round(URL_TEXT.length * r(t, tu + 1.1, tu + 1.9)));
+        $("#t-rule").style.transform = `scaleX(${E("expo.inOut")(r(t, tu + 1.8, tu + 2.5)).toFixed(3)})`;
+        $("#t-note").style.opacity = r(t, tu + 2.3, tu + 2.8);
+      }
+      const tl = gsap.timeline({ paused: true });
+      const clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+
+      // ================= the 3D film =================
+      async function build() {
+        await Promise.all([document.fonts.load('italic 640 112px "Fraunces"'), document.fonts.load('500 20px "IBM Plex Mono"'), document.fonts.load('italic 400 50px "Fraunces"'), document.fonts.load('italic 700 74px "Fraunces"')]);
+        await Promise.all([...TB.plates.map((p, k) => loadImg("plate" + k, `assets/sites/${p}-hero.webp`)), ...TB.plates.map((p, k) => loadImg("scroll" + k, `assets/sites/${p}-scroll.webp`)),
+          ...TB.cabinet.map((p, k) => loadImg("cab" + k, `assets/sites/${p}-hero.webp`)), ...TB.cabinet.map((p, k) => loadImg("cabs" + k, `assets/sites/${p}-scroll.webp`))]);
+        const canvas = $("#ct-gl");
+        const gl = canvas.getContext("webgl2", { antialias: true, alpha: false, depth: true, stencil: false, preserveDrawingBuffer: true });
+        const getExt = gl.getExtension.bind(gl), getSup = gl.getSupportedExtensions.bind(gl);
+        gl.getExtension = (name) => (name === "KHR_parallel_shader_compile" ? null : getExt(name));
+        gl.getSupportedExtensions = () => getSup().filter((n) => n !== "KHR_parallel_shader_compile");
+        const renderer = new THREE.WebGPURenderer({ canvas, context: gl, antialias: true, forceWebGL: true });
+        renderer.setPixelRatio(1); renderer.setSize(W, H, false);
+        renderer.toneMapping = THREE.NoToneMapping;
+        await renderer.init();
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(32, W / H, 0.05, 300);
+        scene.add(camera);
+        const canvasTex = (w, h, draw) => { const c = document.createElement("canvas"); c.width = w; c.height = h; const g = c.getContext("2d"); if (draw) draw(g, w, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; t.userData.g = g; return t; };
+
+        // ---- the painted backdrop: a plane on the camera, repainted every frame
+        const bgTex = canvasTex(W, H), bg = bgTex.userData.g;
+        const backdrop = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicNodeMaterial({ map: bgTex, depthWrite: false }));
+        backdrop.position.z = -150; backdrop.renderOrder = -1; camera.add(backdrop);
+        const STARS = Array.from({ length: 170 }, (_, i) => [hash(i * 2.3), hash(i * 5.1), 1 + 3 * hash(i + 9), 0.3 + 0.6 * hash(i)]);
+        function cloud(g, x, y, s, fill) {
+          const C = []; for (let j = 0; j < 7; j++) C.push([x + (j - 3) * 58 * s, y - 34 * s * Math.sin(j * 0.9 + 0.4), (46 + 30 * hash(j * 3 + Math.round(x))) * s]);
+          const pass = (st) => { for (const [cx, cy, rr] of C) { g.beginPath(); g.arc(cx, cy, rr, 0, TAU); st ? g.stroke() : g.fill(); } g.fillRect(x - 200 * s, y, 400 * s, 60 * s); };
+          g.strokeStyle = INK; g.lineWidth = 9; pass(true); g.fillStyle = fill; pass(false);
+        }
+        function sunburst(g, t, c0, c1) {
+          g.fillStyle = c0; g.fillRect(0, 0, W, H);
+          const a0 = twos(t) * 0.35; g.fillStyle = c1;
+          for (let i = 0; i < 24; i++) { const a = a0 + (i / 24) * TAU, b = a + TAU / 48; g.beginPath(); g.moveTo(W / 2, H / 2); g.lineTo(W / 2 + Math.cos(a) * 2400, H / 2 + Math.sin(a) * 2400); g.lineTo(W / 2 + Math.cos(b) * 2400, H / 2 + Math.sin(b) * 2400); g.fill(); }
+          const gr = g.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, 1100 * Math.max(W, H) / 1920); gr.addColorStop(0, "rgba(11,20,38,0)"); gr.addColorStop(1, "rgba(11,20,38,0.85)"); g.fillStyle = gr; g.fillRect(0, 0, W, H);
+        }
+        function drawBG(t, U) {
+          const sc = scene_(t);
+          if (sc === "open") { bg.fillStyle = INK; bg.fillRect(0, 0, W, H); }
+          else if (sc === "mark" || sc === "title") sunburst(bg, t, VAULT, t < T.pose && sc === "mark" ? "#16233f" : "#1d2c4d");
+          else if (sc === "scroll") {   // a painted night sky; the clouds rise as the camera rides down the scroll
+            const bands = [VAULT, "#101b33", NAVY, "#1d2c4d", "#2a3a5e", "#3d4561", "#6b5a43"];
+            bands.forEach((c, i) => { bg.fillStyle = c; bg.fillRect(0, i ? H * (0.1 + 0.92 * i / bands.length) : 0, W, H); });
+            for (const [x, y, s, a] of STARS) { bg.fillStyle = `rgba(244,239,230,${a})`; bg.fillRect(W * x, H * 0.6 * y, s, s); }
+            bg.fillStyle = PAPER; bg.beginPath(); bg.arc(W * 0.8125, H * 0.194, 92, 0, TAU); bg.fill(); bg.strokeStyle = INK; bg.lineWidth = 8; bg.stroke();
+            const o = U * 70;
+            const span = H * 2.1667; for (let i = 0; i < (PORTRAIT ? 14 : 9); i++) { const yy = ((H * 0.833 + i * H * 0.2407 - o) % span + span) % span - 300; cloud(bg, W * (0.104 + ((i * 677) % 1700) / 1920), yy, 0.9 + 0.6 * hash(i), i % 2 ? "#3b4766" : "#55556a"); }
+          } else if (sc === "thumb") {   // a field of falling streaks
+            bg.fillStyle = NAVY; bg.fillRect(0, 0, W, H);
+            const k = Math.floor(t * 30);
+            for (let i = 0; i < 60; i++) { const x = W * hash(i * 1.7), y = ((hash(i * 3.3) * H + k * (40 + 60 * hash(i))) % (H + 400)) - 400; bg.fillStyle = i % 4 ? "rgba(244,239,230,0.12)" : "rgba(201,166,107,0.35)"; bg.fillRect(x, H - y, 3 + 5 * hash(i), 140 + 300 * hash(i * 5)); }
+          } else { bg.fillStyle = PAPER; bg.fillRect(0, 0, W, H); }
+          bgTex.needsUpdate = true;
+        }
+
+        // ---- toon: a three-band ramp, a hard rim, screentone printed into the shadow band
+        const ramp = new THREE.DataTexture(new Uint8Array([78, 78, 78, 255, 165, 165, 165, 255, 255, 255, 255, 255]), 3, 1);
+        ramp.minFilter = ramp.magFilter = THREE.NearestFilter; ramp.needsUpdate = true;
+        const LUMA = vec3(0.299, 0.587, 0.114);
+        const screentone = (m) => {
+          const o = output, lum = dot(o.rgb, LUMA), px = screenUV.mul(screenSize);
+          const d = length(fract(vec2(px.x.add(px.y), px.y.sub(px.x)).mul(0.7071 / 6)).sub(0.5));
+          const k = lum.div(max(dot(diffuseColor.rgb, LUMA), 0.002));
+          const dots = step(d, clamp(float(0.62).sub(k.mul(0.9)), 0.0, 0.4)).mul(step(k, 0.55));
+          m.outputNode = vec4(mix(o.rgb, o.rgb.mul(0.32), dots), o.a); return m;
+        };
+        const toon = (color, opts = {}) => {
+          const { rim, ...rest } = opts;
+          const m = new THREE.MeshToonNodeMaterial({ color, gradientMap: ramp, ...rest });
+          const f = float(1).sub(dot(normalView, positionViewDirection).abs());
+          m.emissiveNode = vec3(new THREE.Color(rim || 0xffe7b0)).mul(step(0.66, f)).mul(0.5);
+          return screentone(m);
+        };
+        scene.add(new THREE.AmbientLight(0x8090c0, 0.6));
+        const key = new THREE.DirectionalLight(0xfff1d8, 2.7); scene.add(key); scene.add(key.target);
+        const back = new THREE.DirectionalLight(0xc9d6ff, 1.2); scene.add(back); scene.add(back.target);
+
+        // ---- the mark, extruded from the brand SVG; scale.x 0.056 leaves only the rod
+        const svg = await (await fetch("assets/brand/scrollwork-mark-brass.svg")).text();
+        const shapes = new SVGLoader().parse(svg).paths.flatMap((p) => SVGLoader.createShapes(p));
+        const mg = new THREE.ExtrudeGeometry(shapes, { depth: 46, bevelEnabled: true, bevelThickness: 7, bevelSize: 4, bevelSegments: 2, curveSegments: 48 });
+        mg.center(); mg.rotateX(Math.PI); mg.scale(0.0052, 0.0052, 0.0052);   // 2.8 x 3.8 units
+        const brassM = toon(BRASS);
+        const mark = new THREE.Mesh(mg, brassM); scene.add(mark);
+        const ROD = 0.056;
+
+        // ---- the scroll: six plates painted on one long sheet, unrolling off a roller
+        const PW = 3.2, BAND = 160, PH = 640, SL = 6 * (BAND + PH);   // sheet px: 1024 wide
+        const sheet = canvasTex(1024, SL, (g) => {
+          g.fillStyle = PAPER; g.fillRect(0, 0, 1024, SL);
+          TB.plates.forEach((p, k) => {
+            const y = k * (BAND + PH);
+            g.fillStyle = INK; g.font = 'italic 700 78px "Fraunces"'; g.textBaseline = "middle"; g.fillText(ROMAN[k], 40, y + BAND / 2 + 6);
+            g.font = 'italic 560 56px "Fraunces"'; g.fillText(TB.names[k], 170, y + BAND / 2 + 6);
+            g.fillRect(40, y + BAND - 18, 944, 5);
+            const im = IMG["plate" + k]; if (im) g.drawImage(im, 0, y + BAND, 1024, PH);
+            g.lineWidth = 10; g.strokeStyle = INK; g.strokeRect(5, y + BAND + 5, 1014, PH - 10);
+          });
+        });
+        const LEN = PW * SL / 1024;   // 15 units
+        const sg = new THREE.PlaneGeometry(PW, LEN, 12, 420), base = sg.attributes.position.array.slice();
+        sg.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, -LEN / 2, 0), LEN);   // the sheet moves; keep it from being culled
+        const front = new THREE.Mesh(sg, toon(0xffffff, { map: sheet, side: THREE.FrontSide }));
+        const backS = new THREE.Mesh(sg, toon(0xe6dccb, { side: THREE.BackSide }));
+        front.frustumCulled = backS.frustumCulled = false;
+        const topRod = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, PW + 0.7, 32), brassM); topRod.rotation.z = Math.PI / 2;
+        const roller = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, PW + 0.5, 32), brassM); roller.rotation.z = Math.PI / 2;
+        const scroll = new THREE.Group(); scroll.add(front, backS, topRod, roller); scene.add(scroll);
+        function unroll(U) {   // U: length unrolled; the rest is wound on the roller as a spiral
+          const p = sg.attributes.position.array, R0 = 0.17;
+          for (let i = 0; i < p.length; i += 3) {
+            const x = base[i], s = LEN / 2 - base[i + 1];
+            if (s <= U) { p[i] = x; p[i + 1] = -s; p[i + 2] = 0.06 * Math.sin(s * 1.3 + x * 0.6) * (1 - Math.exp(-s)); }
+            else { const a = (s - U) / R0, rr = R0 + 0.012 * a / TAU; p[i] = x; p[i + 1] = -U - rr * Math.sin(a); p[i + 2] = R0 - rr * Math.cos(a); }
+          }
+          sg.attributes.position.needsUpdate = true; sg.computeVertexNormals();
+          roller.position.set(0, -U, R0);
+        }
+
+        // ---- the thumb scene: a long rod, a browser frame, the page inside it
+        const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 9, 24), brassM); bar.position.set(2.5, 0, 0); scene.add(bar);
+        const browser = new THREE.Group(); scene.add(browser);
+        const bez = new THREE.Mesh(new THREE.BoxGeometry(3.9, 3.0, 0.16), toon(0x1d2c4d)); browser.add(bez);
+        const barTop = new THREE.Mesh(new THREE.BoxGeometry(3.9, 0.28, 0.2), toon(0x14213d)); barTop.position.set(0, 1.36, 0.02); browser.add(barTop);
+        [-1.75, -1.6, -1.45].forEach((x, i) => { const d = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.05, 16), toon([0xc9a66b, 0xf4efe6, 0x6b7385][i])); d.rotation.x = Math.PI / 2; d.position.set(x, 1.36, 0.13); browser.add(d); });
+        const pageTex = TB.plates.map((_, k) => { const t = new THREE.Texture(IMG["scroll" + k]); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; t.needsUpdate = true; t.repeat.set(1, 0.3); return t; });
+        const pages = pageTex.map((tx) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(3.66, 2.56), toon(0xffffff, { map: tx })); m.position.set(0, -0.12, 0.09); browser.add(m); return m; });
+        browser.position.set(-0.25, 0, -0.2);
+
+        // ---- post: ink outlines on every toon surface
+        const post = new THREE.PostProcessing(renderer);
+        post.outputNode = toonOutlinePass(scene, camera, new THREE.Color(INK), 0.0045, 1);
+
+        const V = (x, y, z) => new THREE.Vector3(x, y, z);
+        const proj = (v) => { const p = v.clone().project(camera); return [(p.x * 0.5 + 0.5) * W, (-p.y * 0.5 + 0.5) * H]; };
+        // portrait: the same take with a wider lens and the camera pulled back (more for the wide thumb scene)
+        const PULL = { open: 1.0, mark: 1.12, scroll: 1.0, thumb: 1.25, title: 1.1, cabinet: 1 };
+        let curScene = "open";
+        function look(pos, at, fov) {
+          if (PORTRAIT) { pos = at.clone().add(pos.clone().sub(at).multiplyScalar(PULL[curScene])); fov = 2 * Math.atan(Math.tan((fov * Math.PI) / 360) * 1.75) * 180 / Math.PI; }
+          camera.position.copy(pos); camera.lookAt(at); camera.fov = fov; camera.updateProjectionMatrix();
+        }
+
+        function renderAt(t) {
+          const q = twos(t), sc = scene_(t), f = frameOf(t), P = {}; curScene = sc;
+          mark.visible = sc === "open" || sc === "mark" || sc === "thumb" || sc === "title";
+          scroll.visible = sc === "scroll"; bar.visible = browser.visible = sc === "thumb";
+          mark.scale.set(1, 1, 1); mark.position.set(0, 0, 0); mark.rotation.set(0, 0, 0);
+          key.position.set(-5, 7, 9); key.target.position.set(0, 0, 0); back.position.set(4, 3, -8); back.target.position.set(0, 0, 0);
+          let U = 0;
+          if (sc === "open") {          // the rod drops out of the dark and slams
+            const u = eIn(r(q, 1.25, 1.8));
+            mark.scale.x = ROD; mark.position.y = lerp(4.6, 0, u); if (u > 0.2 && u < 1) mark.scale.y = 1.35;   // stretched as it falls
+            look(V(0, 0.2, 8.5), V(0, 0, 0), 30);
+          } else if (sc === "mark") {   // the spiral unfurls out of the rod and spins into a pose
+            const un = eOut(r(q, T.spin[0], T.spin[0] + 1.2)), sp = r(q, T.spin[0], T.pose);
+            mark.scale.x = lerp(ROD, 1, un);
+            const turns = 5.5 * (1 - Math.pow(1 - sp, 2.6));   // fast, then slowing into the pose
+            mark.rotation.y = turns * TAU - 0.5;
+            if (SMEAR.has(f)) { mark.scale.x *= 1.7; mark.scale.y *= 0.96; }
+            const o = r(t, T.pose, T.scroll[0]);
+            const ang = lerp(-0.25, 0.55, eIO(o)), dist = lerp(8.4, 6.2, eOut(r(t, T.spin[0], T.pose))) - 0.8 * eIO(o);
+            look(V(Math.sin(ang) * dist, lerp(-0.6, 0.5, eIO(o)), Math.cos(ang) * dist), V(0, lerp(0, 0.15, o), 0), lerp(34, 30, o));
+            if (t >= T.pose) mark.rotation.y = -0.5 + 0.18 * Math.sin(q * 1.4);
+          } else if (sc === "scroll") { // unroll on twos, the camera rides down beside the roller
+            U = cl(2.5 * (q - T.scroll[0]) / 1.2, 0, LEN);
+            unroll(U);
+            const o = r(t, 15.6, T.thumb[0]);
+            const at = V(0, -U * (1 - o) + 1.4 - (LEN / 2 + 1.4) * eIO(o), 0);
+            const ang = lerp(-0.55, 0.45, r(t, T.scroll[0], 15.6)) * (1 - o);
+            const dist = lerp(5.4, 17, eIO(o));
+            look(V(Math.sin(ang) * dist + 0.4, at.y + 0.6 + 1.2 * o, Math.cos(ang) * dist), at, lerp(36, 46, o));
+            key.position.set(-4, at.y + 6, 9); key.target.position.copy(at); back.position.set(4, at.y + 3, -8); back.target.position.copy(at);
+          } else if (sc === "thumb") {  // the thumb grinds down the rod; the page scrolls with it
+            const k = Math.max(0, seg(t, TB.swaps)), u = r(q, TB.swaps[k], TB.swaps[k] + 1.2), y = lerp(1.5, -1.5, u);
+            mark.scale.set(0.42, 0.42, 0.42); mark.position.set(2.5, y, 0); mark.rotation.y = -0.3 + 0.55 * Math.sin(q * 5.5);   // the spiral turns as it rides
+            pages.forEach((m, i) => (m.visible = i === k)); pageTex[k].offset.set(0, 0.7 * (1 - u));
+            const cams = [[0.45, 0.4, 9.0, 34], [-0.35, -0.7, 8.6, 32], [0.6, 0.6, 8.2, 36], [-0.5, 0.2, 8.8, 33], [0.25, -0.5, 8.4, 34], [0.55, 0.0, 9.2, 32]][k];
+            const push = eOut(r(t, TB.swaps[k], TB.swaps[k] + 1.2));
+            look(V(Math.sin(cams[0]) * (cams[2] - 0.6 * push), cams[1], Math.cos(cams[0]) * (cams[2] - 0.6 * push)), V(0.9, cams[1] * 0.3, 0), cams[3]);
+            camera.rotateZ(0.08 * (k % 2 ? 1 : -1));
+            camera.updateMatrixWorld();
+            P.spark = proj(V(2.5, y - 1.62 * 0.42, 0.1));
+          } else if (sc === "title") {  // the mark spins on its rod and settles, then the flat lockup takes over
+            const u = r(q, T.title, T.title + 1.5);
+            mark.rotation.y = (1 - eOut(u)) * 3 * TAU;
+            look(V(0, 0, lerp(7.5, 6.6, eOut(u))), V(0, 0, 0), 32);
+          } else { mark.visible = false; look(V(0, 0, 8), V(0, 0, 0), 32); }
+          camera.updateMatrixWorld();
+          const hh = 2 * 150 * Math.tan((camera.fov * Math.PI) / 360); backdrop.scale.set(hh * W / H * 1.02, hh * 1.02, 1);
+          drawBG(t, U);
+          post.render();
+          return P;
+        }
+
+        for (const tt of [0.5, 1.5, 3.0, 6.5, 9.0, 12.0, 15.9, 17.5, 20.0, 25.0, 28.0]) renderAt(tt);   // warm every pipeline
+        let last = -1, lastP = {};
+        glRender = (t) => { if (t !== last) { last = t; lastP = renderAt(t); } return lastP; };
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(window.__hfThreeTime || 0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = window.__hf.buildReady || {};
+      window.__hf.buildReady["scrollwork"] = build();
+    </script>
+  </body>
+</html>
