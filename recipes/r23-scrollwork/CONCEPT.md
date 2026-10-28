@@ -19,5 +19,6 @@ drawn as a double spiral wound on a rod: a scroll on its spindle, and a scroll b
 lockup is the flat logo, with no shading.
 
 **What the open source leaves out:** three of the thirteen site captures (a client's site, a page of client logos and
-a page of third-party posters) are replaced by plain placeholder plates under the same filenames. Everything else
-ships, and the captures and the logo are not licensed.
+a page of third-party posters) are replaced by plain placeholder plates under the same filenames, and the Thumbnail
+Studio capture is cut off below its headline, so no thumbnail artwork ships.
+Everything else ships, and the captures and the logo are not licensed.

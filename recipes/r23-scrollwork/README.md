@@ -48,5 +48,5 @@ Needs Node 22+ and Chrome or Edge.
 - GSAP (`assets/vendor/gsap.min.js`): GSAP Standard License, free (gsap.com/standard-license).
 - Fraunces and IBM Plex Mono: SIL Open Font License 1.1 (`assets/fonts/OFL-*.txt`).
 - **Not licensed:** the Scrollwork logo (`assets/brand/`), the site captures in `assets/sites/` (included only so the
-  film runs; three are plain placeholders), and the names Scrollwork and João Queirós. Use your own logo and work in a
-  remix.
+  film runs; three are plain placeholders and the Thumbnail Studio pair is cut off below its headline), and the names
+  Scrollwork and João Queirós. Use your own logo and work in a remix.
