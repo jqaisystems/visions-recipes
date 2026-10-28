@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <!--
+      R24 · Cairn. 32 s, cel-shaded anime in Three.js (WebGPURenderer, WebGL2 backend, TSL), season 1, film 2.
+      A cairn is a pile of stones that marks the way on a mountain trail; Cairn checks a site's search every four weeks
+      and adds a stone. Forty dashboard numbers hail onto a summit at night and blow away, leaving three; the first
+      stone falls out of the cloud; weeks pass as a time-lapse while a trail sign's search result climbs; the real
+      checkpoint's decisions slam in as lettering; the last stones land as the sun breaks; the flat lockup.
+      New in this film: a painted multiplane panorama (four mountain rings at real depths), time-lapse toon light with
+      cast shadows, hand-drawn weather and manga lettering. The clock, the landings, the stamps, the impacts and the
+      smears are one baked table (assets/table.js, from bake/table.py); score/compose.py reads the same table.
+    -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/table.js"></script>
+    <script type="importmap">
+      { "imports": { "three": "./assets/vendor/three.webgpu.js", "three/webgpu": "./assets/vendor/three.webgpu.js", "three/tsl": "./assets/vendor/three.tsl.js" } }
+    </script>
+    <style>
+      @font-face { font-family: "Outfit"; src: url("assets/fonts/outfit-var-latin.woff2") format("woff2"); font-weight: 100 900; }
+      @font-face { font-family: "Instrument Serif"; src: url("assets/fonts/instrumentserif-italic-latin.woff2") format("woff2"); font-weight: 400; font-style: italic; }
+      @font-face { font-family: "IBM Plex Mono"; src: url("assets/fonts/ibmplexmono-400-latin.woff2") format("woff2"); font-weight: 400; }
+      @font-face { font-family: "IBM Plex Mono"; src: url("assets/fonts/ibmplexmono-500-latin.woff2") format("woff2"); font-weight: 500; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #161715; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #161715; color: #f4f2ec; font-family: "Outfit", sans-serif; }
+      #ct-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #ct-gl, #fx { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #ct-ui { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+
+      .hud { position: absolute; top: 46px; font: 500 19px "IBM Plex Mono", monospace; letter-spacing: 0.12em; white-space: nowrap; color: #8fb174; -webkit-text-stroke: 5px #10110f; paint-order: stroke fill; }
+      #hud-l { left: 64px; color: #f4f2ec; letter-spacing: 0.24em; }
+      #hud-l span { color: #8fb174; margin-left: 16px; letter-spacing: 0.1em; }
+      #hud-r { right: 64px; }
+
+      .st { position: absolute; left: 84px; bottom: 84px; opacity: 0; }
+      .st i { display: inline-block; padding: 8px 16px 7px; background: #f4f2ec; color: #161715; font: 500 20px "IBM Plex Mono", monospace; font-style: normal; letter-spacing: 0.24em; border: 4px solid #161715; }
+      .st b { display: block; margin-top: 10px; font: 600 104px/1 "Outfit", sans-serif; letter-spacing: -0.03em; color: #f4f2ec; white-space: nowrap;
+        -webkit-text-stroke: 3px #161715; paint-order: stroke fill; text-shadow: 7px 7px 0 #161715; }
+      .st b em { font: italic 400 118px/1 "Instrument Serif", serif; letter-spacing: -0.01em; color: #8fb174; }
+
+      #title { position: absolute; inset: 0; background: #161715; opacity: 0; }
+      #t-logo { position: absolute; left: 510px; top: 290px; width: 900px; height: auto; }
+      #t-line { position: absolute; left: 0; right: 0; top: 640px; text-align: center; font: 500 50px/1.2 "Outfit", sans-serif; color: #f4f2ec; white-space: nowrap; opacity: 0; }
+      #t-line em { font: italic 400 58px/1 "Instrument Serif", serif; color: #8fb174; }
+      #t-url { position: absolute; left: 0; right: 0; top: 736px; text-align: center; font: 500 30px "IBM Plex Mono", monospace; color: #8fb174; white-space: nowrap; }
+      #t-rule { position: absolute; left: 690px; top: 800px; width: 540px; height: 3px; background: #5e7d4a; transform: scaleX(0); }
+      #t-note { position: absolute; left: 0; right: 0; top: 830px; text-align: center; font: 500 18px "IBM Plex Mono", monospace; letter-spacing: 0.3em; color: #8c8a82; white-space: nowrap; opacity: 0; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="32" data-width="1920" data-height="1080">
+      <div id="ct-stage" class="clip" data-start="0" data-duration="32" data-track-index="0">
+        <canvas id="ct-gl" width="1920" height="1080"></canvas>
+        <canvas id="fx" width="1920" height="1080"></canvas>
+      </div>
+      <div id="ct-ui" class="clip" data-start="0" data-duration="32" data-track-index="1">
+        <div class="hud" id="hud-l" data-layout-allow-occlusion>CAIRN<span>/cairn</span></div>
+        <div class="hud" id="hud-r" data-layout-allow-occlusion><span id="hud-st">the ridge · night</span></div>
+        <div class="st" id="st-0" data-layout-allow-occlusion><i>I · FORTY NUMBERS</i><b>Three that <em>matter</em></b></div>
+        <div class="st" id="st-1" data-layout-allow-occlusion><i>II · THE FIRST STONE</i><b>Page 2, <em>#18</em></b></div>
+        <div class="st" id="st-2" data-layout-allow-occlusion><i>III · EVERY FOUR WEEKS</i><b>One stone a <em>checkpoint</em></b></div>
+        <div id="title" data-layout-allow-occlusion>
+          <img id="t-logo" src="assets/brand/cairn-logo-horizontal-lichen-white.svg" alt="Cairn">
+          <div id="t-line">Search, checked <em>every four weeks.</em></div>
+          <div id="t-url"></div>
+          <div id="t-rule"></div>
+          <div id="t-note">STONES, WEATHER AND SCORE BUILT IN CODE</div>
+        </div>
+      </div>
+      <audio id="score" src="assets/bgm/score.wav" data-start="0" data-duration="32" data-track-index="7" data-volume="0.7"></audio>
+    </div>
+
+    <script type="module">
+      import * as THREE from "three/webgpu";
+      import { toonOutlinePass, screenUV, screenSize, vec2, vec3, vec4, float, dot, fract, length, step, mix, clamp, max, normalView, positionViewDirection, output, diffuseColor } from "three/tsl";
+      import { SVGLoader } from "./assets/vendor/SVGLoader.js";
+
+      const W = 1920, H = 1080, PORTRAIT = H > W, SS = Math.min(W, H) / 1080;
+      const TB = window.TABLE, T = TB.T, FPS = TB.fps, DUR = TB.dur, BEAT = TB.beat;
+      const SMEAR = new Set(TB.smears);
+      const cl = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+      const r = (t, a, b) => cl((t - a) / (b - a));
+      const lerp = (a, b, u) => a + (b - a) * u;
+      const E = (n) => gsap.parseEase(n);
+      const eOut = E("power3.out"), eIO = E("power2.inOut"), eIn = E("power2.in"), eBack = E("back.out(2.4)"), eExpo = E("expo.out");
+      const hash = (n) => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+      const TAU = Math.PI * 2;
+      const frameOf = (t) => Math.round(t * FPS + 1e-6);
+      const twos = (t) => Math.floor(t * 12 + 1e-6) / 12;                 // the drawings change 12 times a second
+      const NIGHT = "#161715", LICHEN = "#5e7d4a", LICHENL = "#8fb174", LICHEND = "#4f6b3d", CHALK = "#f4f2ec", STONE = "#8c8a82", CLAY = "#a4532e", INK = "#10110f";
+      const C = (h) => new THREE.Color(h);
+      const mixC = (a, b, u) => a.clone().lerp(b, cl(u));
+      const impactAt = (t) => { const f = frameOf(t); for (const d of TB.impacts) { const f0 = frameOf(d.t); if (f >= f0 && f < f0 + d.n) return f - f0; } return -1; };
+      const shakeAt = (t) => { let s = 0; for (const d of TB.impacts) { const u = (t - d.t) / 0.32; if (u >= 0 && u < 1) s = Math.max(s, (1 - u) * (1 - u)); } return s; };
+      const scene_ = (t) => t < T.first[0] ? "open" : t < T.weeks[0] ? "first" : t < T.check[0] ? "weeks" : t < T.summit[0] ? "check" : t < T.title ? "summit" : "title";
+      const seg = (t, list) => { let k = -1; list.forEach((a, i) => { if (t >= a) k = i; }); return k; };
+
+      // the sun's angle over the film: night, sunrise, a time-lapse of weeks, dusk, a night in fast-forward, dawn
+      const L1 = TB.lands[1], DAY = (TB.lands[2] - TB.lands[1]) / 2;
+      function sunAngle(t) {
+        const q = twos(t);
+        if (t < T.first[0]) return -Math.PI / 2;
+        if (t < T.weeks[0]) return lerp(-0.42, Math.PI / 3 - TAU * 2 + TAU * 2, eIO(r(t, 5.4, T.weeks[0])));
+        if (t < T.check[0]) return Math.PI / 3 + TAU * (q - L1) / DAY;
+        if (t < T.summit[0]) return 2.96;
+        return lerp(2.96, TAU + 0.3, eIO(r(q, T.summit[0], TB.lands[5]))) + 0.12 * r(t, TB.lands[5], T.title);
+      }
+      const SKY = {   // [top, horizon] by sun elevation
+        night: [C("#070b0c"), C("#1d2b2a")], twi: [C("#22343a"), C("#e3b56c")], day: [C("#6f9cab"), C("#e8dcbf")] };
+      function skyAt(th) {
+        const e = Math.sin(th);
+        if (e < -0.18) return SKY.night.map((c) => c.clone());
+        if (e < 0.12) { const u = r(e, -0.18, 0.12); return [mixC(SKY.night[0], SKY.twi[0], u), mixC(SKY.night[1], SKY.twi[1], u)]; }
+        const u = r(e, 0.12, 0.6); return [mixC(SKY.twi[0], SKY.day[0], u), mixC(SKY.twi[1], SKY.day[1], u)];
+      }
+
+      // ================= 2D layer: the numbers, wind, dust, lettering =================
+      const fx = document.querySelector("#fx").getContext("2d");
+      function speedLines(g, t, cx, cy, n, r0, r1, col, seed) {
+        const k = Math.floor(t * 15); g.fillStyle = col;
+        for (let i = 0; i < n; i++) {
+          const a = hash(i * 3.1 + seed + k * 0.37) * TAU, a0 = r0 + 220 * hash(i + k * 1.7 + seed), a1 = a0 + r1 * (0.5 + hash(i * 7 + k)), w = 1.5 + 6 * hash(i * 11 + k + seed);
+          const ca = Math.cos(a), sa = Math.sin(a);
+          g.beginPath(); g.moveTo(cx + ca * a0, cy + sa * a0); g.lineTo(cx + ca * a1 - sa * w, cy + sa * a1 + ca * w); g.lineTo(cx + ca * a1 + sa * w, cy + sa * a1 - ca * w); g.fill();
+        }
+      }
+      function inkText(g, s, x, y, font, fill, stroke = INK, lw = 8, sh = 0) {
+        g.font = font; g.lineJoin = "round";
+        if (sh) { g.fillStyle = stroke; g.fillText(s, x + sh, y + sh); }
+        g.lineWidth = lw; g.strokeStyle = stroke; g.strokeText(s, x, y); g.fillStyle = fill; g.fillText(s, x, y);
+      }
+      // the forty numbers: each falls, flickers, and shatters on the rock, until the gust takes the rest
+      function numbers(g, t, groundY) {
+        const gust = T.gust;
+        TB.numbers.forEach((s, i) => {
+          const t0 = 0.12 + 2.2 * hash(i * 1.31), x0 = W * (0.06 + 0.88 * hash(i * 2.7 + 1)), gy = groundY(x0) - 10 * hash(i);
+          if (t < t0) return;
+          const fall = 0.55 + 0.25 * hash(i * 5), u = (t - t0) / fall, y = lerp(-90, gy, u * u);
+          const blown = t >= gust ? (t - gust) : 0, bx = blown > 0 ? 2600 * blown * blown + 900 * blown : 0, by = -500 * blown * blown;
+          const size = (30 + 34 * hash(i * 7)) * SS;
+          if (u < 1) {     // in the air: a streak above, the digits flickering
+            if (Math.floor((t + hash(i)) * 22) % 5 === 0) return;
+            const xx = x0 + bx, yy = y + by;
+            g.fillStyle = "rgba(244,242,236,0.45)"; g.fillRect(xx + 8, yy - 200 * u - 50, 3, 170 * u + 40); g.fillRect(xx + size * 1.4, yy - 120 * u - 60, 2, 100 * u + 30);
+            g.textAlign = "left"; g.textBaseline = "alphabetic";
+            inkText(g, s, xx, yy, `500 ${size.toFixed(0)}px "IBM Plex Mono"`, i % 7 === 0 ? LICHENL : CHALK, INK, 5);
+          } else {         // shattered: shards fly and fall, on twos
+            const tt = twos(t) - (t0 + fall); if (tt > 0.5) return;
+            for (let j = 0; j < 6; j++) {
+              const a = -Math.PI * (0.15 + 0.7 * hash(i * 9 + j)), sp = 260 + 380 * hash(i + j * 3), px = x0 + Math.cos(a) * sp * tt + bx, py = gy + Math.sin(a) * sp * tt + 900 * tt * tt + by, sz = (4 + 8 * hash(j + i)) * (1 - tt * 2) * SS;
+              if (sz <= 0) continue;
+              g.fillStyle = j % 2 ? CHALK : LICHENL; g.strokeStyle = INK; g.lineWidth = 2;
+              g.beginPath(); g.moveTo(px, py - sz); g.lineTo(px + sz, py + sz * 0.6); g.lineTo(px - sz * 0.8, py + sz * 0.4); g.closePath(); g.fill(); g.stroke();
+            }
+          }
+        });
+      }
+      function windRibbons(g, t) {   // the gust: hand-drawn wind lines sweeping across
+        const u = r(t, T.gust - 0.1, T.gust + 0.9); if (u <= 0 || u >= 1) return;
+        const k = Math.floor(t * 12);
+        for (let i = 0; i < 14; i++) {
+          const y0 = H * (0.12 + 0.76 * hash(i * 3.3)), x0 = lerp(-W * 0.6, W * 1.3, u + 0.25 * hash(i)) , len = W * (0.25 + 0.3 * hash(i * 7));
+          g.strokeStyle = i % 3 ? "rgba(244,242,236,0.8)" : "rgba(143,177,116,0.85)"; g.lineWidth = (3 + 5 * hash(i + k)) * SS; g.lineCap = "round";
+          g.beginPath(); g.moveTo(x0 - len, y0);
+          g.bezierCurveTo(x0 - len * 0.6, y0 - 50 * SS, x0 - len * 0.3, y0 + 40 * SS, x0, y0 - 10 * SS);
+          g.arc(x0 - 26 * SS, y0 - 36 * SS, 28 * SS, Math.PI * 0.5, Math.PI * (1.8 + 0.3 * hash(i)), true);
+          g.stroke();
+        }
+      }
+      function card(g, s, x, y, u, lit) {   // one of the three numbers that matter, standing on the rock
+        const sc = 0.6 + 0.4 * eBack(cl(u * 3)); g.save(); g.translate(x, y); g.scale(sc * SS, sc * SS);
+        g.font = '500 34px "IBM Plex Mono"'; const w = g.measureText(s).width + 44;
+        g.fillStyle = INK; g.fillRect(-w / 2 + 8, -70 + 8, w, 62);
+        g.fillStyle = lit ? CHALK : "#cfccc2"; g.fillRect(-w / 2, -70, w, 62); g.lineWidth = 4; g.strokeStyle = INK; g.strokeRect(-w / 2, -70, w, 62);
+        g.fillStyle = LICHEND; g.fillRect(-w / 2, -70, 10, 62);
+        g.fillStyle = INK; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(s, 6, -38);
+        g.restore();
+      }
+      function dust(g, t, pt, tl, big) {   // a cel dust cloud rolling out each side of a landing, drawn on twos
+        const tt = twos(t) - tl; if (tt < 0 || tt > 0.8 || !pt) return;
+        const [x, y] = pt, sc = big * SS, life = 1 - tt / 0.8, grow = eOut(cl(tt * 2.5));
+        const P = [];
+        for (const side of [-1, 1]) for (let j = 0; j < 9; j++) {
+          const a = j / 8, d = (40 + 300 * grow) * (0.25 + 0.75 * a) * sc, rr = (70 - 38 * a + 22 * hash(j * 3 + side + tl)) * sc * (0.45 + 0.55 * grow) * Math.pow(life, 0.6);
+          P.push([x + side * d + (hash(j + tl) - 0.5) * 30 * sc, y - rr * 0.55 - (40 * a + 30 * hash(j * 7 + side)) * sc * grow, rr]);
+        }
+        const pass = (st) => { for (const [px, py, rr] of P) if (rr > 1) { g.beginPath(); g.arc(px, py, rr, 0, TAU); st ? g.stroke() : g.fill(); } };
+        g.strokeStyle = INK; g.lineWidth = 5 * SS; pass(true); g.fillStyle = "#cfc8b6"; pass(false);
+        g.fillStyle = "#ece6d6"; for (const [px, py, rr] of P) if (rr > 1) { g.beginPath(); g.arc(px - rr * 0.18, py - rr * 0.28, rr * 0.62, 0, TAU); g.fill(); }
+        for (let j = 0; j < 12; j++) {   // chips of rock
+          const a = -Math.PI * (0.1 + 0.8 * hash(j * 3 + tl)), sp = (300 + 600 * hash(j + tl * 2)) * SS, px = x + Math.cos(a) * sp * tt, py = y + Math.sin(a) * sp * tt + 1500 * SS * tt * tt, s = (5 + 8 * hash(j)) * SS;
+          g.fillStyle = j % 3 ? STONE : LICHEN; g.strokeStyle = INK; g.lineWidth = 2;
+          g.beginPath(); g.moveTo(px, py - s); g.lineTo(px + s, py); g.lineTo(px, py + s * 0.8); g.lineTo(px - s, py); g.closePath(); g.fill(); g.stroke();
+        }
+      }
+      function weekStamp(g, t, k) {   // WEEK 4 / WEEK 8, slammed in at the landing
+        const t0 = TB.ranks[k].t - 0.25, u = t - t0; if (u < 0 || u > 1.5) return;
+        const s = 1 + 0.5 * (1 - eBack(cl(u * 5))), x = PORTRAIT ? W * 0.08 : W * 0.06, y = PORTRAIT ? H * 0.2 : H * 0.24;
+        g.save(); g.translate(x, y); g.rotate(-0.05); g.scale(s * SS, s * SS); g.globalAlpha = 1 - r(u, 1.2, 1.5);
+        g.textAlign = "left"; g.textBaseline = "alphabetic";
+        inkText(g, "WEEK", 0, 0, '500 30px "IBM Plex Mono"', CHALK, INK, 6);
+        inkText(g, String(k * 4), 0, 150, '800 170px "Outfit"', LICHENL, INK, 12, 10);
+        g.restore(); g.globalAlpha = 1;
+      }
+      // the checkpoint's decisions, as manga lettering
+      const DECOL = { "GO": LICHENL, "NO-GO": CLAY, "VOID": STONE, "CLOSED": CHALK };
+      function decision(g, t) {
+        const k = seg(t, TB.stamps.map((s) => s.t)); if (k < 0) return;
+        const st = TB.stamps[k], u = t - st.t, col = DECOL[st.word];
+        const pos = PORTRAIT ? [[0.5, 0.36], [0.5, 0.4], [0.5, 0.36], [0.5, 0.4]][k] : [[0.3, 0.42], [0.66, 0.38], [0.32, 0.4], [0.64, 0.42]][k];
+        const x = W * pos[0], y = H * pos[1], s = (1 + 0.9 * (1 - eBack(cl(u * 4.5)))) * SS * (PORTRAIT ? 0.82 : 1), rot = [-0.07, 0.06, -0.05, 0.05][k];
+        speedLines(g, t, x, y, 46, 260 * SS, 700 * SS, "rgba(16,17,15,0.55)", k * 17);
+        g.save(); g.translate(x, y); g.rotate(rot); g.scale(s, s); g.textAlign = "center"; g.textBaseline = "alphabetic";
+        inkText(g, st.word, 0, 60, `900 ${st.word.length > 4 ? 190 : 230}px "Outfit"`, col, INK, 16, 14);
+        g.font = '500 30px "IBM Plex Mono"'; const nw = g.measureText(st.note.toUpperCase()).width + 36;
+        g.fillStyle = INK; g.fillRect(-nw / 2, 92, nw, 50); g.fillStyle = CHALK; g.fillText(st.note.toUpperCase(), 0, 128);
+        g.restore();
+      }
+      function cpHeader(g, t) {
+        const u = r(t, T.check[0] + 0.1, T.check[0] + 0.5), o = 1 - r(t, T.summit[0] - 0.3, T.summit[0]); if (u <= 0 || o <= 0) return;
+        g.globalAlpha = o; g.textAlign = "left"; g.textBaseline = "alphabetic";
+        const x = PORTRAIT ? 72 : 84, y = PORTRAIT ? H * 0.205 : 150;
+        g.fillStyle = INK; g.fillRect(x - 12, y - 40, (PORTRAIT ? 760 : 760) * eExpo(u), 56);
+        g.save(); g.beginPath(); g.rect(x - 12, y - 40, 760 * eExpo(u), 56); g.clip();
+        g.font = '500 26px "IBM Plex Mono"'; g.fillStyle = CHALK; g.fillText("CHECKPOINT CP-03 · 13 OCT 2026", x + 8, y);
+        g.restore(); g.globalAlpha = 1;
+      }
+      function lineCard(g, t) {   // the rule a checkpoint keeps
+        const u = r(t, TB.line, TB.line + 0.35), o = 1 - r(t, T.summit[0] + 0.15, T.summit[0] + 0.45); if (u <= 0 || o <= 0) return;
+        g.globalAlpha = o * u; g.textAlign = "center"; g.textBaseline = "alphabetic";
+        const y = PORTRAIT ? H * 0.8 : H * 0.86, f = PORTRAIT ? 48 : 52;
+        const a = "A checkpoint that only ever says go", b = "is not measuring anything.";
+        if (PORTRAIT) { inkText(g, a, W / 2, y, `italic 400 ${f}px "Instrument Serif"`, CHALK, INK, 8); inkText(g, b, W / 2, y + f * 1.15, `italic 400 ${f}px "Instrument Serif"`, CHALK, INK, 8); }
+        else inkText(g, a + " " + b, W / 2, y, `italic 400 ${f}px "Instrument Serif"`, CHALK, INK, 8);
+        g.globalAlpha = 1;
+      }
+      function paintFx(t, P) {
+        fx.clearRect(0, 0, W, H);
+        const sc = scene_(t), f = frameOf(t);
+        if (sc === "open" && P.ground) {
+          numbers(fx, t, P.ground);
+          windRibbons(fx, t);
+          TB.three.forEach((s, k) => { const t0 = 1.05 + 0.3 * k; if (t >= t0 && P.cards) card(fx, s, P.cards[k][0], P.cards[k][1], t - t0, t >= T.gust); });
+        }
+        if (sc === "first" && P.cards && t < T.first[0] + 0.8) TB.three.forEach((s, k) => card(fx, s, P.cards[k][0], P.cards[k][1], 1, true));
+        // a falling stone streams speed lines behind it
+        if (P.fall) { const [x, y] = P.fall; fx.fillStyle = "rgba(244,242,236,0.7)"; for (let i = 0; i < 16; i++) { const xx = x + (hash(i + f) - 0.5) * 300 * SS, l = (180 + 300 * hash(i * 3 + f)) * SS; fx.fillRect(xx, y - l - 120 * SS, 3 + 3 * hash(i), l); } }
+        TB.lands.forEach((tl, k) => dust(fx, t, P.contact && P.contact[k], tl, k === 0 ? 1.3 : k < 3 ? 1 : 0.62));
+        if (sc === "weeks") { weekStamp(fx, t, 1); weekStamp(fx, t, 2); }
+        if (sc === "check" || (sc === "summit" && t < T.summit[0] + 0.5)) { cpHeader(fx, t); if (sc === "check") decision(fx, t); lineCard(fx, t); }
+        // a rank climbs: a burst of lines behind the sign
+        TB.ranks.forEach((rk, k) => { if (k && P.sign && t >= rk.t && t < rk.t + 0.35) speedLines(fx, t, P.sign[0], P.sign[1], 40, 140 * SS, 380 * SS, "rgba(143,177,116,0.85)", k * 5); });
+        const im = impactAt(t); if (im >= 0) speedLines(fx, t + im, W / 2, H / 2, 90, 120, 1200, INK, im * 5);
+      }
+
+      // ================= DOM painter =================
+      const $ = (s) => document.querySelector(s);
+      const STS = [[$("#st-0"), 1.2, 3.3], [$("#st-1"), 6.0, 8.9], [$("#st-2"), 9.7, 12.3]];
+      const STATE = [[0, "the ridge · night"], [T.first[0], "checkpoint 0 · start"], [T.weeks[0], "every four weeks"], [TB.lands[1], "checkpoint 1 · week 4"], [TB.lands[2], "checkpoint 2 · week 8"], [T.check[0], "checkpoint 3 · the decisions"], [T.summit[0], "the summit"], [T.title, "cairn"]];
+      const URL_TEXT = "ai.joaoqueiros.com/cairn";
+      let glRender = null, lastP = {};
+      function paint(t) {
+        if (glRender) lastP = glRender(t) || {};
+        paintFx(t, lastP);
+        const im = impactAt(t);
+        $("#ct-stage").style.filter = im >= 0 ? (im % 2 ? "grayscale(1) contrast(9)" : "invert(1) grayscale(1) contrast(9)") : "none";
+        const sh = shakeAt(t), f = frameOf(t);
+        $("#ct-stage").style.transform = sh > 0 ? `translate(${((hash(f) - 0.5) * 34 * sh).toFixed(1)}px, ${((hash(f + 9) - 0.5) * 34 * sh).toFixed(1)}px) scale(1.03)` : "none";
+        const hudO = r(t, 0.5, 0.9) * (1 - r(t, T.title, T.title + 0.3));
+        $("#hud-l").style.opacity = hudO; $("#hud-r").style.opacity = hudO;
+        let st = STATE[0][1]; for (const [a, s] of STATE) if (t >= a) st = s;
+        $("#hud-st").textContent = st;
+        STS.forEach(([el, t0, t1]) => {
+          const a = r(t, t0, t0 + 0.25), b = r(t, t1, t1 + 0.2), on = t >= t0 && t < t1 + 0.2;
+          el.style.opacity = on ? 1 : 0;
+          el.style.transform = `translateX(${(-260 * (1 - eExpo(a)) - 400 * eIn(b)).toFixed(1)}px) skewX(${(-12 * (1 - eExpo(a))).toFixed(1)}deg)`;
+        });
+        // the lockup: flat, as the brand draws it
+        const tu = T.title + 0.7;
+        $("#title").style.opacity = r(t, T.title, T.title + 0.5);
+        const lw = eExpo(r(t, tu, tu + 0.8));
+        $("#t-logo").style.clipPath = `inset(0 ${(100 * (1 - lw)).toFixed(1)}% 0 0)`;
+        $("#t-logo").style.transform = `translateX(${(-40 * (1 - lw)).toFixed(1)}px)`;
+        const lu = r(t, tu + 0.7, tu + 1.3); $("#t-line").style.opacity = lu; $("#t-line").style.transform = `translateY(${(20 * (1 - eOut(lu))).toFixed(1)}px)`;
+        $("#t-url").textContent = URL_TEXT.slice(0, Math.round(URL_TEXT.length * r(t, tu + 1.2, tu + 2.0)));
+        $("#t-rule").style.transform = `scaleX(${E("expo.inOut")(r(t, tu + 1.9, tu + 2.6)).toFixed(3)})`;
+        $("#t-note").style.opacity = r(t, tu + 2.4, tu + 2.9);
+      }
+      const tl = gsap.timeline({ paused: true });
+      const clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+
+      // ================= the 3D film =================
+      async function build() {
+        await Promise.all([document.fonts.load('600 104px "Outfit"'), document.fonts.load('900 200px "Outfit"'), document.fonts.load('800 170px "Outfit"'),
+          document.fonts.load('italic 400 118px "Instrument Serif"'), document.fonts.load('500 20px "IBM Plex Mono"'), document.fonts.load('400 20px "IBM Plex Mono"')]);
+        const canvas = $("#ct-gl");
+        const gl = canvas.getContext("webgl2", { antialias: true, alpha: false, depth: true, stencil: false, preserveDrawingBuffer: true });
+        const getExt = gl.getExtension.bind(gl), getSup = gl.getSupportedExtensions.bind(gl);
+        gl.getExtension = (name) => (name === "KHR_parallel_shader_compile" ? null : getExt(name));
+        gl.getSupportedExtensions = () => getSup().filter((n) => n !== "KHR_parallel_shader_compile");
+        const renderer = new THREE.WebGPURenderer({ canvas, context: gl, antialias: true, forceWebGL: true });
+        renderer.setPixelRatio(1); renderer.setSize(W, H, false);
+        renderer.toneMapping = THREE.NoToneMapping;
+        renderer.shadowMap.enabled = true;
+        await renderer.init();
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(34, W / H, 0.05, 600);
+        scene.add(camera);
+        const canvasTex = (w, h, draw) => { const c = document.createElement("canvas"); c.width = w; c.height = h; const g = c.getContext("2d"); if (draw) draw(g, w, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; t.userData.g = g; return t; };
+
+        // ---- toon: a three-band ramp, a hard rim, screentone printed into the shadow band
+        const ramp = new THREE.DataTexture(new Uint8Array([70, 70, 70, 255, 160, 160, 160, 255, 255, 255, 255, 255]), 3, 1);
+        ramp.minFilter = ramp.magFilter = THREE.NearestFilter; ramp.needsUpdate = true;
+        const LUMA = vec3(0.299, 0.587, 0.114);
+        const screentone = (m) => {
+          const o = output, lum = dot(o.rgb, LUMA), px = screenUV.mul(screenSize);
+          const d = length(fract(vec2(px.x.add(px.y), px.y.sub(px.x)).mul(0.7071 / 6)).sub(0.5));
+          const k = lum.div(max(dot(diffuseColor.rgb, LUMA), 0.002));
+          const dots = step(d, clamp(float(0.62).sub(k.mul(0.9)), 0.0, 0.4)).mul(step(k, 0.55));
+          m.outputNode = vec4(mix(o.rgb, o.rgb.mul(0.3), dots), o.a); return m;
+        };
+        const rimU = new THREE.Color(0xf4f2ec);
+        const toon = (color, opts = {}) => {
+          const m = new THREE.MeshToonNodeMaterial({ color, gradientMap: ramp, ...opts });
+          const f = float(1).sub(dot(normalView, positionViewDirection).abs());
+          m.emissiveNode = vec3(rimU).mul(step(0.7, f)).mul(0.32);
+          return screentone(m);
+        };
+        const amb = new THREE.AmbientLight(0x8a9a8c, 0.55); scene.add(amb);
+        const key = new THREE.DirectionalLight(0xfff1d8, 2.6); scene.add(key); scene.add(key.target);
+        key.castShadow = true; key.shadow.mapSize.set(2048, 2048); key.shadow.bias = -0.0008; key.shadow.normalBias = 0.02;
+        Object.assign(key.shadow.camera, { left: -9, right: 9, top: 9, bottom: -9, near: 0.5, far: 60 });
+        const fill = new THREE.DirectionalLight(0xbfd0c4, 0.5); fill.position.set(6, 3, 8); scene.add(fill);
+
+        // ---- the six stones, extruded from the mark one by one, each at its own place in the C
+        const svg = await (await fetch("assets/brand/cairn-mark-lichen.svg")).text();
+        const S = 0.0052, VB = [552.7, 659.4];
+        const stones = [];
+        for (const p of new SVGLoader().parse(svg).paths) {
+          const geo = new THREE.ExtrudeGeometry(SVGLoader.createShapes(p), { depth: 100, bevelEnabled: true, bevelThickness: 22, bevelSize: 9, bevelSegments: 4, curveSegments: 40 });
+          geo.translate(-VB[0] / 2, -VB[1] / 2, -50); geo.rotateX(Math.PI); geo.scale(S, S, S);
+          geo.computeBoundingBox(); const c = new THREE.Vector3(); geo.boundingBox.getCenter(c); geo.translate(-c.x, -c.y, -c.z);
+          geo.computeBoundingBox(); geo.computeVertexNormals();
+          stones.push({ geo, home: c, minY: c.y + geo.boundingBox.min.y });
+        }
+        stones.sort((a, b) => a.home.y - b.home.y);          // bottom first: the order a cairn is built
+        const stoneM = toon(LICHEN);
+        stones.forEach((s) => { s.mesh = new THREE.Mesh(s.geo, stoneM); s.mesh.castShadow = s.mesh.receiveShadow = true; scene.add(s.mesh); });
+        const BASE = Math.min(...stones.map((s) => s.minY));    // the bottom of the C
+
+        // ---- the summit: a ledge under the cairn, the mountain falling away, loose rocks
+        const n2 = (x, z) => { const xi = Math.floor(x), zi = Math.floor(z), xf = x - xi, zf = z - zi, sx = xf * xf * (3 - 2 * xf), sz = zf * zf * (3 - 2 * zf);
+          const h = (a, b) => hash(a * 57.3 + b * 131.7); return lerp(lerp(h(xi, zi), h(xi + 1, zi), sx), lerp(h(xi, zi + 1), h(xi + 1, zi + 1), sx), sz); };
+        const groundH = (x, z) => { const rr = Math.hypot(x, z * 1.15); return BASE - 0.12 - 0.05 * Math.pow(Math.max(0, rr - 2.8), 1.9) + 0.35 * (n2(x * 0.45, z * 0.45) - 0.5) * cl(rr / 4); };
+        const tg = new THREE.PlaneGeometry(120, 120, 200, 200); tg.rotateX(-Math.PI / 2);
+        { const p = tg.attributes.position.array; for (let i = 0; i < p.length; i += 3) p[i + 1] = groundH(p[i], p[i + 2]); tg.computeVertexNormals(); }
+        const rockM = toon(0x8c8a82), rockD = toon(0x6d6b64);
+        const terrain = new THREE.Mesh(tg, rockD); terrain.receiveShadow = true; scene.add(terrain);
+        const lg = new THREE.IcosahedronGeometry(1, 3);
+        { const p = lg.attributes.position.array; for (let i = 0; i < p.length; i += 3) { const k = 1 + 0.18 * (n2(p[i] * 2 + 3, p[i + 2] * 2 + p[i + 1]) - 0.5); p[i] *= k; p[i + 1] = Math.min(p[i + 1] * k, 0.55); p[i + 2] *= k; } lg.computeVertexNormals(); }
+        const ledge = new THREE.Mesh(lg, rockM); ledge.scale.set(2.4, 1.0, 1.7); ledge.position.set(0.15, BASE - 0.55 * 1.0 + 0.0, 0.1); ledge.receiveShadow = ledge.castShadow = true; scene.add(ledge);
+        const pebbles = [];
+        for (let i = 0; i < 16; i++) {
+          const a = hash(i * 4.1) * TAU, d = 2.8 + 6 * hash(i * 2.9), x = Math.cos(a) * d, z = Math.sin(a) * d * 0.8, s = 0.18 + 0.4 * hash(i * 7);
+          const m = new THREE.Mesh(new THREE.IcosahedronGeometry(s, 0), i % 3 ? rockM : rockD); m.position.set(x, groundH(x, z) + s * 0.4, z); m.rotation.set(hash(i) * 3, hash(i + 1) * 3, 0); m.castShadow = m.receiveShadow = true; scene.add(m); pebbles.push(m);
+        }
+
+        // ---- the trail sign: a post and a board; the board shows the search result the checkpoints track
+        const signTex = canvasTex(1024, 640); const sg2 = signTex.userData.g;
+        const post = new THREE.Group(); scene.add(post);
+        const SX = 3.35, SZ = 1.15, SY = groundH(SX, SZ);
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 2.6, 10), toon(0x6b5a44)); pole.position.y = 1.3; pole.castShadow = true; post.add(pole);
+        const frame = new THREE.Mesh(new THREE.BoxGeometry(2.3, 1.48, 0.12), toon(0x5a4b39)); frame.position.y = 2.15; frame.castShadow = true; post.add(frame);
+        const face = new THREE.Mesh(new THREE.PlaneGeometry(2.16, 1.35), new THREE.MeshBasicNodeMaterial({ map: signTex })); face.position.set(0, 2.15, 0.065); post.add(face);
+        post.position.set(SX, SY, SZ); post.rotation.y = -0.42;
+        let signDrawn = -1;
+        function drawSign(k) {
+          if (k === signDrawn) return; signDrawn = k; const g = sg2, rk = TB.ranks[k];
+          g.fillStyle = CHALK; g.fillRect(0, 0, 1024, 640);
+          g.fillStyle = NIGHT; g.fillRect(0, 0, 1024, 92);
+          g.font = '500 40px "IBM Plex Mono"'; g.textBaseline = "middle"; g.fillStyle = LICHENL; g.textAlign = "left"; g.fillText(rk.label, 36, 48);
+          g.fillStyle = CHALK; g.textAlign = "right"; g.fillText("POSITION", 988, 48);
+          g.textAlign = "left"; g.strokeStyle = STONE; g.lineWidth = 4; g.strokeRect(36, 120, 610, 64);
+          g.beginPath(); g.arc(70, 152, 13, 0, TAU); g.stroke(); g.beginPath(); g.moveTo(80, 162); g.lineTo(92, 174); g.stroke();
+          g.font = '400 27px "IBM Plex Mono"'; g.fillStyle = "#1e1f1c"; g.fillText("kitchen renovation studio near me", 108, 153);
+          const rows = 4, hl = k === 0 ? 3 : k === 1 ? 2 : 0;
+          for (let i = 0; i < rows; i++) {
+            const y = 218 + i * 84;
+            if (i === hl) { g.fillStyle = "#e3ead9"; g.fillRect(28, y - 12, 628, 78); g.fillStyle = LICHEN; g.fillRect(28, y - 12, 8, 78);
+              g.font = '500 24px "IBM Plex Mono"'; g.fillStyle = LICHEND; g.fillText("yourstudio.com", 52, y + 10);
+              g.font = '600 30px "Outfit"'; g.fillStyle = "#1e1f1c"; g.fillText("Kitchen Renovation Studio", 52, y + 46); }
+            else { g.fillStyle = "#c9c6bc"; g.fillRect(52, y + 2, 200, 14); g.fillStyle = "#b3b0a6"; g.fillRect(52, y + 32, 420 - 60 * (i % 2), 20); }
+          }
+          g.textAlign = "center"; g.font = '800 236px "Outfit"'; g.fillStyle = LICHEND; g.fillText("#" + rk.pos, 840, 300);
+          g.font = '500 30px "IBM Plex Mono"'; g.fillStyle = "#1e1f1c"; g.fillText(rk.pos > 10 ? "PAGE 2" : rk.pos > 3 ? "PAGE 1" : "TOP 3", 840, 448);
+          g.fillStyle = NIGHT; g.fillRect(0, 572, 1024, 68);
+          g.font = '500 25px "IBM Plex Mono"'; g.fillStyle = CHALK; g.fillText("ILLUSTRATION · AN EXAMPLE, NOT A PROMISE", 512, 607);
+          signTex.needsUpdate = true;
+        }
+
+        // ---- the painted panorama: four rings of mountains at real depths, mist between them
+        function ridgeTex(seed, rough, peaks, ink, snow) {
+          return canvasTex(4096, 512, (g, w, h) => {
+            const R = (u) => { let v = 0; for (let k = 1; k <= 7; k++) v += Math.sin(TAU * (u * peaks * k * 0.5 + hash(seed + k))) / Math.pow(k, rough); return v; };
+            const ys = []; for (let i = 0; i <= 512; i++) { const u = i / 512; ys.push(Math.max(h * 0.1, h * (0.46 - 0.17 * R(u) - 0.07 * Math.abs(Math.sin(TAU * u * peaks * 3.1))))); }
+            const X = (i) => (i / 512) * w;
+            const path = (off) => { g.beginPath(); g.moveTo(0, h); for (let i = 0; i <= 512; i++) g.lineTo(X(i), ys[i] + off); g.lineTo(w, h); g.closePath(); };
+            g.fillStyle = "#c4c4c4"; path(0); g.fill();   // the mountain body, mid tone
+            for (let i = 0; i < 512; i++) { const d = ys[i + 1] - ys[i];   // the lit faces: a cel band on every slope that falls to the right
+              if (d > 0) { g.fillStyle = "#ffffff"; g.beginPath(); g.moveTo(X(i), ys[i]); g.lineTo(X(i + 1), ys[i + 1]); g.lineTo(X(i + 1) - 30, ys[i + 1] + 110 + 60 * hash(i + seed)); g.lineTo(X(i) - 30, ys[i] + 110); g.closePath(); g.fill(); } }
+            g.fillStyle = "#9a9a9a"; for (let j = 0; j < 90; j++) { const i = Math.floor(512 * hash(j * 3.7 + seed)), x = X(i), y = ys[i] + 60 + 260 * hash(j + seed); g.fillRect(x, y, 6 + 50 * hash(j * 5), 4); }   // strata
+            if (snow) { g.fillStyle = "#ffffff"; for (let i = 1; i < 512; i++) if (ys[i] < ys[i - 1] && ys[i] < ys[i + 1] && ys[i] < h * 0.3) { g.beginPath(); g.moveTo(X(i), ys[i]); g.lineTo(X(i) + 60, ys[i] + 46); g.lineTo(X(i) + 18, ys[i] + 40); g.lineTo(X(i) - 10, ys[i] + 58); g.lineTo(X(i) - 50, ys[i] + 40); g.closePath(); g.fill(); } }
+            if (ink) { g.strokeStyle = "#202020"; g.lineWidth = ink; g.lineJoin = "round"; g.beginPath(); for (let i = 0; i <= 512; i++) (i ? g.lineTo(X(i), ys[i]) : g.moveTo(X(i), ys[i])); g.stroke(); }
+          });
+        }
+        const RINGS = [
+          { R: 48, top: 7, hgt: 70, seed: 3, rough: 1.25, peaks: 9, ink: 7, snow: false, depth: 0.0 },
+          { R: 85, top: 15, hgt: 90, seed: 11, rough: 1.4, peaks: 12, ink: 5, snow: false, depth: 0.3 },
+          { R: 140, top: 28, hgt: 120, seed: 23, rough: 1.6, peaks: 15, ink: 4, snow: true, depth: 0.55 },
+          { R: 220, top: 50, hgt: 160, seed: 41, rough: 1.8, peaks: 18, ink: 0, snow: true, depth: 0.78 }];
+        RINGS.forEach((rg, i) => {
+          const tx = ridgeTex(rg.seed, rg.rough, rg.peaks, rg.ink, rg.snow); tx.wrapS = THREE.RepeatWrapping;
+          rg.mat = new THREE.MeshBasicNodeMaterial({ map: tx, transparent: true, alphaTest: 0.5, side: THREE.BackSide, depthWrite: true });
+          rg.mesh = new THREE.Mesh(new THREE.CylinderGeometry(rg.R, rg.R, rg.hgt, 160, 1, true), rg.mat);
+          rg.mesh.position.y = rg.top - rg.hgt / 2; rg.mesh.rotation.y = hash(i) * TAU; rg.mesh.renderOrder = -2 - i; scene.add(rg.mesh);
+        });
+        // a sea of cloud filling the valleys: cel puffs with ink edges, the peaks standing out of it
+        const seaTex = canvasTex(2048, 2048, (g, w, h) => {
+          const OFF = [[0, 0], [w, 0], [-w, 0], [0, h], [0, -h], [w, h], [-w, -h], [w, -h], [-w, h]];
+          for (let c = 0; c < 70; c++) {
+            const cx = w * hash(c * 1.7), cy = h * (c / 70), n = 10 + Math.floor(8 * hash(c * 3)), P = [];
+            for (let j = 0; j < n; j++) { const a = (j / (n - 1) - 0.5) * 2; P.push([cx + a * (150 + 120 * hash(c)), cy - (1 - a * a) * 40 + 30 * hash(j + c), 40 + 70 * (1 - Math.abs(a)) * (0.6 + 0.6 * hash(j * 7 + c))]); }
+            for (const [dx, dy] of OFF) { g.strokeStyle = "#202020"; g.lineWidth = 8; for (const [x, y, rr] of P) { g.beginPath(); g.arc(x + dx, y + dy, rr, 0, TAU); g.stroke(); } }
+            for (const [dx, dy] of OFF) { g.fillStyle = "#bdbdbd"; for (const [x, y, rr] of P) { g.beginPath(); g.arc(x + dx, y + dy, rr, 0, TAU); g.fill(); } }
+            for (const [dx, dy] of OFF) { g.fillStyle = "#ffffff"; for (const [x, y, rr] of P) { g.beginPath(); g.arc(x + dx - rr * 0.15, y + dy - rr * 0.35, rr * 0.68, 0, TAU); g.fill(); } }
+          }
+        });
+        seaTex.wrapS = seaTex.wrapT = THREE.RepeatWrapping; seaTex.repeat.set(4, 4);
+        const seaM = new THREE.MeshBasicNodeMaterial({ map: seaTex, transparent: true, alphaTest: 0.5 });
+        const sea = new THREE.Mesh(new THREE.RingGeometry(9, 260, 96, 1), seaM); sea.rotation.x = -Math.PI / 2; sea.position.y = -7.5; sea.renderOrder = -1; scene.add(sea);
+
+        // ---- the painted sky: a plane on the camera, repainted every frame against the true horizon
+        const bgTex = canvasTex(W, H), bg = bgTex.userData.g;
+        const backdrop = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicNodeMaterial({ map: bgTex, depthWrite: false, depthTest: false }));
+        backdrop.position.z = -500; backdrop.renderOrder = -10; camera.add(backdrop);
+        const STARS = Array.from({ length: 260 }, (_, i) => [hash(i * 2.3) * TAU, 0.05 + 1.3 * hash(i * 5.1), 1 + 2.5 * hash(i + 9), 0.3 + 0.7 * hash(i)]);
+        const CLOUDS = Array.from({ length: 64 }, (_, i) => ({ az: i < 16 ? hash(i * 3.7) * TAU : (hash(i * 3.7) - 0.5) * 1.3, el: i < 16 ? 0.1 + 0.28 * hash(i * 1.9) : 0.45 + 0.8 * hash(i * 2.2), s: 0.7 + 0.7 * hash(i * 5.5), big: i >= 16 }));
+        const dirTo = (az, el) => new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el));
+        const proj = (v) => { const p = v.clone().project(camera); return p.z < 1 ? [(p.x * 0.5 + 0.5) * W, (-p.y * 0.5 + 0.5) * H] : null; };
+        const projDir = (d) => { const p = camera.position.clone().add(d.clone().multiplyScalar(300)); return proj(p); };
+        function cloud(g, x, y, s, fill, hl, seed) {
+          const P = []; const n = 9;
+          for (let j = 0; j < n; j++) { const a = j / (n - 1) - 0.5; P.push([x + a * 420 * s + (hash(j + seed) - 0.5) * 40 * s, y - (1 - 4 * a * a) * 70 * s * (0.7 + 0.5 * hash(j * 3 + seed)), (40 + 46 * (1 - 2 * Math.abs(a)) + 22 * hash(j * 5 + seed)) * s]); }
+          const pass = (st) => { for (const [cx, cy, rr] of P) { g.beginPath(); g.arc(cx, cy, rr, 0, TAU); st ? g.stroke() : g.fill(); } g.beginPath(); g.ellipse(x, y + 8 * s, 230 * s, 42 * s, 0, 0, TAU); st ? g.stroke() : g.fill(); };
+          g.strokeStyle = INK; g.lineWidth = 6; pass(true); g.fillStyle = fill; pass(false);
+          g.fillStyle = hl; for (const [cx, cy, rr] of P) { g.beginPath(); g.arc(cx - rr * 0.18, cy - rr * 0.3, rr * 0.6, 0, TAU); g.fill(); }
+        }
+        function drawSky(t, th, sky, part, rays) {
+          const fwd = new THREE.Vector3(); camera.getWorldDirection(fwd); fwd.y = 0; fwd.normalize();
+          const hz = projDir(fwd), hy = hz ? hz[1] : H / 2;
+          bg.fillStyle = "#" + sky[0].getHexString(); bg.fillRect(0, 0, W, H);
+          const BANDS = [0.0, 0.22, 0.42, 0.6, 0.74, 0.86, 0.94];   // the sky painted in hard bands, like background art
+          BANDS.forEach((u, i) => { bg.fillStyle = "#" + mixC(sky[0], sky[1], Math.pow((i + 1) / BANDS.length, 1.3)).getHexString(); bg.fillRect(0, hy - H * 0.62 * (1 - u), W, H * 2); });
+          bg.fillStyle = "#" + sky[1].getHexString(); bg.fillRect(0, hy, W, H);
+          const night = r(-Math.sin(th), 0.05, 0.4);
+          if (night > 0) for (const [az, el, s, a] of STARS) { const p = projDir(dirTo(az, el)); if (p) { bg.fillStyle = `rgba(244,242,236,${(a * night).toFixed(3)})`; bg.fillRect(p[0], p[1], s, s); } }
+          // the sun and the moon ride the same arc
+          const sunD = t >= T.summit[0] ? dirTo(-0.24, 0.05 + 0.09 * part) : dirTo(-0.5 * Math.cos(th), Math.sin(th) * 0.5 + 0.03);
+          const sp = projDir(sunD), focal = (H / 2) / Math.tan((camera.fov * Math.PI) / 360);
+          if (rays > 0 && sp) {   // light rays fanning from the sun through the parting cloud
+            bg.save(); bg.globalAlpha = 0.5 * rays;
+            for (let i = 0; i < 18; i++) { const a = (i / 18) * TAU + twos(t) * 0.08, b = a + 0.07 + 0.05 * hash(i); bg.fillStyle = i % 2 ? "#fff3cf" : "#f6dfa0";
+              bg.beginPath(); bg.moveTo(sp[0], sp[1]); bg.lineTo(sp[0] + Math.cos(a) * 3000, sp[1] + Math.sin(a) * 3000); bg.lineTo(sp[0] + Math.cos(b) * 3000, sp[1] + Math.sin(b) * 3000); bg.fill(); }
+            bg.restore();
+          }
+          if (sp && Math.sin(th) > -0.2) { const rr = 0.045 * focal; [[3.2, 0.12], [2.1, 0.2]].forEach(([k, a]) => { bg.fillStyle = `rgba(255,243,207,${a})`; bg.beginPath(); bg.arc(sp[0], sp[1], rr * k, 0, TAU); bg.fill(); });
+            bg.fillStyle = "#fff6dc"; bg.beginPath(); bg.arc(sp[0], sp[1], rr, 0, TAU); bg.fill(); bg.strokeStyle = INK; bg.lineWidth = 6; bg.stroke(); }
+          const mp = projDir(dirTo(0.4 * Math.cos(th) + 0.28, -Math.sin(th) * 0.22 + 0.04));
+          if (mp && Math.sin(th) < 0.15) { const rr = 0.032 * focal; bg.fillStyle = CHALK; bg.beginPath(); bg.arc(mp[0], mp[1], rr, 0, TAU); bg.fill(); bg.strokeStyle = INK; bg.lineWidth = 6; bg.stroke();
+            bg.fillStyle = "rgba(140,138,130,0.5)"; bg.beginPath(); bg.arc(mp[0] + rr * 0.3, mp[1] - rr * 0.2, rr * 0.25, 0, TAU); bg.fill(); }
+          // the clouds: a low ring and a high bank; time-lapse moves them fast, the summit parts them
+          const drift = t < T.weeks[0] ? t * 0.012 : t < T.check[0] ? 0.11 + (twos(t) - T.weeks[0]) * 0.16 : 1.5 + t * 0.015;
+          const lum = sky[1].r * 0.3 + sky[1].g * 0.59 + sky[1].b * 0.11;
+          const cf = "#" + mixC(C("#2c3530"), C("#e9e5d8"), r(lum, 0.15, 0.85)).getHexString(), ch = "#" + mixC(C("#3d4842"), C("#ffffff"), r(lum, 0.15, 0.85)).getHexString();
+          const dawn = t >= T.first[0] && t < T.weeks[0] ? 1 : 0;
+          const order = CLOUDS.map((c, i) => [c, i]).sort((a, b) => b[0].el - a[0].el);   // high and far first
+          for (const [c, i] of order) {
+            let az = c.az + drift * (c.big ? 0.6 : 1);
+            if (c.big && part > 0) az += (Math.sin(az) > 0 ? 1 : -1) * part * 1.4;
+            const p = projDir(dirTo(az, c.el)); if (!p) continue;
+            const s = c.s * (focal / 1750) * (c.big ? 1.2 : 0.85);
+            const glow = dawn * r(t, T.first[0], T.first[0] + 0.8);   // dawn lights the bank from below
+            const hl = c.big && glow ? "#" + mixC(C(ch), C("#f6c77e"), glow).getHexString() : ch;
+            const fl = c.big && glow ? "#" + mixC(C(cf), C("#7d6470"), glow).getHexString() : cf;
+            cloud(bg, p[0], p[1], s, fl, hl, i * 7);
+          }
+          bgTex.needsUpdate = true;
+          return sunD;
+        }
+
+        // ---- post: ink outlines on every toon surface
+        const postFx = new THREE.PostProcessing(renderer);
+        postFx.outputNode = toonOutlinePass(scene, camera, new THREE.Color(INK), 0.0042, 1);
+
+        const V = (x, y, z) => new THREE.Vector3(x, y, z);
+        const PULL = { open: 1.18, first: 1.12, weeks: 1.15, check: 1.12, summit: 1.1, title: 1 };
+        let curScene = "open";
+        function look(pos, at, fov) {
+          if (PORTRAIT) { pos = at.clone().add(pos.clone().sub(at).multiplyScalar(PULL[curScene])); fov = 2 * Math.atan(Math.tan((fov * Math.PI) / 360) * 1.75) * 180 / Math.PI; }
+          camera.position.copy(pos); camera.lookAt(at); camera.fov = fov; camera.updateProjectionMatrix();
+        }
+        const orbit = (ang, dist, y, at, fov) => look(V(at.x + Math.sin(ang) * dist, y, at.z + Math.cos(ang) * dist), at, fov);
+
+        function renderAt(t) {
+          const q = twos(t), sc = scene_(t), f = frameOf(t), P = {}; curScene = sc;
+          // ---- the stones: each falls from the cloud on twos and lands on its own beat
+          let fallPt = null;
+          stones.forEach((s, k) => {
+            const tl = TB.lands[k], t0 = tl - TB.falls[k], m = s.mesh;
+            m.visible = q >= t0 || t >= tl; m.position.copy(s.home); m.rotation.set(0, 0, 0); m.scale.set(1, 1, 1);
+            if (t < tl && q >= t0) {
+              const u = r(q, t0, tl), drop = 11 * (1 - u * u);
+              m.position.y += drop; m.rotation.set(0.5 * (1 - u), 0, (k % 2 ? 1 : -1) * 0.9 * (1 - u));
+              if (SMEAR.has(f)) m.scale.set(0.82, 1.6, 0.82);
+              if (u > 0.05) fallPt = s.home.clone().setY(s.home.y + drop);
+            } else if (t >= tl && t < tl + 0.25) { const u = r(q, tl, tl + 0.25); m.scale.set(1 + 0.12 * (1 - u), 1 - 0.14 * (1 - u), 1 + 0.12 * (1 - u)); }   // squash on landing
+          });
+          post.visible = t >= T.first[0] + 1.5;
+          drawSign(seg(t, TB.ranks.map((x) => x.t)) < 0 ? 0 : seg(t, TB.ranks.map((x) => x.t)));
+          { const k = seg(t, TB.ranks.map((x) => x.t)); const u = k >= 0 ? r(t, TB.ranks[k].t, TB.ranks[k].t + 0.3) : 1; const s = 1 + 0.18 * (1 - eBack(u)); frame.scale.set(s, s, 1); face.scale.set(s, s, 1); }
+
+          // ---- the cameras
+          const shot = (ang, dist, y, at, fov) => orbit(ang, dist, y, at, fov);
+          if (sc === "open") {          // night on the empty summit, a slow push
+            const u = eIO(r(t, 0, T.first[0]));
+            shot(lerp(-0.12, 0.05, u), lerp(11, 9.6, u), lerp(-0.3, -0.5, u), V(0, BASE + 0.9, 0), 34);
+          } else if (sc === "first") {  // tilt up into the cloud, follow the stone down, settle on the trail
+            const tilt = eIO(r(t, T.first[0], T.first[0] + 0.75)), down = eIn(r(q, TB.lands[0] - TB.falls[0], TB.lands[0]));
+            const settle = eIO(r(t, TB.lands[0] + 0.45, T.weeks[0] - 0.5));
+            const atY = lerp(lerp(BASE + 0.9, 9.5, tilt), BASE + 1.4, down);
+            const at = V(lerp(0, 0.9 + (PORTRAIT ? 0.9 : 0), settle), lerp(atY, 0.1, settle), 0);
+            shot(lerp(0.05, 0.42, settle), lerp(9.6, 11.4, settle), lerp(-0.5, 0.9, settle), at, lerp(34, 33, settle));
+          } else if (sc === "weeks") {  // a slow orbit while the weeks race by
+            const u = r(t, T.weeks[0], T.check[0]);
+            shot(lerp(0.42, -0.38, eIO(u)), lerp(11.4, 10.4, u), lerp(0.9, 1.6, u), V(lerp(0.9, 0.6, u) + (PORTRAIT ? 1.0 : 0), 0.1, 0), 33);
+          } else if (sc === "check") {  // a hard cut for every decision
+            const k = seg(t, TB.stamps.map((s) => s.t)), t0 = k < 0 ? T.check[0] : TB.stamps[k].t, u = r(t, t0, t0 + 1.4);
+            const A = [[0.0, 12.5, 1.8, 0.0, 34], [-0.75, 7.2, -0.9, 0.2, 36], [0.9, 6.4, 1.9, 0.6, 32], [-0.15, 6.0, -1.1, 0.4, 30], [1.25, 7.6, 0.4, 0.3, 34]][k + 1];
+            shot(A[0] + 0.06 * u, A[1] - 0.6 * eOut(u), A[2], V(A[3], 0.0, 0), A[4]);
+          } else if (sc === "summit") { // the last stones, then the crane up over the valley, the C front-on
+            const c = eIO(r(t, TB.lands[5] + 0.2, T.title + 0.4));
+            look(V(lerp(0.6, 0, c), lerp(0.2, 5.0, c), lerp(11.5, 18, c)), V(0, lerp(0.3, 1.6, c), 0), lerp(32, 40, c));
+          } else look(V(0, 3, 18), V(0, 0, 0), 38);
+          if (sc === "summit" || sc === "title" || (sc === "check" && seg(t, TB.stamps.map((s) => s.t)) >= 1)) post.visible = false;
+          camera.updateMatrixWorld();
+
+          // ---- light: the sun drives the toon bands, the shadows, the sky and the mountains' tint
+          const th = sunAngle(t), e = Math.sin(th), sky = skyAt(th);
+          const part = sc === "summit" ? eOut(r(t, TB.lands[5], TB.lands[5] + 1.2)) : 0;
+          const hh = 2 * 500 * Math.tan((camera.fov * Math.PI) / 360); backdrop.scale.set(hh * W / H * 1.02, hh * 1.02, 1);
+          drawSky(t, th, sky, part, part);
+          const day = r(e, -0.05, 0.35);
+          const ld = e > -0.05 ? V(Math.cos(th) * 1.0, Math.max(0.18, e) * 1.2, 0.55) : V(-Math.cos(th) * 0.8, 0.9, 0.6);   // the sun, or the moon
+          key.position.copy(ld.normalize().multiplyScalar(30)); key.target.position.set(0, 0, 0);
+          key.color.copy(mixC(C("#9fb3c8"), e < 0.25 ? C("#ffd59a") : C("#fff1d8"), day)); key.intensity = lerp(0.9, 2.7, day);
+          amb.color.copy(mixC(C("#3a4a52"), C("#9aaa96"), day)); amb.intensity = lerp(0.5, 0.65, day);
+          const groundTone = mixC(C("#1b201c"), C("#5c6a5d"), day);
+          RINGS.forEach((rg) => rg.mat.color.copy(mixC(groundTone, sky[1], rg.depth * 0.85 + 0.05)));
+          seaM.color.copy(mixC(mixC(groundTone, sky[1], 0.6), C("#ffffff"), 0.35 * day));
+          seaTex.offset.set((t < T.weeks[0] ? t * 0.004 : 0.03 + (q - T.weeks[0]) * 0.03) + 0.02 * part, 0.01 * t);
+          rimU.copy(mixC(C("#8fa6b4"), C("#fff1d8"), day));
+
+          // ---- what the 2D layer needs from the 3D: the ground line, the three cards, contact points, the sign
+          if (sc === "open") P.ground = (x) => { const a = proj(V(0, groundH(0, 1.5), 1.5)); const b = proj(V(4, groundH(4, 1.5), 1.5)); return a ? a[1] + 12 : H * 0.7; };
+          if (sc === "open" || sc === "first") { if (PORTRAIT) { const b = proj(V(0, groundH(0, 1.9), 1.9)) || [W / 2, H * 0.6]; P.cards = [0, 1, 2].map((k) => [b[0] + [-30, 40, -10][k] * SS, b[1] - k * 92 * SS]); }
+            else P.cards = [-2.6, 0.2, 2.9].map((x) => proj(V(x, groundH(x, 1.9), 1.9)) || [-999, -999]); }
+          P.contact = stones.map((s) => proj(V(s.home.x, s.minY, 0.5)));
+          if (fallPt) P.fall = proj(fallPt);
+          P.sign = proj(V(SX, SY + 2.15, SZ));
+          postFx.render();
+          return P;
+        }
+
+        for (const tt of [0.5, 2.0, 4.0, 5.1, 7.5, 11.0, 13.0, 18.7, 20.2, 22.9, 25.0, 26.5, 29.0]) renderAt(tt);   // warm every pipeline
+        let last = -1, lastP = {};
+        glRender = (t) => { if (t !== last) { last = t; lastP = renderAt(t); } return lastP; };
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(window.__hfThreeTime || 0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = window.__hf.buildReady || {};
+      window.__hf.buildReady["cairn"] = build();
+    </script>
+  </body>
+</html>
