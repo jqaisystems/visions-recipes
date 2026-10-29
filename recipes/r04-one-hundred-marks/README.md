@@ -2,6 +2,8 @@
 
 ![The JQ mark above the word Marks and the line "398 identities · 160 pages · one book"](poster.jpg)
 
+## Purpose
+
 One line that never lifts off the page. It closes into the outline of one shape, then flows straight into the
 next, faster and faster, and finally settles on one. Made for Marks, João Queirós' 160-page book of 398 logo
 identities: in the film the line runs through 100 marks from the book and lands on the JQ mark.
@@ -18,14 +20,15 @@ The logos in the film belong to their owners, so they are **not** here. This fol
 with twelve plain demo shapes (circle, star, heart, house…) in their place, so it runs as is. Swap in your own
 images and it becomes your film.
 
-## Run it
+## Requirements and commands
 
 Needs Node 22+ and Chrome or Edge.
 
-    npx --yes hyperframes@0.8.184 preview      # Studio preview in the browser
+    npm run dev       # browser preview, using the version pinned in package.json
+    npm run check     # validate the composition
     npm run render                             # MP4 to renders/
 
-## Use your own shapes
+## Editable elements
 
 Needs Python 3 with numpy and Pillow (`pip install numpy pillow`). Put your images (PNG, WebP or JPG, dark ink on
 a light ground) in a folder, list their file names (without extension) in film order in `order.json`, and
@@ -39,7 +42,7 @@ Check `data/sheet.png` first: each image should read as a clear silhouette. `too
 the demo shapes. The last argument to `build.py` is the outline the line settles on; trace your own logo the same
 way and change `JQ` and `jq-mark.svg` in `index.html` to match.
 
-## Files
+## Source files
 
 - `index.html`: the whole film. One SVG path; outlines are rolled to match at load and one painter morphs them from time.
 - `tools/trace.py`: images to outlines (threshold, close gaps, keep the symbol, fill holes, trace, smooth, resample).
@@ -48,7 +51,7 @@ way and change `JQ` and `jq-mark.svg` in `index.html` to match.
 - `data/jq-outline.json`: the JQ mark's outer path, traced from its SVG.
 - `CONCEPT.md`: the approved concept card.
 
-## Licences
+## Credits and licences
 
 - Code, composition and score: MIT (see the repo [LICENSE](../../LICENSE)).
 - GSAP (`assets/vendor/gsap.min.js`): GSAP Standard License, free (gsap.com/standard-license).
@@ -56,3 +59,5 @@ way and change `JQ` and `jq-mark.svg` in `index.html` to match.
 - Instrument Serif: SIL Open Font License 1.1 (`assets/fonts/OFL-InstrumentSerif.txt`).
 - **Not licensed:** the JQ mark (`assets/img/jq-mark.svg`, `data/jq-outline.json`), the Marks book and the name
   João Queirós. Replace the mark and the end card with your own before you publish a remix.
+
+[All recipes](../../docs/catalog.md) · [Setup and first example](../../README.md#first-working-example)

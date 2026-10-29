@@ -2,6 +2,8 @@
 
 ![A laser beam cutting a charcoal foam insert in an open case, the finished cutouts glowing teal, sparks at the beam.](poster.jpg)
 
+## Purpose
+
 An AI stack setup as a precision tool kit. A pile of loose tools in clashing colours is audited: duplicates and
 clutter slide off into a bin, and the seven tools the work needs rise and hover. A laser cuts a two-tone foam insert to
 the exact outline of each one, and each clicks into its own cutout, its name engraved and its edge turned teal. A box
@@ -14,14 +16,15 @@ Made for AI Stack Setup & Enablement, a service of JQ AI SYSTEMS.
 
 32 s · 1920×1080 · 30 fps · Three.js (WebGPU renderer on WebGL2, TSL bloom), GSAP · score composed in code · €0 to make
 
-## Run it
+## Requirements and commands
 
 Needs Node 22+ and Chrome or Edge.
 
-    npx --yes hyperframes@0.8.184 preview      # Studio preview in the browser
+    npm run dev       # browser preview, using the version pinned in package.json
+    npm run check     # validate the composition
     npm run render                             # MP4 to renders/
 
-## Make it yours
+## Editable elements
 
 1. The tools, the cut and the clock are one table, written by `bake/table.py`: each tool's outline (in the case's
    plane), the work it does, its colour in the pile and where it fits in the case, the clutter that gets binned, the
@@ -38,7 +41,7 @@ Needs Node 22+ and Chrome or Edge.
 
         python score/compose.py
 
-## Files
+## Source files
 
 - `index.html`: the whole film. `renderAt(t)` moves the pile, the scan, the case, the laser, the plugs, the tools, the
   cards, the benches and the word from the clock; one painter draws the HUD, the titles and the end card.
@@ -46,7 +49,7 @@ Needs Node 22+ and Chrome or Edge.
 - `score/compose.py`: the score, timed to the same table.
 - `CONCEPT.md`: the concept card for this recipe.
 
-## Licences
+## Credits and licences
 
 - Code, composition and score: MIT (see the repo [LICENSE](../../LICENSE)).
 - Three.js, `BloomNode.js` and `RoomEnvironment.js` (`assets/vendor/`): MIT, © three.js authors.
@@ -55,3 +58,5 @@ Needs Node 22+ and Chrome or Edge.
 - The team, the tools and the jobs are made up: no real people or companies.
 - **Not licensed:** the names JQ AI SYSTEMS and João Queirós, and the service name, line and URL on the end card.
   Replace them with your own before you publish a remix.
+
+[All recipes](../../docs/catalog.md) · [Setup and first example](../../README.md#first-working-example)

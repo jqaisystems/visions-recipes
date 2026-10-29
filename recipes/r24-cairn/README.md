@@ -2,6 +2,8 @@
 
 ![The Cairn stones stacked into a C on a summit at dawn, the sun breaking through with rays over a sea of cloud and inked peaks.](poster.jpg)
 
+## Purpose
+
 An anime film for an SEO service, in cel-shaded 3D with painted background art.
 
 - **Night:** forty dashboard numbers hail onto a summit and blow away, leaving three that matter.
@@ -18,14 +20,15 @@ Made for Cairn, the SEO service of João Queirós.
 32 s · 1920×1080 · 30 fps · Three.js (WebGPU renderer on WebGL2, TSL toon materials, outline pass, shadow maps),
 Canvas 2D, GSAP · score composed in code · €0 to make
 
-## Run it
+## Requirements and commands
 
 Needs Node 22+ and Chrome or Edge.
 
-    npx --yes hyperframes@0.8.184 preview      # Studio preview in the browser
+    npm run dev       # browser preview, using the version pinned in package.json
+    npm run check     # validate the composition
     npm run render                             # MP4 to renders/
 
-## Make it yours
+## Editable elements
 
 1. **Your mark.** Put it in `assets/brand/` as an SVG, one filled path per piece, and point the `fetch` in
    `index.html` at it. Each path becomes one piece that falls and lands where the logo puts it.
@@ -37,7 +40,7 @@ Needs Node 22+ and Chrome or Edge.
    drawn in `drawSign`.
 5. **The score.** Rebuild it with `python score/compose.py` (needs `pip install numpy`).
 
-## Files
+## Source files
 
 - `index.html`: the whole film.
   - `renderAt(t)` poses every scene, lights it from the sun and renders it through the outline pass.
@@ -47,7 +50,7 @@ Needs Node 22+ and Chrome or Edge.
 - `bake/table.py`: the one table. `score/compose.py`: the score, timed to the table.
 - `CONCEPT.md`: the concept card for this recipe.
 
-## Licences
+## Credits and licences
 
 - **Code, composition and score:** MIT (see the repo [LICENSE](../../LICENSE)).
 - **Three.js and `SVGLoader.js`** (`assets/vendor/`): MIT, © three.js authors.
@@ -56,3 +59,5 @@ Needs Node 22+ and Chrome or Edge.
   (`assets/fonts/OFL-*.txt`).
 - **Not licensed:** the Cairn logo (`assets/brand/`) and the names Cairn and João Queirós. Use your own mark in a
   remix.
+
+[All recipes](../../docs/catalog.md) · [Setup and first example](../../README.md#first-working-example)

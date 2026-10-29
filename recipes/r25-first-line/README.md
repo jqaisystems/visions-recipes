@@ -2,6 +2,8 @@
 
 ![The JQ mark standing on a desk at night in Porto, four strokes in teal and cyan with ink outlines, the lamp and the lit riverside houses behind.](poster.jpg)
 
+## Purpose
+
 An anime film for a brand identity studio, told the way an anime cut is made: in pencil, then ink, then colour.
 
 - **The brief:** night in Porto, a blank sheet under a lamp, and a pencil draws one line.
@@ -13,20 +15,21 @@ An anime film for a brand identity studio, told the way an anime cut is made: in
 
 Made for the brand identity studio of João Queirós.
 
-**Watch it:** [visions.joaoqueiros.com/recipes/first-line](https://visions.joaoqueiros.com/recipes/first-line/?utm_source=github&utm_medium=referral&utm_campaign=recipes)
+**Source release:** [First Line source](https://github.com/jqaisystems/visions-recipes/releases/tag/r25-first-line-v1)
 · **Prompt, remix template and breakdown:** [RECIPE.md](RECIPE.md)
 
 32 s · 1920×1080 · 30 fps · Three.js (WebGPU renderer on WebGL2, TSL toon materials, outline pass, shadow maps),
 Canvas 2D, GSAP · score composed in code · €0 to make
 
-## Run it
+## Requirements and commands
 
 Needs Node 22+ and Chrome or Edge.
 
-    npx --yes hyperframes@0.8.184 preview      # Studio preview in the browser
+    npm run dev       # browser preview, using the version pinned in package.json
+    npm run check     # validate the composition
     npm run render                             # MP4 to renders/
 
-## Make it yours
+## Editable elements
 
 1. **Your mark.** The strokes are centrelines in `STROKES`, traced from the symbol in `assets/brand/`, each with its
    width and its own gradient. Trace your mark's strokes the same way; `ribbonGeo` grows a ribbon along any of them.
@@ -39,7 +42,7 @@ Needs Node 22+ and Chrome or Edge.
 5. **The words.** The station titles, the HUD and the end card are plain text in `index.html`.
 6. **The score.** Rebuild it with `python score/compose.py` (needs `pip install numpy`).
 
-## Files
+## Source files
 
 - `index.html`: the whole film.
   - `renderAt(t)` poses every scene and renders it, in colour, as line art, or both.
@@ -50,7 +53,7 @@ Needs Node 22+ and Chrome or Edge.
 - `bake/table.py`: the one table. `score/compose.py`: the score, timed to the table.
 - `CONCEPT.md`: the concept card for this recipe.
 
-## Licences
+## Credits and licences
 
 - **Code, composition and score:** MIT (see the repo [LICENSE](../../LICENSE)).
 - **Three.js** (`assets/vendor/`): MIT, © three.js authors.
@@ -58,3 +61,5 @@ Needs Node 22+ and Chrome or Edge.
 - **Fonts:** Montserrat and IBM Plex Mono are under the SIL Open Font License 1.1 (`assets/fonts/OFL-*.txt`).
 - **Not licensed:** the João Queirós logo and symbol (`assets/brand/`) and the name João Queirós. Use your own mark
   in a remix.
+
+[All recipes](../../docs/catalog.md) · [Setup and first example](../../README.md#first-working-example)

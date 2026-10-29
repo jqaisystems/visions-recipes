@@ -2,6 +2,8 @@
 
 ![The whole film as one teal line through its stations, a curve, type, a chart, a product card, a timeline, a waveform and three formats, above the words One line. Forty seconds. All code.](poster.jpg)
 
+## Purpose
+
 One glowing line never leaves the screen and the film never cuts. A single camera rides the head of the line
 as it becomes an easing curve, a baseline for type, a chart, a product screen, an editing timeline, a waveform
 and three formats; then a pull-back shows the whole journey was one stroke, and the line signs off as a mark.
@@ -12,11 +14,12 @@ Made for Product Films, the video service of JQ AI SYSTEMS.
 
 40 s · 1920×1080 · 30 fps · HTML, SVG and GSAP · one take, no cuts · score composed in code · €0 to make
 
-## Run it
+## Requirements and commands
 
 Needs Node 22+ and Chrome or Edge.
 
-    npx --yes hyperframes@0.8.184 preview      # Studio preview in the browser
+    npm run dev       # browser preview, using the version pinned in package.json
+    npm run check     # validate the composition
     npm run render                             # MP4 to renders/
 
 The score is already in `assets/bgm/score.wav`. To rebuild it after changing timings:
@@ -24,7 +27,13 @@ The score is already in `assets/bgm/score.wav`. To rebuild it after changing tim
     pip install numpy
     python score/compose.py
 
-## Files
+## Editable elements
+
+Start with the remix template in [RECIPE.md](RECIPE.md). Its editable brief includes `{subject}`, `{colour}`, `{background}`, `{reaction}`, `{mark}`, `{title}`, `{tagline}`, `{url}`, `{bpm}`, `{score_idea}`.
+
+Apply the new copy, palette and closing identity in `index.html`. Use the source map below for the image, drawing or data files specific to this recipe. If the timing changes, rebuild the score using the commands above.
+
+## Source files
 
 - `index.html`: the whole film. The world, the camera keyframes, the line's paths, every station and the end
   card all come from one painter.
@@ -33,7 +42,7 @@ The score is already in `assets/bgm/score.wav`. To rebuild it after changing tim
   six of my other films there; drop your own in with the same names.
 - `CONCEPT.md`: the concept card for this recipe.
 
-## Licences
+## Credits and licences
 
 - Code, composition and score: MIT (see the repo [LICENSE](../../LICENSE)).
 - GSAP (`assets/vendor/gsap.min.js`): GSAP Standard License, free (gsap.com/standard-license).
@@ -41,3 +50,5 @@ The score is already in `assets/bgm/score.wav`. To rebuild it after changing tim
 - **Not licensed:** the JQ AI SYSTEMS logo and the JQ mark (`assets/img/`), the names JQ AI SYSTEMS and João
   Queirós, and the Product Films offer on the end card. Replace the mark and the end card with your own before
   you publish a remix.
+
+[All recipes](../../docs/catalog.md) · [Setup and first example](../../README.md#first-working-example)

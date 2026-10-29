@@ -2,6 +2,8 @@
 
 ![A brass-and-glass orrery in the dark: a glowing sun, gold rings and glass planets in teal, amber and violet.](poster.jpg)
 
+## Purpose
+
 A multi-agent system as a brass-and-glass orrery. The orchestrator is the sun; each agent is a glass planet on its own
 gimballed ring, with a moon for its memory and small satellites for its skills. A typed brief becomes a comet that
 strikes the sun, the agents research, write and review (one piece goes back, one goes to a person), then every ring
@@ -13,14 +15,15 @@ Made for AI Agent Architecture, a service of JQ AI SYSTEMS.
 
 32 s · 1920×1080 · 30 fps · Three.js (WebGPU renderer on WebGL2), GSAP · score composed in code · €0 to make
 
-## Run it
+## Requirements and commands
 
 Needs Node 22+ and Chrome or Edge.
 
-    npx --yes hyperframes@0.8.184 preview      # Studio preview in the browser
+    npm run dev       # browser preview, using the version pinned in package.json
+    npm run check     # validate the composition
     npm run render                             # MP4 to renders/
 
-## Make it yours
+## Editable elements
 
 1. The agents are the `AG` list in `index.html`: name, ring radius, speed, tilt and colour. Add a planet or rename them.
 2. The story's timing is the table `T` at the top of `index.html`; `score/compose.py` mirrors it, so change both.
@@ -30,14 +33,14 @@ Needs Node 22+ and Chrome or Edge.
 
         python score/compose.py
 
-## Files
+## Source files
 
 - `index.html`: the whole film. `pose(t)` sets every ring's angle from the clock; one painter draws the rest.
 - `bake/word.py`: the word's outlines, from the film's own font. Writes `assets/word.js`.
 - `score/compose.py`: the score, timed to the same table.
 - `CONCEPT.md`: the concept card for this recipe.
 
-## Licences
+## Credits and licences
 
 - Code, composition and score: MIT (see the repo [LICENSE](../../LICENSE)).
 - Three.js, `BloomNode.js` and `RoomEnvironment.js` (`assets/vendor/`): MIT, © three.js authors.
@@ -45,3 +48,5 @@ Needs Node 22+ and Chrome or Edge.
 - Inter, Libre Baskerville and JetBrains Mono: SIL Open Font License 1.1 (`assets/fonts/OFL-*.txt`).
 - **Not licensed:** the names JQ AI SYSTEMS and João Queirós, and the service name, line and URL on the end card.
   Replace them with your own before you publish a remix.
+
+[All recipes](../../docs/catalog.md) · [Setup and first example](../../README.md#first-working-example)

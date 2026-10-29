@@ -2,6 +2,8 @@
 
 ![A chrome ball frozen against a brass bell, with sparks and a shockwave ring hanging in the air above a glowing teal track.](poster.jpg)
 
+## Purpose
+
 One command drops a chrome ball into a machine built from a weekly report. It collects the inbox, knocks messy
 spreadsheet rows clean, sorts them through a glass peg board, waits for a person to approve, and rings a brass bell
 as the report goes out. The physics is real and baked once, so the film can bend time: slow motion through the
@@ -14,14 +16,15 @@ Made for AI Automation Systems, a service of JQ AI SYSTEMS.
 
 34 s · 1920×1080 · 30 fps · Three.js (WebGPU renderer on WebGL2), Matter.js physics, GSAP · score composed in code · €0 to make
 
-## Run it
+## Requirements and commands
 
 Needs Node 22+ and Chrome or Edge.
 
-    npx --yes hyperframes@0.8.184 preview      # Studio preview in the browser
+    npm run dev       # browser preview, using the version pinned in package.json
+    npm run check     # validate the composition
     npm run render                             # MP4 to renders/
 
-## Make it yours
+## Editable elements
 
 1. Change the machine in `bake/bake.mjs` (the ramps, the tray, the dominoes, the peg board, the gate, the bell), then
    bake it again. The script prints where the balls are every half second, so you can see if the run gets stuck:
@@ -35,7 +38,7 @@ Needs Node 22+ and Chrome or Edge.
 
 4. Change the station titles, the command and the end card in `index.html`.
 
-## Files
+## Source files
 
 - `index.html`: the whole film. One clock drives the camera, the type and the physics clock (`physAt`), which is
   what makes the slow motion and the freeze possible.
@@ -44,7 +47,7 @@ Needs Node 22+ and Chrome or Edge.
 - `score/compose.py`: the score, built from `bake/events.json` with the same time remap as the picture.
 - `CONCEPT.md`: the concept card for this recipe.
 
-## Licences
+## Credits and licences
 
 - Code, composition and score: MIT (see the repo [LICENSE](../../LICENSE)).
 - Three.js, `BloomNode.js` and `RoomEnvironment.js` (`assets/vendor/`): MIT, © three.js authors.
@@ -53,3 +56,5 @@ Needs Node 22+ and Chrome or Edge.
 - Inter, Libre Baskerville and JetBrains Mono: SIL Open Font License 1.1 (`assets/fonts/OFL-*.txt`).
 - **Not licensed:** the names JQ AI SYSTEMS and João Queirós, and the service name, tagline and URL on the end card.
   Replace them with your own before you publish a remix.
+
+[All recipes](../../docs/catalog.md) · [Setup and first example](../../README.md#first-working-example)

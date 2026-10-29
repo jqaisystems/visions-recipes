@@ -2,6 +2,8 @@
 
 ![Brass dividers ruling a teal route across a relief map of small paper columns, past numbered stops, with a label "First · 0 to 3 months".](poster.jpg)
 
+## Purpose
+
 A consulting engagement as a navigator's chart table. The map of one made-up business lies under fog; a brass survey
 ring sweeps out and the land rises where the hours go, 8,586 small columns. The opportunities drop in as pins scored
 on payoff, cost and risk, and four are knocked flat as not worth building. The rest line up along the table's edge in
@@ -14,14 +16,15 @@ Made for AI Consulting & Roadmapping, a service of JQ AI SYSTEMS.
 
 32 s · 1920×1080 · 30 fps · Three.js (WebGPU renderer on WebGL2, TSL bloom), GSAP · score composed in code · €0 to make
 
-## Run it
+## Requirements and commands
 
 Needs Node 22+ and Chrome or Edge.
 
-    npx --yes hyperframes@0.8.184 preview      # Studio preview in the browser
+    npm run dev       # browser preview, using the version pinned in package.json
+    npm run check     # validate the composition
     npm run render                             # MP4 to renders/
 
-## Make it yours
+## Editable elements
 
 1. The map, the pins and the route are one table, written by `bake/table.py`: the film's clock, the coast, the six
    regions and how many hours each one takes (relative), the relief, every opportunity with its payoff, cost, risk,
@@ -37,7 +40,7 @@ Needs Node 22+ and Chrome or Edge.
 
         python score/compose.py
 
-## Files
+## Source files
 
 - `index.html`: the whole film. `renderAt(t)` raises the relief, moves the fog, the ring, the pins, the tags, the
   dividers, the compass and the paper from the clock; one painter draws the HUD, the titles and the end card.
@@ -45,7 +48,7 @@ Needs Node 22+ and Chrome or Edge.
 - `score/compose.py`: the score, timed to the same table.
 - `CONCEPT.md`: the concept card for this recipe.
 
-## Licences
+## Credits and licences
 
 - Code, composition and score: MIT (see the repo [LICENSE](../../LICENSE)).
 - Three.js, `BloomNode.js` and `RoomEnvironment.js` (`assets/vendor/`): MIT, © three.js authors.
@@ -54,3 +57,5 @@ Needs Node 22+ and Chrome or Edge.
 - The business, its regions and its opportunities are made up: no real people or companies.
 - **Not licensed:** the names JQ AI SYSTEMS and João Queirós, and the service name, line and URL on the end card.
   Replace them with your own before you publish a remix.
+
+[All recipes](../../docs/catalog.md) · [Setup and first example](../../README.md#first-working-example)

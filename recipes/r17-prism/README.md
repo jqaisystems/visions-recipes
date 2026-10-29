@@ -2,6 +2,8 @@
 
 ![The word everywhere in spectrum light, red to violet, beside a glass prism filled with points of light, in a black studio.](poster.jpg)
 
+## Purpose
+
 Content systems as a glass prism. Lines of your best writing lift off the page as light and become the glass; stock
 phrases fly at it and break. One brief goes in as white light and comes out as a spectrum, and every colour lands as a
 finished piece in its own format: a post, a thread, a newsletter in three languages, a blog draft, a caption and a
@@ -13,14 +15,15 @@ Made for AI Content Systems, a service of JQ AI SYSTEMS.
 
 32 s · 1920×1080 · 30 fps · Three.js (WebGPU renderer on WebGL2, TSL glass and reflector floor), GSAP · score composed in code · €0 to make
 
-## Run it
+## Requirements and commands
 
 Needs Node 22+ and Chrome or Edge.
 
-    npx --yes hyperframes@0.8.184 preview      # Studio preview in the browser
+    npm run dev       # browser preview, using the version pinned in package.json
+    npm run check     # validate the composition
     npm run render                             # MP4 to renders/
 
-## Make it yours
+## Editable elements
 
 1. The pieces, pages, phrases and days are one table, written by `bake/pieces.py`: each piece's format, text,
    position, colour, landing time, approval time and day. Change it and run it:
@@ -35,7 +38,7 @@ Needs Node 22+ and Chrome or Edge.
 
         python score/compose.py
 
-## Files
+## Source files
 
 - `index.html`: the whole film. `renderAt(t)` poses the pages, the light, the prism, the shards, the rays, the cards,
   the month and the word from the clock; one painter draws the HUD, the titles, the stamps and the cursor.
@@ -43,7 +46,7 @@ Needs Node 22+ and Chrome or Edge.
 - `score/compose.py`: the score, timed to the same table.
 - `CONCEPT.md`: the concept card for this recipe.
 
-## Licences
+## Credits and licences
 
 - Code, composition and score: MIT (see the repo [LICENSE](../../LICENSE)).
 - Three.js, `BloomNode.js` and `RoomEnvironment.js` (`assets/vendor/`): MIT, © three.js authors.
@@ -52,3 +55,5 @@ Needs Node 22+ and Chrome or Edge.
 - The pages, brief, pieces and phrases are made up: no real people or companies.
 - **Not licensed:** the names JQ AI SYSTEMS and João Queirós, and the service name, line and URL on the end card.
   Replace them with your own before you publish a remix.
+
+[All recipes](../../docs/catalog.md) · [Setup and first example](../../README.md#first-working-example)
