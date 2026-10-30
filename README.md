@@ -73,7 +73,7 @@ The [complete catalogue](docs/catalog.md) keeps every recipe, its intended use, 
 
 Code, compositions and scores are MIT licensed. See [LICENSE](LICENSE). Fonts and libraries retain their own licences, listed in each recipe's **Credits and licences** section. Source recipes were made with Claude Code and HyperFrames; individual READMEs document their tools and assets.
 
-The code licence does not grant rights to the João Queirós, JQ AI SYSTEMS, Scrollwork or Cairn names, marks or third-party work shown in source assets. Read each recipe's exclusions and replace those assets before publishing a remix.
+The code licence does not grant rights to the João Queirós, JQ AI SYSTEMS, Scrollwork, Cairn or OutreachIQ names, marks or third-party work shown in source assets. Read each recipe's exclusions and replace those assets before publishing a remix.
 
 ## Support
 

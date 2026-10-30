@@ -106,6 +106,14 @@ Made for: Imagined Worlds · Stills. Stack: Three.js, TSL, GSAP, Python (score).
 
 ## Products and systems
 
+### R26 · The Gate
+
+A film for a self-hosted outreach workspace, drawn entirely in SVG: a storm of envelopes frozen by a kill switch, a street map that draws itself and pins that morph into shopfronts, a dial that scores leads into lanes, drafts struck and repaired by a tone audit, and a monumental art-deco gate that opens only when a person clicks Approve.
+
+Made for: OutreachIQ · self-hosted outreach. Stack: SVG, GSAP, Python (table, score).
+
+[Recipe and poster](../recipes/r26-the-gate/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r26-the-gate-v1)
+
 ### R21 · Kitted
 
 An AI stack setup as a precision tool kit: a pile of loose tools is audited and the clutter binned, a laser cuts a foam shadow board to the tools the work needs, each clicks in with its name engraved, and the same kit opens at every bench, each running a real job.

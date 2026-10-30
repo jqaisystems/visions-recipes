@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <!--
+      R26 · The Gate. 32 s, 2D vector motion design: SVG and GSAP only (season 2, film 1). For OutreachIQ, a
+      self-hosted outreach workspace whose line is "The system drafts and checks. You decide what gets sent."
+      Most outreach is a flood; OutreachIQ is a gate. One envelope multiplies into a storm and a kill switch freezes
+      it; the gold line draws a street map and pins drop; the pins morph into shopfronts, the shopfronts into cards
+      that a dial scores into four lanes; one hot lead splits into three drafts that a tone audit strikes and repairs;
+      a monumental gate draws itself in gold hairlines, four locks light up, and it opens only when a person clicks
+      Approve; one envelope steps through at a throttled pace, a reply comes back, and it all collapses into the mark.
+      Technique: no canvas and no WebGL. One SVG stage, a camera that is one root group, shapes resampled to matched
+      points so any outline morphs into any other, lines drawn on by their dash offset, mattes from clip paths. One
+      GSAP clock drives paint(t), a pure function of time. The clock is one baked table (assets/table.js, from
+      bake/table.py); score/compose.py reads it too.
+    -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/table.js"></script>
+    <style>
+      @font-face { font-family: "Cormorant Garamond"; src: url("assets/fonts/CormorantGaramond-wght.ttf") format("truetype"); font-weight: 300 700; font-style: normal; }
+      @font-face { font-family: "Cormorant Garamond"; src: url("assets/fonts/CormorantGaramond-Italic-wght.ttf") format("truetype"); font-weight: 300 700; font-style: italic; }
+      @font-face { font-family: "JetBrains Mono"; src: url("assets/fonts/JetBrainsMono-400.ttf") format("truetype"); font-weight: 400; }
+      @font-face { font-family: "JetBrains Mono"; src: url("assets/fonts/JetBrainsMono-500.ttf") format("truetype"); font-weight: 500; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #08111c; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #08111c; color: #f7f4ef; }
+      #ct-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #stage { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #ct-ui { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      .hud { position: absolute; top: 46px; font: 500 18px "JetBrains Mono", monospace; letter-spacing: 0.16em; white-space: nowrap; color: #c9a84c; text-transform: uppercase; }
+      #hud-l { left: 64px; color: #f7f4ef; letter-spacing: 0.24em; }
+      #hud-l span { color: #c9a84c; margin-left: 16px; letter-spacing: 0.12em; text-transform: none; }
+      #hud-r { right: 64px; }
+      .st { position: absolute; left: 84px; bottom: 76px; opacity: 0; }
+      .st i { display: inline-block; background: #08111c; padding: 7px 14px 6px; border: 1.5px solid #c9a84c; color: #d9bc6b; font: 500 18px "JetBrains Mono", monospace; font-style: normal; letter-spacing: 0.24em; }
+      .st b { display: table; margin-top: 10px; padding: 4px 22px 14px 0; background: #08111c; box-shadow: -40px 0 0 #08111c; font: 500 92px/1 "Cormorant Garamond", serif; letter-spacing: -0.01em; color: #f7f4ef; white-space: nowrap; }
+      .st b em { font-style: italic; color: #d9bc6b; }
+      #title { position: absolute; inset: 0; opacity: 0; }
+      #t-line { position: absolute; left: 0; right: 0; top: 590px; text-align: center; font: 500 58px/1.15 "Cormorant Garamond", serif; color: #f7f4ef; white-space: nowrap; opacity: 0; }
+      #t-line em { font-style: italic; color: #d9bc6b; }
+      #t-url { position: absolute; left: 0; right: 0; top: 686px; text-align: center; font: 500 30px "JetBrains Mono", monospace; color: #c9a84c; white-space: nowrap; letter-spacing: 0.04em; }
+      #t-rule { position: absolute; left: 690px; top: 748px; width: 540px; height: 1.5px; background: #c9a84c; transform: scaleX(0); }
+      #t-note { position: absolute; left: 0; right: 0; top: 776px; text-align: center; font: 500 17px "JetBrains Mono", monospace; letter-spacing: 0.32em; color: #c9c2b3; white-space: nowrap; opacity: 0; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="32" data-width="1920" data-height="1080">
+      <div id="ct-stage" class="clip" data-start="0" data-duration="32" data-track-index="0">
+        <svg id="stage" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="1920" height="1080"></svg>
+      </div>
+      <div id="ct-ui" class="clip" data-start="0" data-duration="32" data-track-index="1">
+        <div class="hud" id="hud-l" data-layout-allow-occlusion>OUTREACHIQ<span>/self-hosted outreach</span></div>
+        <div class="hud" id="hud-r" data-layout-allow-occlusion><span id="hud-st">step 01 · the flood</span></div>
+        <div class="st" id="st-0" data-layout-allow-occlusion><i>I · THE FLOOD</i><b>Most outreach is a <em>flood</em>.</b></div>
+        <div class="st" id="st-1" data-layout-allow-occlusion><i>II · FIND</i><b>Real businesses, <em>found</em>.</b></div>
+        <div class="st" id="st-2" data-layout-allow-occlusion><i>III · SCORE</i><b>Every lead, <em>scored</em>.</b></div>
+        <div class="st" id="st-3" data-layout-allow-occlusion><i>IV · DRAFT AND CHECK</i><b>Every word, <em>checked</em>.</b></div>
+        <div class="st" id="st-4" data-layout-allow-occlusion><i>V · THE GATE</i><b>Nothing sends without <em>you</em>.</b></div>
+        <div id="title" data-layout-allow-occlusion>
+          <div id="t-line">The system drafts and checks. You <em>decide</em> what gets sent.</div>
+          <div id="t-url"></div>
+          <div id="t-rule"></div>
+          <div id="t-note">DRAWN, MORPHED AND SCORED IN CODE</div>
+        </div>
+      </div>
+      <audio id="score" src="assets/bgm/score.wav" data-start="0" data-duration="32" data-track-index="7" data-volume="0.7"></audio>
+    </div>
+
+    <script>
+      const TB = window.TABLE, T = TB.T, DUR = TB.dur;
+      const W = 1920, H = 1080, PORTRAIT = H > W;
+      const $ = (s) => document.querySelector(s);
+      const NS = "http://www.w3.org/2000/svg";
+      const GROUND = "#08111c", NAVY = "#0d1b2a", SOFT = "#16283c", CREAM = "#f7f4ef", MUTED = "#c9c2b3", GOLD = "#c9a84c", GOLD2 = "#d9bc6b",
+        INKC = "#1c2b3a", HOT = "#dc2626", WARM = "#d97706", GREEN = "#2d6a4f";
+      const LANE_COL = { HOT, WARM, COLD: MUTED, SKIP: "#44546a" };
+      const cl = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x)), r = (t, a, b) => cl((t - a) / (b - a)), lerp = (a, b, u) => a + (b - a) * u;
+      const E = (n) => gsap.parseEase(n), eOut = E("power3.out"), eIn = E("power3.in"), eIO = E("power3.inOut"), eExpo = E("expo.out"), eExpoIO = E("expo.inOut"), eBack = E("back.out(1.7)");
+      const hsh = (n) => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+      const el = (tag, a = {}, p = null) => { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); if (p) p.appendChild(e); return e; };
+      const set = (e, a) => { for (const k in a) e.setAttribute(k, a[k]); };
+      const show = (e, on) => e.setAttribute("display", on ? "inline" : "none");
+      const tf = (x, y, s = 1, rot = 0, sx = null) => `translate(${x.toFixed(2)} ${y.toFixed(2)}) rotate(${rot.toFixed(2)}) scale(${(sx ?? s).toFixed(4)} ${s.toFixed(4)})`;
+      // a line drawn on along its own length
+      const lens = new Map();
+      const draw = (e, u) => { let L = lens.get(e); if (L === undefined) { L = e.getTotalLength(); lens.set(e, L); } e.setAttribute("stroke-dasharray", `${L.toFixed(1)} ${(L + 1).toFixed(1)}`); e.setAttribute("stroke-dashoffset", (L * (1 - cl(u))).toFixed(1)); e.setAttribute("opacity", u > 0 ? 1 : 0); };
+      const typed = (s, u) => s.slice(0, Math.round(s.length * cl(u)));
+      const scene_ = (t) => t < T.find[0] ? "flood" : t < T.score[0] ? "find" : t < T.draft[0] ? "score" : t < T.gate[0] ? "draft" : t < T.title ? "gate" : "title";
+
+      // ---------------- the stage
+      const svg = $("#stage");
+      const defs = el("defs", {}, svg);
+      const bg = el("rect", { x: -2000, y: -2000, width: 6000, height: 6000, fill: GROUND, "data-layout-allow-overflow": "" }, svg);   // a bleed so the impact shake never shows an edge
+      const cam = el("g", {}, svg);
+      const topG = el("g", {}, svg);              // screen-space: the kill line and the flash
+      const G = {}; for (const k of ["flood", "find", "score", "draft", "gate", "title"]) G[k] = el("g", {}, cam);
+
+      // ---------------- morphs: any closed outline resampled to N points, aligned, interpolated
+      const N = 120;
+      const probe = el("path", { visibility: "hidden" }, defs);
+      function sample(d, n = N) {
+        probe.setAttribute("d", d); const L = probe.getTotalLength(), P = [];
+        for (let i = 0; i < n; i++) { const p = probe.getPointAtLength((L * i) / n); P.push([p.x, p.y]); }
+        return P;
+      }
+      function align(A, B) {   // rotate B so its points line up with A's, the least travel wins
+        let best = 0, bd = Infinity;
+        for (let s = 0; s < B.length; s++) { let d = 0; for (let i = 0; i < A.length; i += 4) { const b = B[(i + s) % B.length]; d += (A[i][0] - b[0]) ** 2 + (A[i][1] - b[1]) ** 2; } if (d < bd) { bd = d; best = s; } }
+        return A.map((_, i) => B[(i + best) % B.length]);
+      }
+      const poly = (P) => "M" + P.map((p) => p[0].toFixed(1) + " " + p[1].toFixed(1)).join("L") + "Z";
+      const morph = (A, B, u) => poly(A.map((a, i) => [lerp(a[0], B[i][0], u), lerp(a[1], B[i][1], u)]));
+      const shift = (P, x, y, s = 1) => P.map((p) => [x + p[0] * s, y + p[1] * s]);
+
+      // shapes, drawn about their own origin
+      const PIN = "M0 0 C -7 -16 -30 -34 -30 -58 A 30 30 0 1 1 30 -58 C 30 -34 7 -16 0 0 Z";
+      const SHOP = "M -90 0 L -90 -95 L -104 -95 L -104 -178 L 104 -178 L 104 -95 L 90 -95 L 90 0 Z";
+      const RECT = (w, h, rx = 10) => `M ${-w / 2 + rx} ${-h / 2} H ${w / 2 - rx} A ${rx} ${rx} 0 0 1 ${w / 2} ${-h / 2 + rx} V ${h / 2 - rx} A ${rx} ${rx} 0 0 1 ${w / 2 - rx} ${h / 2} H ${-w / 2 + rx} A ${rx} ${rx} 0 0 1 ${-w / 2} ${h / 2 - rx} V ${-h / 2 + rx} A ${rx} ${rx} 0 0 1 ${-w / 2 + rx} ${-h / 2} Z`;
+
+      // ---------------- I · the flood
+      const ENV_W = 120, ENV_H = 80;
+      const envSym = el("symbol", { id: "env", viewBox: "-62 -42 124 84", overflow: "visible" }, defs);
+      const envBody = el("rect", { x: -60, y: -40, width: ENV_W, height: ENV_H, rx: 6, fill: CREAM }, envSym);
+      const envFlap = el("polyline", { points: "-56,-36 0,6 56,-36", fill: "none", stroke: GOLD, "stroke-width": 4, "stroke-linejoin": "round" }, envSym);
+      const STORM = 340, storm = [];
+      const stormG = el("g", {}, G.flood);
+      for (let i = STORM - 1; i >= 0; i--) storm[i] = el("use", { href: "#env", x: -60, y: -40, width: 120, height: 80 }, stormG);
+      const killLine = el("line", { x1: -120, y1: 930, x2: 2040, y2: 150, stroke: GOLD, "stroke-width": 6, "stroke-linecap": "round" }, topG);
+      const flash = el("rect", { x: 0, y: 0, width: W, height: H, fill: GOLD, opacity: 0 }, topG);
+
+      // ---------------- II · find: a street map drawn by the same gold line, pins, shopfronts
+      const STREETS = [[-120, 930, 2040, 150, 4]];
+      for (let k = 0; k < 9; k++) { const y = 70 + k * 120 + 30 * Math.sin(k * 1.7); STREETS.push([-40, y, 1960, y + 40 * Math.sin(k * 2.3), k % 3 === 1 ? 3 : 1.6]); }
+      for (let k = 0; k < 12; k++) { const x = 60 + k * 165 + 40 * Math.sin(k * 1.3); STREETS.push([x, -40, x + 90 * Math.sin(k * 0.9), 1120, k % 4 === 2 ? 3 : 1.6]); }
+      STREETS.push([-40, 1000, 1960, 260, 2.2]);
+      const blocksG = el("g", {}, G.find), streetsG = el("g", {}, G.find), pinsG = el("g", {}, G.find);
+      const BLOCKS = [];
+      for (let k = 0; k < 26; k++) {
+        const x = 90 + hsh(k * 3.1) * 1720, y = 110 + hsh(k * 7.7) * 860, w = 70 + hsh(k * 1.9) * 110, h = 50 + hsh(k * 5.3) * 80;
+        BLOCKS.push({ e: el("rect", { x: x - w / 2, y: y - h / 2, width: w, height: h, rx: 4, fill: SOFT }, blocksG), x, y, d: Math.hypot(x - 300, y - 800) });
+      }
+      const streets = STREETS.map(([x1, y1, x2, y2, w], k) => el("line", { x1, y1, x2, y2, stroke: k === 0 ? GOLD : GOLD2, "stroke-width": w, "stroke-linecap": "round", opacity: 0 }, streetsG));
+      const PINS = [[520, 430], [860, 300], [1180, 520], [1480, 340], [700, 740], [1320, 770]];
+      const SHOP_OF = [0, 1, 2, 4], SHOP_NAME = ["CAFÉ", "STUDIO", "CLINIC", "BAKERY"];
+      const pinShape = sample(PIN), shopShape = align(pinShape, sample(SHOP));
+      const pins = PINS.map(([x, y], k) => {
+        const g = el("g", {}, pinsG);
+        const ring = el("circle", { cx: 0, cy: 0, r: 10, fill: "none", stroke: GOLD, "stroke-width": 2 }, g);
+        const body = el("path", { d: PIN, fill: GOLD, stroke: NAVY, "stroke-width": 3 }, g);
+        const dot = el("circle", { cx: 0, cy: -58, r: 11, fill: NAVY }, g);
+        const det = el("g", { opacity: 0 }, g);
+        for (let s = 0; s < 6; s++) el("rect", { x: -104 + s * 34.67, y: -146, width: 34.67, height: 46, fill: s % 2 ? CREAM : GOLD }, det);
+        el("path", { d: "M -104 -100 " + Array.from({ length: 6 }, (_, s) => `a 17.33 13 0 0 0 34.67 0`).join(" "), fill: GOLD, stroke: "none" }, det);
+        el("rect", { x: -26, y: -66, width: 52, height: 66, fill: NAVY }, det);
+        el("rect", { x: -76, y: -78, width: 38, height: 40, fill: SOFT }, det);
+        el("rect", { x: 38, y: -78, width: 38, height: 40, fill: SOFT }, det);
+        const sign = el("text", { x: 0, y: -158, "text-anchor": "middle", "font-family": "JetBrains Mono", "font-weight": 500, "font-size": 18, "letter-spacing": 3, fill: NAVY }, det);
+        const si = SHOP_OF.indexOf(k); if (si >= 0) sign.textContent = SHOP_NAME[si];
+        return { g, ring, body, dot, det, x, y, si };
+      });
+
+      // ---------------- III · score: a dial, four lanes, six cards
+      const DX = 700, DY = 800, DR = 430;
+      const dialG = el("g", {}, G.score);
+      const arc = el("path", { d: `M ${DX - DR} ${DY} A ${DR} ${DR} 0 0 1 ${DX + DR} ${DY}`, fill: "none", stroke: GOLD, "stroke-width": 3 }, dialG);
+      const arcIn = el("path", { d: `M ${DX - DR + 46} ${DY} A ${DR - 46} ${DR - 46} 0 0 1 ${DX + DR - 46} ${DY}`, fill: "none", stroke: GOLD2, "stroke-width": 1.2 }, dialG);
+      const ticks = [];
+      for (let v = 0; v <= 100; v += 5) {
+        const a = Math.PI * (1 - v / 100), L = v % 25 === 0 ? 34 : 16, c = Math.cos(a), s = Math.sin(a);
+        ticks.push(el("line", { x1: DX + c * (DR - 4), y1: DY - s * (DR - 4), x2: DX + c * (DR - 4 - L), y2: DY - s * (DR - 4 - L), stroke: GOLD, "stroke-width": v % 25 === 0 ? 3 : 1.5, opacity: 0 }, dialG));
+        if (v % 25 === 0) el("text", { x: DX + c * (DR + 34), y: DY - s * (DR + 34) + 7, "text-anchor": "middle", "font-family": "JetBrains Mono", "font-size": 20, fill: MUTED, opacity: 0 }, dialG).textContent = String(v);
+      }
+      const needle = el("line", { x1: DX, y1: DY, x2: DX - DR + 60, y2: DY, stroke: GOLD2, "stroke-width": 5, "stroke-linecap": "round" }, dialG);
+      const hub = el("circle", { cx: DX, cy: DY, r: 16, fill: GOLD }, dialG);
+      const readout = el("text", { x: DX, y: DY - 60, "text-anchor": "middle", "font-family": "Cormorant Garamond", "font-weight": 600, "font-size": 130, fill: CREAM, opacity: 0 }, dialG);
+      const LANES = ["HOT", "WARM", "COLD", "SKIP"], LX = (k) => 1262 + k * 156, LY = 250;
+      const lanesG = el("g", {}, G.score), lanes = LANES.map((nm, k) => {
+        const g = el("g", {}, lanesG);
+        el("rect", { x: LX(k) - 66, y: LY - 40, width: 132, height: 700, rx: 10, fill: NAVY, stroke: SOFT, "stroke-width": 2 }, g);
+        el("rect", { x: LX(k) - 66, y: LY - 40, width: 132, height: 44, rx: 10, fill: LANE_COL[nm] }, g);
+        const tx = el("text", { x: LX(k), y: LY - 10, "text-anchor": "middle", "font-family": "JetBrains Mono", "font-weight": 500, "font-size": 20, "letter-spacing": 4, fill: nm === "COLD" ? NAVY : CREAM }, g); tx.textContent = nm;
+        return g;
+      });
+      const CW = 320, CH = 184;
+      const laneCount = {}; const cardSlot = TB.cards.map((c) => { const n = laneCount[c.lane] || 0; laneCount[c.lane] = n + 1; return n; });
+      const cardsG = el("g", {}, G.score);
+      function makeCard(parent, c, k) {
+        const g = el("g", {}, parent);
+        el("rect", { x: -CW / 2, y: -CH / 2, width: CW, height: CH, rx: 14, fill: CREAM }, g);
+        el("path", { d: SHOP, transform: "translate(-104 52) scale(0.42)", fill: NAVY }, g);
+        el("rect", { x: -150, y: -78, width: 4, height: 60, fill: GOLD }, g);
+        const nm = el("text", { x: -132, y: -34, "font-family": "Cormorant Garamond", "font-weight": 600, "font-size": c.name.length > 6 ? 38 : 46, fill: INKC }, g); nm.textContent = c.name;
+        const sm = el("text", { x: -54, y: 20, "font-family": "JetBrains Mono", "font-size": 15, "letter-spacing": 2, fill: "#44546a" }, g); sm.textContent = "SAMPLE LEAD";
+        const sm2 = el("text", { x: -54, y: 44, "font-family": "JetBrains Mono", "font-size": 15, "letter-spacing": 2, fill: "#44546a" }, g); sm2.textContent = "3 SIGNALS";
+        const chip = el("g", { opacity: 0 }, g);
+        el("rect", { x: 70, y: -80, width: 80, height: 50, rx: 8, fill: LANE_COL[c.lane] }, chip);
+        const cv = el("text", { x: 110, y: -45, "text-anchor": "middle", "font-family": "JetBrains Mono", "font-weight": 500, "font-size": 28, fill: c.lane === "COLD" ? NAVY : CREAM }, chip); cv.textContent = c.score;
+        return { g, chip };
+      }
+      const cards = TB.cards.map((c, k) => makeCard(cardsG, c, k));
+
+      // ---------------- IV · draft and check: three drafts, a scan line, strikes and repairs
+      const SW = 500, SH = 620, SX = [410, 960, 1510], SY = 520;
+      const DRAFTS = [
+        { head: "A · OBSERVATION", flag: ["I hope this email finds you well.", "Your terrace menu is new this week."], chip: "OVERUSED PHRASE", body: ["The photos sell it before", "the prices do. Open to a", "short note on the site?"] },
+        { head: "B · PEER", flag: ["Dear Sir or Madam,", "Hi, a quick one from Porto."], chip: "BAD GREETING", body: ["Cafés near you post every", "morning. Happy to share", "what works for them?"] },
+        { head: "C · OPPORTUNITY", flag: ["Act now, only 3 spots left!", "Spring bookings open soon."], chip: "HARD SELL", body: ["A one-page menu site could", "take them for you. Worth", "a look next week?"] },
+      ];
+      const draftG = el("g", {}, G.draft);
+      const sheets = DRAFTS.map((d, k) => {
+        const g = el("g", {}, draftG);
+        const box = el("rect", { fill: CREAM, rx: 14, stroke: GOLD, "stroke-width": 4 }, g);
+        const inner = el("g", {}, g);
+        const head = el("text", { x: -SW / 2 + 40, y: -SH / 2 + 66, "font-family": "JetBrains Mono", "font-weight": 500, "font-size": 20, "letter-spacing": 4, fill: "#836d31" }, inner); head.textContent = d.head;
+        el("rect", { x: -SW / 2 + 40, y: -SH / 2 + 86, width: SW - 80, height: 2, fill: GOLD }, inner);
+        const subj = el("text", { x: -SW / 2 + 40, y: -SH / 2 + 132, "font-family": "JetBrains Mono", "font-size": 17, "letter-spacing": 1, fill: "#44546a" }, inner); subj.textContent = "TO  hello@sample-cafe.test";
+        const lines = [], fy = -SH / 2 + 210;
+        const bad = el("text", { x: -SW / 2 + 40, y: fy, "font-family": "Cormorant Garamond", "font-weight": 600, "font-size": 33, fill: INKC }, inner);
+        const strike = el("line", { x1: -SW / 2 + 36, y1: fy - 10, x2: -SW / 2 + 44, y2: fy - 10, stroke: HOT, "stroke-width": 4, "stroke-linecap": "round" }, inner);
+        const good = el("text", { x: -SW / 2 + 40, y: fy, "font-family": "Cormorant Garamond", "font-weight": 600, "font-style": "italic", "font-size": 33, fill: INKC }, inner);
+        const chipG = el("g", { opacity: 0 }, inner);
+        const chipR = el("rect", { x: -SW / 2 + 40, y: fy + 14, width: 10, height: 34, rx: 6, fill: HOT }, chipG);
+        const chipT = el("text", { x: -SW / 2 + 54, y: fy + 38, "font-family": "JetBrains Mono", "font-weight": 500, "font-size": 16, "letter-spacing": 2, fill: CREAM }, chipG); chipT.textContent = d.chip;
+        d.body.forEach((s, j) => { const tx = el("text", { x: -SW / 2 + 40, y: fy + 110 + j * 54, "font-family": "Cormorant Garamond", "font-weight": 500, "font-size": 33, fill: INKC }, inner); lines.push(tx); });
+        const sign = el("text", { x: -SW / 2 + 40, y: SH / 2 - 50, "font-family": "JetBrains Mono", "font-size": 16, "letter-spacing": 2, fill: "#44546a" }, inner); sign.textContent = "UNDER 80 WORDS · SOFT ASK";
+        return { g, box, inner, bad, strike, good, chipG, chipR, chipT, lines, d, fy };
+      });
+      const scanG = el("g", {}, G.draft);
+      const scanBand = el("rect", { x: 120, y: 0, width: 1680, height: 70, fill: GOLD, opacity: 0.14 }, scanG);
+      const scanLine = el("rect", { x: 120, y: 0, width: 1680, height: 3, fill: GOLD }, scanG);
+      const scanTag = el("text", { x: 1800, y: -10, "text-anchor": "end", "font-family": "JetBrains Mono", "font-weight": 500, "font-size": 16, "letter-spacing": 3, fill: GOLD2 }, scanG); scanTag.textContent = "LOCAL TONE AUDIT";
+      const envDraft = el("g", {}, G.draft);
+      const envDraftFlap = el("polyline", { points: "-110,-62 0,10 110,-62", fill: "none", stroke: GOLD, "stroke-width": 6, "stroke-linejoin": "round", "stroke-linecap": "round" }, envDraft);
+
+      // ---------------- V · the gate: drawn in gold hairlines, four locks, Approve
+      const GX = 960, GY = 470, GR = 470, GB = 900, GL = GX - GR, GRt = GX + GR;
+      const raysClip = el("clipPath", { id: "gateOpen" }, defs);
+      el("path", { d: `M ${GL} ${GB} V ${GY} A ${GR} ${GR} 0 0 1 ${GRt} ${GY} V ${GB} Z` }, raysClip);
+      const raysG = el("g", { "clip-path": "url(#gateOpen)" }, G.gate);
+      el("rect", { x: GL, y: 0, width: GR * 2, height: GB, fill: GOLD2 }, raysG);
+      const rays = el("g", {}, raysG);
+      for (let k = 0; k < 24; k++) { const a0 = (k / 24) * Math.PI * 2, a1 = a0 + Math.PI / 24; el("path", { d: `M 0 0 L ${Math.cos(a0) * 1400} ${Math.sin(a0) * 1400} L ${Math.cos(a1) * 1400} ${Math.sin(a1) * 1400} Z`, fill: GOLD }, rays); }
+      const sun = el("circle", { cx: 0, cy: 0, r: 120, fill: GOLD2 }, rays);
+      const archFill = el("path", { d: `M ${GL} ${GY} A ${GR} ${GR} 0 0 1 ${GRt} ${GY} Z`, fill: NAVY, opacity: 0 }, G.gate);
+      const gateLines = el("g", { fill: "none", stroke: GOLD, "stroke-linecap": "round" }, G.gate);
+      const GP = [];   // every stroke of the gate, ordered from the centre out
+      const gp = (d, w, order, parent = gateLines) => { const e = el("path", { d, "stroke-width": w, opacity: 0 }, parent); GP.push({ e, order }); return e; };
+      gp(`M ${GL} ${GB} V ${GY} A ${GR} ${GR} 0 0 1 ${GRt} ${GY} V ${GB}`, 6, 0);
+      for (const rr of [GR - 70, GR - 150, GR - 230]) gp(`M ${GX - rr} ${GY} A ${rr} ${rr} 0 0 1 ${GX + rr} ${GY}`, 2, 0.15 + (GR - rr) / 1200);
+      for (let k = 1; k < 12; k++) { const a = Math.PI * (k / 12), c = Math.cos(a), s = Math.sin(a); gp(`M ${GX + c * 92} ${GY - s * 92} L ${GX + c * (GR - 70)} ${GY - s * (GR - 70)}`, 1.6, 0.3 + Math.abs(k - 6) / 30); }
+      gp(`M ${GX - 92} ${GY} A 92 92 0 0 1 ${GX + 92} ${GY} Z`, 4, 0.05);
+      const panels = [0, 1].map((side) => {
+        const g = el("g", {}, G.gate), x0 = side ? GX : GL, x1 = side ? GRt : GX;
+        const fill = el("rect", { x: x0, y: GY, width: GR, height: GB - GY, fill: NAVY, opacity: 0 }, g);
+        const lg = el("g", { fill: "none", stroke: GOLD, "stroke-linecap": "round" }, g);
+        gp(`M ${x0} ${GY} H ${x1} V ${GB} H ${x0} Z`, 4, 0.1, lg);
+        for (const y of [GY + 120, GY + 330]) gp(`M ${x0} ${y} H ${x1}`, 3, 0.35, lg);
+        for (let k = 1; k < 9; k++) { const x = x0 + (k * GR) / 9; gp(`M ${x} ${GY} V ${GB}`, 1.6, 0.45 + Math.abs(x - GX) / 3000, lg); }
+        for (let k = 0; k < 4; k++) { const cx = x0 + GR * (0.125 + k * 0.25); gp(`M ${cx - 40} ${GY + 225} L ${cx} ${GY + 185} L ${cx + 40} ${GY + 225} L ${cx} ${GY + 265} Z`, 2, 0.6 + k * 0.03, lg); }
+        return { g, fill, x0, x1, side };
+      });
+      const LOCKX = [GL + GR * 0.25, GL + GR * 0.75, GX + GR * 0.25, GX + GR * 0.75], LOCKY = GY + 66;
+      const locks = TB.locks.map((lk, k) => {
+        const g = el("g", { transform: `translate(${LOCKX[k]} ${LOCKY})` }, G.gate);
+        const plate = el("rect", { x: -100, y: -40, width: 200, height: 104, rx: 8, fill: GROUND, stroke: SOFT, "stroke-width": 2 }, g);
+        const shackle = el("path", { d: "M -16 -6 V -18 A 16 16 0 0 1 16 -18 V -6", fill: "none", stroke: GOLD, "stroke-width": 4 }, g);
+        const body = el("rect", { x: -24, y: -8, width: 48, height: 36, rx: 6, fill: "none", stroke: GOLD, "stroke-width": 3 }, g);
+        const tick = el("polyline", { points: "-11,10 -3,18 12,1", fill: "none", stroke: NAVY, "stroke-width": 5, "stroke-linecap": "round", "stroke-linejoin": "round" }, g);
+        const lab = el("text", { x: 0, y: 52, "text-anchor": "middle", "font-family": "JetBrains Mono", "font-weight": 500, "font-size": 14, "letter-spacing": 1.5, fill: MUTED }, g); lab.textContent = lk.word;
+        return { g, plate, shackle, body, tick, lab };
+      });
+      const gateEnv = el("g", {}, G.gate);
+      el("rect", { x: -110, y: -70, width: 220, height: 140, rx: 10, fill: CREAM }, gateEnv);
+      el("polyline", { points: "-100,-60 0,8 100,-60", fill: "none", stroke: GOLD, "stroke-width": 6, "stroke-linejoin": "round", "stroke-linecap": "round" }, gateEnv);
+      const btnG = el("g", {}, G.gate);
+      const btn = el("rect", { x: -150, y: -40, width: 300, height: 80, rx: 40, fill: CREAM }, btnG);
+      const btnT = el("text", { x: 0, y: 11, "text-anchor": "middle", "font-family": "JetBrains Mono", "font-weight": 500, "font-size": 28, "letter-spacing": 6, fill: NAVY }, btnG); btnT.textContent = "APPROVE";
+      const btnRing = el("rect", { x: -150, y: -40, width: 300, height: 80, rx: 40, fill: "none", stroke: GOLD, "stroke-width": 3, opacity: 0 }, btnG);
+      const cursorG = el("g", {}, G.gate);
+      el("path", { d: "M 0 0 L 0 52 L 13 40 L 23 62 L 33 57 L 23 36 L 40 36 Z", fill: CREAM, stroke: NAVY, "stroke-width": 3, "stroke-linejoin": "round" }, cursorG);
+      const sendG = el("g", {}, G.gate);
+      const sendT = el("text", { x: 120, y: 1000, "font-family": "JetBrains Mono", "font-weight": 500, "font-size": 17, "letter-spacing": 3, fill: GOLD2 }, sendG); sendT.textContent = "THROTTLE · ONE SEND AT A TIME";
+      el("rect", { x: 120, y: 1018, width: 380, height: 8, rx: 4, fill: SOFT }, sendG);
+      const capFill = el("rect", { x: 120, y: 1018, width: 0, height: 8, rx: 4, fill: GOLD }, sendG);
+      const capT = el("text", { x: 510, y: 1027, "font-family": "JetBrains Mono", "font-size": 15, "letter-spacing": 2, fill: MUTED }, sendG); capT.textContent = "DAILY CAP";
+      const killT = el("text", { x: 1800, y: 1027, "text-anchor": "end", "font-family": "JetBrains Mono", "font-size": 15, "letter-spacing": 2, fill: MUTED }, sendG); killT.textContent = "KILL SWITCH · ARMED";
+
+      // ---------------- VI · title: the reply, then the mark
+      const titleG = G.title;
+      const tEnv = el("g", {}, titleG);
+      el("rect", { x: -110, y: -70, width: 220, height: 140, rx: 10, fill: CREAM }, tEnv);
+      el("polyline", { points: "-100,-60 0,8 100,-60", fill: "none", stroke: GOLD, "stroke-width": 6, "stroke-linejoin": "round", "stroke-linecap": "round" }, tEnv);
+      const replyP = el("path", { d: "M 1500 300 C 1500 120 1180 120 1100 300", fill: "none", stroke: GOLD, "stroke-width": 5, "stroke-linecap": "round" }, titleG);
+      const replyHead = el("path", { d: "M -16 -14 L 0 6 L 18 -12", fill: "none", stroke: GOLD, "stroke-width": 5, "stroke-linecap": "round", "stroke-linejoin": "round" }, titleG);
+      const replyT = el("text", { x: 1300, y: 106, "text-anchor": "middle", "font-family": "JetBrains Mono", "font-weight": 500, "font-size": 20, "letter-spacing": 4, fill: GOLD2 }, titleG); replyT.textContent = "RE: REPLY DETECTED";
+      const markImg = el("image", { href: "assets/brand/outreachiq-mark-outlined.svg", x: -110, y: -110, width: 220, height: 220 }, titleG);
+
+      // ---------------- the camera
+      function camAt(t, sc) {
+        if (sc === "flood") {
+          const z = lerp(3.2, 1.0, eExpoIO(r(t, TB.storm[0] - 0.3, TB.storm[1] + 0.2)));
+          return [960, 540, z];
+        }
+        if (sc === "find") { const u = eIO(r(t, TB.pins[0], TB.shops[3] + 0.6)); return [lerp(960, 960, u), lerp(540, 520, u), lerp(1.0, 1.12, u)]; }
+        if (sc === "gate") { const u = eIn(r(t, TB.sends[2], T.title)); return [960, lerp(540, 600, u), lerp(1, 4.2, u)]; }
+        return [960, 540, 1];
+      }
+
+      // ---------------- one frame
+      function paint(t) {
+        const sc = scene_(t);
+        for (const k in G) show(G[k], k === sc);
+        let [cx, cy, cz] = camAt(t, sc);
+        // the shake after each impact
+        let sx = 0, sy = 0;
+        for (const im of TB.impacts) { const u = r(t, im.t, im.t + 0.35); if (u > 0 && u < 1) { const a = (1 - u) ** 2 * 18; sx += a * Math.sin(t * 91 + im.t); sy += a * Math.cos(t * 77 + im.t * 2); } }
+        set(cam, { transform: `translate(${(960 + sx).toFixed(2)} ${(540 + sy).toFixed(2)}) scale(${cz.toFixed(4)}) translate(${-cx} ${-cy})` });
+        bg.setAttribute("fill", GROUND);
+        paintFlood(t, sc); paintFind(t, sc); paintScore(t, sc); paintDraft(t, sc); paintGate(t, sc); paintTitle(t, sc);
+        // impact frames: the stage inverted for a frame or two
+        const f = Math.floor(t * TB.fps + 1e-6);
+        const imp = TB.impacts.some((im) => f >= Math.round(im.t * TB.fps) && f < Math.round(im.t * TB.fps) + im.n);
+        $("#stage").style.filter = imp ? "invert(1) hue-rotate(180deg)" : "none";
+        paintUI(t);
+      }
+
+      function paintFlood(t, sc) {
+        // the kill line lives in screen space: it slices, then hands over to the street map
+        const ku = r(t, TB.kill - 0.14, TB.kill);
+        draw(killLine, ku); killLine.setAttribute("stroke-width", lerp(10, 4, r(t, TB.kill, TB.kill + 0.4)).toFixed(2));
+        if (t > TB.streets[0] + 0.05) killLine.setAttribute("opacity", 0);
+        flash.setAttribute("opacity", (0.55 * (1 - r(t, TB.kill, TB.kill + 0.25)) * (t >= TB.kill ? 1 : 0)).toFixed(3));
+        if (sc !== "flood") return;
+        // the storm: a spiral that grows on the beat, frozen by the kill switch, then drained and dropped
+        const tf_ = Math.min(t, TB.kill), dead = t - TB.kill;
+        envBody.setAttribute("fill", dead > 0 ? "#" + lerpHex(CREAM, SOFT, r(dead, 0, 0.3)) : CREAM);
+        envFlap.setAttribute("stroke", dead > 0 ? (dead < 0.3 ? GOLD : "#44546a") : GOLD);
+        const spin = tf_ * 22;
+        for (let i = 0; i < STORM; i++) {
+          const e = storm[i];
+          if (i === 0) {
+            const u = r(t, TB.stamp - 0.18, TB.stamp + 0.12), s = lerp(2.4, 1, eOut(u)) * (u > 0 ? 1 : 0);
+            const x = 960, y = 540; e.setAttribute("transform", tf(x, y, s * (dead > 0 ? 1 : 1), 0)); e.setAttribute("opacity", u > 0 ? 1 : 0);
+            if (dead > 0) { const d2 = Math.max(0, dead - 0.1); e.setAttribute("transform", tf(x, y + 2000 * d2 * d2, 1, 30 * d2)); }
+            continue;
+          }
+          // a vortex: born at the centre faster and faster, each one spiralling out along one of three arms
+          const born = TB.storm[0] + (TB.storm[1] - TB.storm[0]) * Math.sqrt(i / STORM), age = tf_ - born;
+          if (age <= 0) { e.setAttribute("opacity", 0); continue; }
+          const arm = (i % 3) * (Math.PI * 2 / 3) + (hsh(i) - 0.5) * 0.5, rr = 60 + 760 * Math.pow(age, 1.15) * (0.8 + 0.4 * hsh(i * 1.7));
+          const a = arm + 2.4 * Math.log(1 + rr / 120) + (spin * Math.PI) / 180;
+          let x = 960 + Math.cos(a) * rr, y = 540 + Math.sin(a) * rr * 0.86, rot = (a * 180) / Math.PI + 90 + 160 * age * (hsh(i * 2.9) - 0.5), s = eBack(r(age, 0, 0.25)) * (0.45 + 1.1 * Math.min(1, rr / 700)) * (0.8 + 0.4 * hsh(i));
+          if (dead > 0) { const d2 = Math.max(0, dead - 0.12 - 0.35 * hsh(i * 3.3)); y += 2600 * d2 * d2; x += (hsh(i) - 0.5) * 300 * d2; rot += (hsh(i * 2) - 0.5) * 300 * d2; }
+          e.setAttribute("transform", tf(x, y, s, rot)); e.setAttribute("opacity", 1);
+        }
+      }
+      function lerpHex(a, b, u) { const A = parseInt(a.slice(1), 16), B = parseInt(b.slice(1), 16); const c = [16, 8, 0].map((s) => Math.round(lerp((A >> s) & 255, (B >> s) & 255, u))); return c.map((v) => v.toString(16).padStart(2, "0")).join(""); }
+
+      function paintFind(t, sc) {
+        if (sc !== "find") return;
+        const s0 = TB.streets[0], s1 = TB.streets[1];
+        streets.forEach((e, k) => { const st = k === 0 ? s0 - 0.2 : s0 + (k / streets.length) * (s1 - s0 - 0.5); draw(e, eOut(r(t, st, st + 0.6))); });
+        BLOCKS.forEach((b) => { const st = s0 + 0.3 + (b.d / 1900) * 1.6, u = eBack(r(t, st, st + 0.35)); set(b.e, { transform: `translate(${b.x} ${b.y}) scale(${u.toFixed(3)}) translate(${-b.x} ${-b.y})`, opacity: u > 0 ? 1 : 0 }); });
+        pins.forEach((p, k) => {
+          const tp = TB.pins[k], u = r(t, tp - 0.28, tp);
+          if (u <= 0) { p.g.setAttribute("opacity", 0); return; }
+          p.g.setAttribute("opacity", 1);
+          const land = r(t, tp, tp + 0.22), sq = land > 0 ? 1 - 0.28 * Math.sin(Math.PI * land) : 1;
+          const y = p.y - 500 * (1 - eIn(u));
+          // ripple on landing
+          const ru = r(t, tp, tp + 0.7); set(p.ring, { r: (10 + 90 * eOut(ru)).toFixed(1), opacity: (ru > 0 && ru < 1 ? 1 - ru : 0).toFixed(3), cy: 0 });
+          // the shopfront morph
+          let shapeU = 0;
+          if (p.si >= 0) shapeU = eExpoIO(r(t, TB.shops[p.si], TB.shops[p.si] + 0.45));
+          const s = lerp(1, 1.05, shapeU);
+          p.g.setAttribute("transform", `translate(${p.x} ${y.toFixed(1)}) scale(${(s * (2 - sq)).toFixed(3)} ${(s * sq).toFixed(3)})`);
+          p.body.setAttribute("d", shapeU > 0 ? morph(pinShape, shopShape, shapeU) : PIN);
+          p.body.setAttribute("fill", shapeU > 0.5 ? CREAM : GOLD);
+          p.dot.setAttribute("opacity", 1 - r(shapeU, 0, 0.3));
+          p.det.setAttribute("opacity", r(t, TB.shops[Math.max(0, p.si)] + 0.35, TB.shops[Math.max(0, p.si)] + 0.6) * (p.si >= 0 ? 1 : 0));
+          if (p.si < 0) p.g.setAttribute("opacity", 1 - 0.65 * r(t, TB.shops[0], TB.shops[0] + 0.4));
+        });
+        // the iris into the score: the café shop grows to fill the frame
+        const iu = eIn(r(t, T.score[0] - 0.4, T.score[0]));
+        if (iu > 0) { const p = pins[0]; p.g.setAttribute("transform", `translate(${lerp(p.x, 960, iu)} ${lerp(p.y, 700, iu)}) scale(${lerp(1.05, 9, iu)})`); }
+      }
+
+      let lastV = 0;
+      function paintScore(t, sc) {
+        if (sc !== "score") return;
+        const s0 = T.score[0];
+        draw(arc, eOut(r(t, s0, s0 + 0.5))); draw(arcIn, eOut(r(t, s0 + 0.1, s0 + 0.6)));
+        let tk = 0; for (const e of dialG.querySelectorAll("line")) { if (e === needle) continue; e.setAttribute("opacity", r(t, s0 + 0.1 + tk * 0.012, s0 + 0.2 + tk * 0.012)); tk++; }
+        for (const e of dialG.querySelectorAll("text")) if (e !== readout) e.setAttribute("opacity", r(t, s0 + 0.3, s0 + 0.5));
+        lanes.forEach((g, k) => { const u = eOut(r(t, s0 + 0.15 + k * 0.07, s0 + 0.5 + k * 0.07)); let sy = 1; if (k === 3) sy = 1 - eIn(r(t, TB.fold, TB.fold + 0.35)); g.setAttribute("transform", `translate(0 ${(80 * (1 - u)).toFixed(1)}) translate(0 ${LY - 40}) scale(1 ${sy.toFixed(3)}) translate(0 ${-(LY - 40)})`); g.setAttribute("opacity", u * (sy > 0.02 ? 1 : 0)); });
+        // the needle follows the card on the dial
+        let v = 0, rv = null;
+        TB.cards.forEach((c, k) => { const u = eOut(r(t, c.t, c.t + 0.22)); if (t >= c.t) { const prev = k ? TB.cards[k - 1].score : 0; v = lerp(prev, c.score, u); rv = c; } });
+        const a = Math.PI * (1 - v / 100);
+        set(needle, { x2: (DX + Math.cos(a) * (DR - 60)).toFixed(1), y2: (DY - Math.sin(a) * (DR - 60)).toFixed(1), opacity: r(t, s0 + 0.3, s0 + 0.5) });
+        hub.setAttribute("opacity", r(t, s0 + 0.3, s0 + 0.5));
+        if (rv) { readout.textContent = String(Math.round(v)); readout.setAttribute("opacity", 1); readout.setAttribute("fill", r(t, rv.t + 0.2, rv.t + 0.22) ? (LANE_COL[rv.lane] === MUTED ? CREAM : LANE_COL[rv.lane]) : CREAM); } else readout.setAttribute("opacity", 0);
+        // the cards: in from the left, over the dial, then into their lane
+        const go = r(t, T.draft[0] - 0.5, T.draft[0]);
+        TB.cards.forEach((c, k) => {
+          const cd = cards[k], tin = c.t - 0.3, tout = c.t + 0.3;
+          const ui = eExpo(r(t, tin, c.t)), uo = eIO(r(t, tout, tout + 0.32));
+          if (t < tin) { cd.g.setAttribute("opacity", 0); return; }
+          const lx = LX(LANES.indexOf(c.lane)), ly = LY + 70 + cardSlot[k] * 96;
+          let x = lerp(lerp(-300, DX, ui), lx, uo), y = lerp(DY - 310, ly, uo), s = lerp(1, 0.38, uo), rot = lerp(-8 * (1 - ui), 0, uo);
+          if (c.lane === "SKIP") { const fu = eIn(r(t, TB.fold, TB.fold + 0.35)); s *= 1 - fu; }
+          if (k === 0 && go > 0) { const g2 = eIO(go); x = lerp(x, 960, g2); y = lerp(y, 540, g2); s = lerp(s, 1.6, g2); }
+          cd.g.setAttribute("transform", tf(x, y, s, rot)); cd.g.setAttribute("opacity", s > 0.01 ? 1 : 0);
+          cd.chip.setAttribute("opacity", r(t, c.t + 0.2, c.t + 0.22));
+          if (k !== 0 && go > 0) cd.g.setAttribute("opacity", 1 - go);
+        });
+        dialG.setAttribute("opacity", 1 - go); lanesG.setAttribute("opacity", 1 - go);
+      }
+
+      function paintDraft(t, sc) {
+        if (sc !== "draft") return;
+        const sp = TB.split, end = T.gate[0];
+        const fold = r(t, end - 0.9, end - 0.25);
+        sheets.forEach((S, k) => {
+          const u = eExpoIO(r(t, TB.drafts[k] - 0.5, TB.drafts[k] + 0.15));
+          // from the café card (480 x 294 at the centre) to the sheet
+          let w = lerp(CW * 1.6, SW, u), h = lerp(CH * 1.6, SH, u), x = lerp(960, SX[k], u), y = lerp(540, SY, u);
+          let op = 1, sx = 1;   // the stack takes over from the café card at the cut
+          if (k !== 0) { const fu = eIn(fold); sx = 1 - fu; }
+          else if (fold > 0) { const fu = eExpoIO(fold); w = lerp(SW, 220, fu); h = lerp(SH, 140, fu); x = lerp(SX[0], 960, fu); y = lerp(SY, 900, fu); }
+          set(S.box, { x: (-w / 2).toFixed(1), y: (-h / 2).toFixed(1), width: w.toFixed(1), height: h.toFixed(1), "stroke-opacity": (1 - r(t, TB.drafts[k] + 0.15, TB.drafts[k] + 0.5)).toFixed(3) });
+          S.g.setAttribute("transform", `translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${sx.toFixed(3)} 1)`);
+          S.g.setAttribute("opacity", op * (sx > 0.01 ? 1 : 0));
+          S.inner.setAttribute("opacity", r(t, TB.drafts[k] + 0.0, TB.drafts[k] + 0.2) * (1 - r(fold, 0, 0.3)));
+          // the copy types in, the flagged line first
+          const ty = TB.drafts[k] + 0.2, fl = TB.flags.find((f) => f.draft === k);
+          S.bad.textContent = typed(S.d.flag[0], r(t, ty, ty + 0.5));
+          S.lines.forEach((tx, j) => (tx.textContent = typed(S.d.body[j], r(t, ty + 0.4 + j * 0.3, ty + 0.8 + j * 0.3))));
+          // the audit: struck, flagged, then rewritten a beat later
+          const su = eOut(r(t, fl.t, fl.t + 0.2)), bw = S.bad.getComputedTextLength ? S.bad.getComputedTextLength() : 300;
+          set(S.strike, { x2: (-SW / 2 + 40 + bw * su + 4).toFixed(1), opacity: su > 0 ? 1 : 0 });
+          S.chipG.setAttribute("opacity", r(t, fl.t + 0.1, fl.t + 0.2) * (1 - r(t, fl.t + TB.beat * 1.6, fl.t + TB.beat * 2)));
+          S.chipR.setAttribute("width", (S.chipT.getComputedTextLength() + 28).toFixed(1));
+          const ru = r(t, fl.t + TB.beat, fl.t + TB.beat + 0.15);
+          S.bad.setAttribute("opacity", 1 - ru); S.strike.setAttribute("opacity", su > 0 ? 1 - ru : 0);
+          S.good.textContent = typed(S.d.flag[1], r(t, fl.t + TB.beat + 0.1, fl.t + TB.beat + 0.55));
+          S.good.setAttribute("fill", r(t, fl.t + TB.beat + 0.55, fl.t + TB.beat + 0.9) >= 1 ? INKC : "#9a7a2c");
+        });
+        // the scan line sweeps the three drafts
+        const su = r(t, TB.scan[0], TB.scan[1]);
+        const sy = lerp(SY - SH / 2 + 40, SY + SH / 2 - 40, eIO(su));
+        scanG.setAttribute("transform", `translate(0 ${sy.toFixed(1)})`); scanG.setAttribute("opacity", su > 0 && su < 1 ? 1 : 0);
+        // the chosen draft folds into an envelope
+        const eu = r(t, end - 0.35, end - 0.15);
+        envDraft.setAttribute("transform", `translate(960 900)`); draw(envDraftFlap, eOut(eu));
+      }
+
+      function paintGate(t, sc) {
+        if (sc !== "gate") return;
+        const g0 = TB.gate_draw[0], g1 = TB.gate_draw[1];
+        GP.forEach(({ e, order }) => { const st = g0 + order * (g1 - g0 - 1.2); draw(e, eOut(r(t, st, st + 1.1))); });
+        archFill.setAttribute("opacity", 0.85 * r(t, g0 + 1.2, g1));
+        // the locks light up, one per beat
+        locks.forEach((L, k) => {
+          const lt = TB.locks[k].t, u = r(t, lt, lt + 0.12);
+          L.g.setAttribute("opacity", r(t, g0 + 1.4 + k * 0.15, g0 + 1.8 + k * 0.15));
+          L.body.setAttribute("fill", u > 0 ? GOLD : "none");
+          L.shackle.setAttribute("stroke", u > 0 ? GOLD2 : GOLD);
+          L.plate.setAttribute("stroke", u > 0 ? GOLD : SOFT);
+          draw(L.tick, eOut(r(t, lt + 0.05, lt + 0.3)));
+          L.lab.setAttribute("fill", u > 0 ? GOLD2 : MUTED);
+          const pop = 1 + 0.18 * Math.sin(Math.PI * r(t, lt, lt + 0.25));
+          L.g.setAttribute("transform", `translate(${LOCKX[k]} ${LOCKY}) scale(${pop.toFixed(3)})`);
+          L.g.setAttribute("opacity", 1 - r(t, TB.sends[1] + 0.05 * k, TB.sends[1] + 0.3 + 0.05 * k));   // the checks have passed: the plates clear the way
+        });
+        // the panels fold open about their hinges, the rays behind turn
+        const ou = eExpoIO(r(t, TB.gate_open[0], TB.gate_open[1]));
+        panels.forEach((P) => {
+          const hx = P.side ? GRt : GL, k = 1 - 0.9 * ou, sk = (P.side ? -1 : 1) * 14 * ou;
+          P.g.setAttribute("transform", `translate(${hx} ${GY}) skewY(${sk.toFixed(2)}) scale(${k.toFixed(4)} 1) translate(${-hx} ${-GY})`);
+          P.fill.setAttribute("opacity", 0.92 * r(t, g0 + 1.4, g1));
+        });
+        rays.setAttribute("transform", `translate(${GX} ${GY + 80}) rotate(${(t * 12).toFixed(2)}) scale(${lerp(0.6, 1, ou).toFixed(3)})`);
+        raysG.setAttribute("opacity", ou > 0 ? 1 : 0);
+        // the envelope waits, then steps through on the beat
+        let ex = 960, ey = 830, es = 1;
+        TB.sends.forEach((st, k) => { const u = eIO(r(t, st, st + 0.3)); ey -= 70 * u; es *= 1 - 0.1 * u; });
+        gateEnv.setAttribute("transform", tf(ex, ey, es * eBack(r(t, g0 + 0.4, g0 + 0.8))));
+        // Approve: the cursor glides in, a dead stop, the click
+        const bx = 1560, by = 980;
+        btnG.setAttribute("transform", tf(bx, by, (1 - 0.06 * Math.sin(Math.PI * r(t, TB.approve - 0.05, TB.approve + 0.15))) * eOut(r(t, TB.locks[3].t + 0.3, TB.locks[3].t + 0.6))));
+        btnG.setAttribute("opacity", 1 - r(t, TB.approve + 0.25, TB.approve + 0.45));
+        const ru = r(t, TB.approve, TB.approve + 0.5); set(btnRing, { opacity: ru > 0 && ru < 1 ? 1 - ru : 0, transform: `scale(${(1 + 0.5 * eOut(ru)).toFixed(3)})` });
+        const cu = eIO(r(t, TB.cursor[0], TB.cursor[1])), press = Math.sin(Math.PI * r(t, TB.approve - 0.05, TB.approve + 0.15));
+        cursorG.setAttribute("transform", tf(lerp(2000, bx + 30, cu), lerp(1160, by + 6, cu), 1 - 0.12 * press));
+        cursorG.setAttribute("opacity", 1 - r(t, TB.approve + 0.25, TB.approve + 0.45));
+        // the throttle
+        sendG.setAttribute("opacity", r(t, TB.approve + 0.35, TB.approve + 0.6) * (1 - r(t, TB.sends[2] - 0.15, TB.sends[2] + 0.1)));
+        let cap = 0; TB.sends.forEach((st) => (cap += 0.08 * eOut(r(t, st, st + 0.3)))); capFill.setAttribute("width", (380 * cap).toFixed(1));
+      }
+
+      function paintTitle(t, sc) {
+        if (sc !== "title") return;
+        const t0 = T.title, mk = TB.mark;
+        const eu = eExpo(r(t, t0, t0 + 0.6));
+        const cu = eExpoIO(r(t, mk - 0.15, mk + 0.35));
+        tEnv.setAttribute("transform", tf(960, lerp(700, 420, eu) , lerp(3, 1.6, eu) * (1 - cu)));
+        draw(replyP, eOut(r(t, TB.reply, TB.reply + 0.55)));
+        const rp = replyP.getPointAtLength(replyP.getTotalLength() * eOut(r(t, TB.reply, TB.reply + 0.55)));
+        set(replyHead, { transform: `translate(${rp.x.toFixed(1)} ${rp.y.toFixed(1)}) rotate(20)`, opacity: r(t, TB.reply, TB.reply + 0.05) * (1 - cu) });
+        replyP.setAttribute("opacity", r(t, TB.reply, TB.reply + 0.05) * (1 - cu));
+        replyT.setAttribute("opacity", r(t, TB.reply + 0.3, TB.reply + 0.5) * (1 - cu));
+        const mu = eExpo(r(t, mk, mk + 0.6));
+        markImg.setAttribute("transform", `translate(960 400) scale(${lerp(0.4, 1, mu).toFixed(4)})`);
+        markImg.setAttribute("opacity", mu > 0 ? 1 : 0);
+      }
+
+      const STATIONS = [[0.7, 3.1], [5.4, 8.8], [9.9, 13.3], [14.6, 18.9], [21.0, 24.4]];
+      const HUD = [[0, "step 01 · the flood"], [T.find[0], "step 02 · lead search"], [T.score[0], "step 03 · scoring"], [T.draft[0], "step 04 · drafts and tone audit"],
+        [T.gate[0], "step 05 · send gate"], [TB.stop, "awaiting approval"], [TB.approve, "step 06 · throttled send"], [T.title, "outreachiq.joaoqueiros.com"]];
+      const URL_TEXT = "outreachiq.joaoqueiros.com";
+      function paintUI(t) {
+        let st = HUD[0][1]; for (const [a, s] of HUD) if (t >= a) st = s;
+        $("#hud-st").textContent = st;
+        const hudO = r(t, 0.4, 0.8) * (1 - r(t, T.title, T.title + 0.3));
+        $("#hud-l").style.opacity = hudO; $("#hud-r").style.opacity = hudO;
+        STATIONS.forEach(([t0, t1], k) => {
+          const e = $("#st-" + k), a = r(t, t0, t0 + 0.35), b = r(t, t1, t1 + 0.25), on = t >= t0 && t < t1 + 0.25;
+          e.style.opacity = on ? 1 - b : 0;
+          e.style.clipPath = `inset(0 ${(100 * (1 - eExpo(a))).toFixed(1)}% 0 0)`;
+          e.style.transform = `translateY(${(30 * eIn(b)).toFixed(1)}px)`;
+        });
+        const mk = TB.mark;
+        $("#title").style.opacity = t >= T.title ? 1 : 0;
+        const lu = r(t, mk + 0.5, mk + 1.0); $("#t-line").style.opacity = lu; $("#t-line").style.transform = `translateY(${(20 * (1 - eOut(lu))).toFixed(1)}px)`;
+        $("#t-url").textContent = typed(URL_TEXT, r(t, mk + 1.0, mk + 1.7));
+        $("#t-rule").style.transform = `scaleX(${eExpoIO(r(t, mk + 1.6, mk + 2.3)).toFixed(3)})`;
+        $("#t-note").style.opacity = r(t, mk + 2.1, mk + 2.6);
+      }
+
+      const tl = gsap.timeline({ paused: true });
+      const clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+
+      async function build() {
+        await Promise.all([document.fonts.load('500 40px "Cormorant Garamond"'), document.fonts.load('600 40px "Cormorant Garamond"'), document.fonts.load('italic 600 40px "Cormorant Garamond"'),
+          document.fonts.load('500 20px "JetBrains Mono"'), document.fonts.load('400 20px "JetBrains Mono"')]);
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = window.__hf.buildReady || {};
+      window.__hf.buildReady["the-gate"] = build();
+    </script>
+  </body>
+</html>
