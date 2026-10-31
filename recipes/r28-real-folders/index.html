@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <!--
+      R28 · Real Folders. 32 s, 2D vector motion design: SVG and GSAP only (season 2, film 3, the finale). For Snapline,
+      a screenshot and screen recording manager for Windows whose line is "Real folders, not a database." A desk of flat
+      windows, the capture overlay with its loupe and marching ants, a shutter; a flood of captures on the beat; the
+      camera tilts into an isometric city of folders and every card is filed; "invoice" is typed, a scan crosses the city,
+      the words inside every card lift off and only the matches rise; one card is marked up and its email snapped into
+      solid pixels; it lands on a gradient backdrop, client-ready, then becomes a screen recording; the overlay selects
+      the empty centre and the shutter fires on the logo.
+      Technique: no canvas and no WebGL. One SVG stage. The selection is a live <mask> hole in the scrim; the loupe is a
+      <use> of the desk scaled under a circular clip; the city is drawn flat from one isometric matrix, and the tilt is
+      that matrix interpolated from the flat one; redaction is a cascade of opaque squares. One GSAP clock drives
+      paint(t), a pure function of time. The clock is one baked table (assets/table.js, from bake/table.py);
+      score/compose.py reads it too.
+    -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/table.js"></script>
+    <style>
+      @font-face { font-family: "Brico"; src: url("assets/fonts/BricolageGrotesque.ttf") format("truetype"); font-weight: 200 800; }
+      @font-face { font-family: "InterL"; src: url("assets/fonts/Inter-Regular.woff2") format("woff2"); font-weight: 400; }
+      @font-face { font-family: "InterL"; src: url("assets/fonts/Inter-SemiBold.woff2") format("woff2"); font-weight: 600; }
+      @font-face { font-family: "JBM"; src: url("assets/fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 100 800; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #0a0c11; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #0a0c11; color: #e8ebf2; }
+      #ct-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #stage { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #ct-ui { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      .hud { position: absolute; top: 46px; font: 500 18px "JBM", monospace; letter-spacing: 0.16em; white-space: nowrap; color: #8b94a8; text-transform: uppercase; }
+      #hud-l { left: 64px; color: #e8ebf2; letter-spacing: 0.24em; }
+      #hud-l span { color: #c9c4ff; margin-left: 16px; letter-spacing: 0.06em; text-transform: none; }
+      #hud-r { right: 64px; }
+      .st { position: absolute; left: 84px; bottom: 76px; opacity: 0; }
+      .st i { display: inline-block; background: #0a0c11; padding: 7px 14px 6px; border: 1.5px solid #6f72f1; border-radius: 6px; color: #c9c4ff; font: 500 18px "JBM", monospace; font-style: normal; letter-spacing: 0.22em; }
+      .st b { display: table; margin-top: 12px; padding: 6px 24px 12px 0; background: #0a0c11; box-shadow: -40px 0 0 #0a0c11; font: 800 74px/1 "Brico", sans-serif; letter-spacing: -0.025em; color: #e8ebf2; white-space: nowrap; }
+      .st b em { font-style: normal; color: #c9c4ff; }
+      #title { position: absolute; inset: 0; opacity: 0; }
+      #t-line { position: absolute; left: 0; right: 0; top: 664px; text-align: center; font: 700 46px/1.1 "Brico", sans-serif; letter-spacing: -0.01em; color: #e8ebf2; white-space: nowrap; opacity: 0; }
+      #t-line em { font-style: normal; color: #c9c4ff; }
+      #t-url { position: absolute; left: 0; right: 0; top: 742px; height: 40px; text-align: center; font: 500 30px "JBM", monospace; color: #c9c4ff; white-space: nowrap; letter-spacing: 0.02em; }
+      #t-badge { position: absolute; left: 865px; top: 812px; width: 190px; height: 52px; opacity: 0; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="32" data-width="1920" data-height="1080">
+      <div id="ct-stage" class="clip" data-start="0" data-duration="32" data-track-index="0">
+        <svg id="stage" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1920 1080" width="1920" height="1080"></svg>
+      </div>
+      <div id="ct-ui" class="clip" data-start="0" data-duration="32" data-track-index="1">
+        <div class="hud" id="hud-l" data-layout-allow-occlusion>SNAPLINE<span>/screenshot manager for windows</span></div>
+        <div class="hud" id="hud-r" data-layout-allow-occlusion><span id="hud-st">capture · region</span></div>
+        <div class="st" id="st-0" data-layout-allow-occlusion><i>01 · CAPTURE</i><b>Any part of the <em>screen</em>.</b></div>
+        <div class="st" id="st-1" data-layout-allow-occlusion><i>02 · FILE</i><b>Real folders, not a <em>database</em>.</b></div>
+        <div class="st" id="st-2" data-layout-allow-occlusion><i>03 · FIND</i><b>Found by the words <em>inside</em>.</b></div>
+        <div class="st" id="st-3" data-layout-allow-occlusion><i>04 · MARK UP</i><b>Marked up and <em>redacted</em>.</b></div>
+        <div class="st" id="st-4" data-layout-allow-occlusion><i>05 · SHARE</i><b>Ready for the <em>client</em>.</b></div>
+        <div class="st" id="st-5" data-layout-allow-occlusion><i>06 · RECORD</i><b>Record the <em>screen</em>, too.</b></div>
+        <div id="title" data-layout-allow-occlusion>
+          <div id="t-line"><em>Free</em> · Windows 10 and 11 · no account needed</div>
+          <div id="t-url"></div>
+          <img id="t-badge" src="assets/brand/microsoft-store-badge-dark.svg" alt="Get it from Microsoft">
+        </div>
+      </div>
+      <audio id="score" src="assets/bgm/score.wav" data-start="0" data-duration="32" data-track-index="7" data-volume="0.8"></audio>
+    </div>
+
+    <script>
+      const TB = window.TABLE, T = TB.T, DUR = TB.dur;
+      const W = 1920, H = 1080;
+      const $ = (s) => document.querySelector(s);
+      const NS = "http://www.w3.org/2000/svg";
+      const BG = "#0a0c11", PANEL = "#11141b", PANEL2 = "#161a23", EDGE = "#252a38", TEXT = "#e8ebf2", MUTED = "#8b94a8", FAINT = "#3a4152",
+        ACC = "#6f72f1", LAV = "#c9c4ff", GV = "#6e63f2", GO = "#9e57f6", GREEN = "#34d399", CHIP = "#4f4ae0";
+      const cl = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x)), r = (t, a, b) => cl((t - a) / (b - a)), lerp = (a, b, u) => a + (b - a) * u;
+      const E = (n) => gsap.parseEase(n), eOut = E("power3.out"), eIn = E("power3.in"), eIO = E("power3.inOut"), eExpo = E("expo.out"), eExpoIO = E("expo.inOut"), eBack = E("back.out(1.4)");
+      const hsh = (n) => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+      const el = (tag, a = {}, p = null) => { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); if (p) p.appendChild(e); return e; };
+      const set = (e, a) => { for (const k in a) e.setAttribute(k, a[k]); };
+      const show = (e, on) => e.setAttribute("display", on ? "inline" : "none");
+      const txt = (s, a, p) => { const e = el("text", a, p); e.textContent = s; return e; };
+      const lens = new Map();
+      const draw = (e, u) => { let L = lens.get(e); if (L === undefined) { L = e.getTotalLength(); lens.set(e, L); } e.setAttribute("stroke-dasharray", `${L.toFixed(1)} ${(L + 1).toFixed(1)}`); e.setAttribute("stroke-dashoffset", (L * (1 - cl(u))).toFixed(1)); e.setAttribute("opacity", u > 0 ? 1 : 0); };
+      const typed = (s, u) => s.slice(0, Math.round(s.length * cl(u)));
+      const mtx = (a, b, c, d, e, f) => `matrix(${a.toFixed(4)} ${b.toFixed(4)} ${c.toFixed(4)} ${d.toFixed(4)} ${e.toFixed(2)} ${f.toFixed(2)})`;
+      const pad2 = (n) => String(n).padStart(2, "0");
+
+      // ---------------- the stage
+      const svg = $("#stage");
+      const defs = el("defs", {}, svg);
+      const grad = el("linearGradient", { id: "brand", x1: 0, y1: 0, x2: 1, y2: 1 }, defs);
+      el("stop", { offset: 0, "stop-color": GV }, grad); el("stop", { offset: 1, "stop-color": GO }, grad);
+      el("rect", { x: 0, y: 0, width: W, height: H, fill: BG }, svg);
+      const G = { desk: el("g", {}, svg), city: el("g", { "data-layout-allow-overflow": "", "data-layout-allow-overlap": "" }, svg), cards: el("g", { "data-layout-allow-overflow": "", "data-layout-allow-overlap": "" }, svg),
+        big: el("g", { "data-layout-allow-overflow": "" }, svg), over: el("g", { "data-layout-allow-overflow": "", "data-layout-allow-overlap": "" }, svg), title: el("g", { "data-layout-allow-overflow": "" }, svg) };
+      const flash = el("rect", { x: 0, y: 0, width: W, height: H, fill: "#ffffff", opacity: 0 }, svg);
+
+      // ---------------- I · a desk of flat vector windows (fictional content)
+      const D = el("g", { id: "desk" }, G.desk);   // the opacity lives on the wrapper, so every <use> of the desk stays bright
+      const dots = el("pattern", { id: "dots", width: 32, height: 32, patternUnits: "userSpaceOnUse" }, defs);
+      el("circle", { cx: 16, cy: 16, r: 1.2, fill: "#1a1e28" }, dots);
+      el("rect", { x: 0, y: 0, width: W, height: H, fill: "url(#dots)" }, D);
+      const win = (x, y, w, h, title) => { const g = el("g", { transform: `translate(${x} ${y})` }, D);
+        el("rect", { x: 0, y: 0, width: w, height: h, rx: 14, fill: PANEL, stroke: EDGE, "stroke-width": 1.5 }, g);
+        el("path", { d: `M0 44H${w}`, stroke: EDGE, "stroke-width": 1.5 }, g);
+        [0, 1, 2].forEach((i) => el("circle", { cx: 24 + i * 20, cy: 22, r: 6, fill: FAINT }, g));
+        txt(title, { x: 96, y: 28, "font-family": "JBM", "font-size": 14, fill: MUTED }, g); return g; };
+      const bar = (g, x, y, w, h = 10, f = FAINT) => el("rect", { x, y, width: w, height: h, rx: h / 2, fill: f }, g);
+      // the browser: a fictional studio's pricing page
+      const wb = win(250, 168, 1100, 700, "northwind-studio.example/pricing");
+      txt("Plans for every studio", { x: 70, y: 128, "font-family": "Brico", "font-weight": 800, "font-size": 46, fill: TEXT }, wb);
+      bar(wb, 72, 156, 420, 12); bar(wb, 72, 180, 300, 12);
+      [0, 1, 2].forEach((i) => { const x = 380 + i * 230, hot = i === 1;
+        el("rect", { x, y: 160, width: 210, height: 380, rx: 16, fill: hot ? "#1c1f3d" : PANEL2, stroke: hot ? ACC : EDGE, "stroke-width": hot ? 2 : 1.5 }, wb);
+        txt(["Solo", "Studio", "Agency"][i], { x: x + 24, y: 206, "font-family": "InterL", "font-weight": 600, "font-size": 22, fill: TEXT }, wb);
+        bar(wb, x + 24, 230, 120, 9); bar(wb, x + 24, 250, 80, 9);
+        el("rect", { x: x + 24, y: 282, width: 70 + i * 16, height: 30, rx: 8, fill: hot ? ACC : FAINT }, wb);
+        for (let j = 0; j < 5; j++) { el("circle", { cx: x + 30, cy: 344 + j * 30, r: 5, fill: hot ? LAV : FAINT }, wb); bar(wb, x + 44, 339 + j * 30, 110 - ((j * 37 + i * 13) % 50), 9); }
+        el("rect", { x: x + 24, y: 490, width: 162, height: 34, rx: 9, fill: hot ? ACC : "none", stroke: hot ? "none" : FAINT, "stroke-width": 1.5 }, wb); });
+      for (let j = 0; j < 9; j++) bar(wb, 72, 236 + j * 30, 230 - ((j * 53) % 120), 10);
+      el("rect", { x: 72, y: 580, width: 956, height: 80, rx: 14, fill: PANEL2 }, wb);
+      bar(wb, 100, 606, 340, 12); bar(wb, 100, 630, 220, 10);
+      // a chat panel and a sheet, half behind
+      const wc = win(1400, 210, 380, 520, "team chat");
+      for (let j = 0; j < 6; j++) { const me = j % 2 === 1, w = 150 + ((j * 71) % 120);
+        el("rect", { x: me ? 380 - 24 - w : 24, y: 70 + j * 72, width: w, height: 48, rx: 14, fill: me ? "#262a52" : PANEL2 }, wc);
+        bar(wc, (me ? 380 - 24 - w : 24) + 16, 88 + j * 72, w - 50, 9, me ? "#4a4f8c" : FAINT); }
+      const ws = win(1380, 770, 440, 230, "q4-plan.xlsx");
+      for (let i = 0; i < 5; i++) for (let j = 0; j < 4; j++) el("rect", { x: 20 + i * 82, y: 62 + j * 40, width: 76, height: 34, rx: 4, fill: (i + j) % 3 ? PANEL2 : "#1d2130" }, ws);
+      el("rect", { x: 0, y: 1032, width: W, height: 48, fill: "#0e1016" }, D);
+      for (let i = 0; i < 7; i++) el("rect", { x: 780 + i * 52, y: 1042, width: 30, height: 30, rx: 8, fill: i === 3 ? ACC : PANEL2 }, D);
+
+      // ---------------- the capture overlay: a scrim with a live mask hole, marching ants, handles, a px chip, a loupe
+      const mask = el("mask", { id: "selmask", maskUnits: "userSpaceOnUse", x: 0, y: 0, width: W, height: H }, defs);
+      el("rect", { x: 0, y: 0, width: W, height: H, fill: "#fff" }, mask);
+      const hole = el("rect", { fill: "#000" }, mask);
+      const O = G.over;
+      const scrim = el("rect", { x: 0, y: 0, width: W, height: H, fill: "#05060a", mask: "url(#selmask)" }, O);
+      const crossV = el("line", { stroke: LAV, "stroke-width": 1, y1: 0, y2: H }, O), crossH = el("line", { stroke: LAV, "stroke-width": 1, x1: 0, x2: W }, O);
+      const antsB = el("rect", { fill: "none", stroke: "#05060a", "stroke-width": 2 }, O);
+      const ants = el("rect", { fill: "none", stroke: "#ffffff", "stroke-width": 2, "stroke-dasharray": "9 7" }, O);
+      const handles = [0, 1, 2, 3].map(() => el("rect", { width: 14, height: 14, rx: 3, fill: "#ffffff", stroke: ACC, "stroke-width": 2 }, O));
+      const chipG = el("g", {}, O), chipR = el("rect", { height: 34, rx: 8, fill: CHIP }, chipG);
+      const chipT = txt("", { x: 12, y: 23, "font-family": "JBM", "font-weight": 500, "font-size": 17, fill: "#ffffff" }, chipG);
+      const loupeClip = el("clipPath", { id: "loupe", clipPathUnits: "userSpaceOnUse" }, defs);
+      const loupeC = el("circle", { r: 92 }, loupeClip);
+      const loupeG = el("g", { "clip-path": "url(#loupe)" }, O);
+      const loupeBg = el("rect", { x: 0, y: 0, width: W, height: H, fill: BG }, loupeG);
+      const loupeUse = el("use", { href: "#desk" }, loupeG);
+      const pix = el("pattern", { id: "pix", width: 4, height: 4, patternUnits: "userSpaceOnUse" }, defs);
+      el("path", { d: "M4 0V4H0", fill: "none", stroke: "#000", "stroke-opacity": 0.35, "stroke-width": 1 }, pix);
+      const loupeGrid = el("rect", { x: 0, y: 0, width: W, height: H, fill: "url(#pix)" }, loupeG);
+      const loupeRing = el("circle", { r: 92, fill: "none", stroke: "#ffffff", "stroke-width": 3 }, O);
+      const loupeX = el("path", { stroke: LAV, "stroke-width": 1.5 }, O);
+      const loupeT = txt("", { "font-family": "JBM", "font-weight": 500, "font-size": 15, fill: LAV, "text-anchor": "middle" }, O);
+
+      // ---------------- the cards: 240 x 150, flat art by kind; kind 4 is the invoice, a scaled copy of the big one
+      const CW = 240, CH = 150;
+      const INV = el("g", { id: "inv" }, defs);   // the invoice art, 1000 x 625, centred
+      el("rect", { x: -500, y: -312.5, width: 1000, height: 625, rx: 22, fill: PANEL, stroke: EDGE, "stroke-width": 2 }, INV);
+      txt("INVOICE", { x: -440, y: -196, "font-family": "Brico", "font-weight": 800, "font-size": 66, fill: TEXT, "letter-spacing": -1 }, INV);
+      txt("INV-0427 · 31 OCT", { x: -440, y: -154, "font-family": "JBM", "font-weight": 500, "font-size": 20, fill: MUTED, "letter-spacing": 2 }, INV);
+      el("rect", { x: 380, y: -252, width: 60, height: 60, rx: 14, fill: "#262a52" }, INV);
+      el("path", { d: "M396 -206L410 -238L424 -206Z", fill: LAV }, INV);
+      txt("Northwind Studio", { x: 360, y: -214, "font-family": "InterL", "font-weight": 600, "font-size": 24, fill: TEXT, "text-anchor": "end" }, INV);
+      txt("Lisbon", { x: 360, y: -186, "font-family": "InterL", "font-size": 18, fill: MUTED, "text-anchor": "end" }, INV);
+      txt("BILLED TO", { x: -440, y: -92, "font-family": "JBM", "font-weight": 500, "font-size": 15, fill: MUTED, "letter-spacing": 3 }, INV);
+      txt("Harbor & Pine Co.", { x: -440, y: -56, "font-family": "InterL", "font-weight": 600, "font-size": 28, fill: TEXT }, INV);
+      const EMAIL = txt("maria.lopes@harborpine.example", { x: -440, y: -20, "font-family": "JBM", "font-weight": 500, "font-size": 21, fill: LAV }, INV);
+      el("path", { d: "M-440 22H440", stroke: EDGE, "stroke-width": 2 }, INV);
+      [["Brand system", "1,800.00"], ["Website design", "2,400.00"], ["Launch films", "650.00"]].forEach(([a, b], j) => {
+        txt(a, { x: -440, y: 70 + j * 44, "font-family": "InterL", "font-size": 22, fill: TEXT }, INV);
+        bar(INV, -150, 58 + j * 44, 220 - j * 50, 10);
+        txt("€" + b, { x: 440, y: 70 + j * 44, "font-family": "JBM", "font-weight": 500, "font-size": 21, fill: MUTED, "text-anchor": "end" }, INV); });
+      el("path", { d: "M100 202H440", stroke: EDGE, "stroke-width": 2 }, INV);
+      txt("TOTAL DUE", { x: 440, y: 190, "text-anchor": "end", "font-family": "JBM", "font-weight": 500, "font-size": 16, fill: MUTED, "letter-spacing": 3 }, INV);
+      txt("€4,850.00", { x: 440, y: 254, "font-family": "Brico", "font-weight": 800, "font-size": 46, fill: TEXT, "text-anchor": "end" }, INV);
+      function cardArt(g, kind) {
+        if (kind === 4) { el("use", { href: "#inv", transform: "scale(0.24)" }, g); return; }
+        el("rect", { x: -CW / 2, y: -CH / 2, width: CW, height: CH, rx: 10, fill: PANEL, stroke: EDGE, "stroke-width": 1.5 }, g);
+        el("path", { d: `M${-CW / 2} ${-CH / 2 + 18}H${CW / 2}`, stroke: EDGE, "stroke-width": 1 }, g);
+        [0, 1, 2].forEach((i) => el("circle", { cx: -CW / 2 + 12 + i * 9, cy: -CH / 2 + 9, r: 2.6, fill: FAINT }, g));
+        if (kind === 0) { bar(g, -100, -40, 120, 9, MUTED); for (let j = 0; j < 6; j++) bar(g, -100, -20 + j * 14, 190 - ((j * 41) % 70), 6); }
+        if (kind === 1) { for (let j = 0; j < 8; j++) { const h = 20 + ((j * 37) % 60); el("rect", { x: -96 + j * 24, y: 60 - h, width: 14, height: h, rx: 3, fill: j === 5 ? ACC : FAINT }, g); } }
+        if (kind === 2) { el("rect", { x: -104, y: -44, width: 208, height: 52, rx: 8, fill: "#1c1f3d" }, g); bar(g, -90, -28, 100, 9, LAV); bar(g, -90, -12, 70, 6, "#4a4f8c"); for (let j = 0; j < 3; j++) el("rect", { x: -104 + j * 72, y: 18, width: 64, height: 44, rx: 6, fill: PANEL2 }, g); }
+        if (kind === 3) { for (let j = 0; j < 4; j++) { const me = j % 2, w = 80 + ((j * 53) % 60); el("rect", { x: me ? 104 - w : -104, y: -42 + j * 27, width: w, height: 20, rx: 8, fill: me ? "#262a52" : PANEL2 }, g); } }
+      }
+      const cards = TB.cards.map((C, k) => {
+        const g = el("g", { opacity: 0 }, G.cards);
+        const inner = el("g", {}, g);
+        if (k === 0) {   // the first capture is the region of the desk that was selected
+          const cp = el("clipPath", { id: "c0" }, defs); el("rect", { x: -CW / 2, y: -CH / 2, width: CW, height: CH, rx: 10 }, cp);
+          const cg = el("g", { "clip-path": "url(#c0)" }, inner);
+          el("use", { href: "#desk", transform: `scale(${CW / 680}) translate(-960 -512.5)` }, cg);
+          el("rect", { x: -CW / 2, y: -CH / 2, width: CW, height: CH, rx: 10, fill: "none", stroke: EDGE, "stroke-width": 1.5 }, inner);
+        } else cardArt(inner, C.kind);
+        const fl = el("rect", { x: -CW / 2 - 4, y: -CH / 2 - 4, width: CW + 8, height: CH + 8, rx: 13, fill: "none", stroke: "#ffffff", "stroke-width": 3, opacity: 0 }, g);
+        return { ...C, k, g, fl };
+      });
+
+      // ---------------- II · the city: twelve folders drawn flat from one isometric matrix
+      const S = 128, FW = 1.15, FD = 0.95, C30 = 0.866;
+      const X0 = -3.65, X1 = 5.8, OX = 960 - ((X0 + X1) / 2 + FW / 2 - FW / 2) * C30 * S, OY = 276;
+      const P = (gx, gy, z = 0) => [OX + (gx - gy) * C30 * S, OY + (gx + gy) * 0.5 * S - z * S];
+      const pts = (A) => A.map((p) => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ");
+      const grid = el("g", {}, G.city);   // the floor: a flat grid that tilts into the isometric one
+      const gridP = el("path", { fill: "none", stroke: "#1a1e28", "stroke-width": 1.2, "vector-effect": "non-scaling-stroke" }, grid);
+      { let d = ""; for (let i = -2; i <= 9; i++) d += `M${i} -2V7`; for (let j = -2; j <= 7; j++) d += `M-2 ${j}H9`; gridP.setAttribute("d", d); }
+      const FOL = TB.folders.map((F, k) => ({ ...F, k })).sort((a, b) => a.gx + a.gy - (b.gx + b.gy));
+      FOL.forEach((F) => {
+        F.g = el("g", { opacity: 0 }, G.city);
+        F.left = el("polygon", { fill: "#1a1f2e", stroke: EDGE, "stroke-width": 1.2, "stroke-linejoin": "round" }, F.g);   // the +gy face
+        F.right = el("polygon", { fill: "#121521", stroke: EDGE, "stroke-width": 1.2, "stroke-linejoin": "round" }, F.g);  // the +gx face
+        F.top = el("polygon", { fill: "#0c0e14", stroke: "#2c3244", "stroke-width": 1.5, "stroke-linejoin": "round" }, F.g);
+        F.sheets = [0, 1, 2].map(() => el("polygon", { fill: "#a9acd6", stroke: "#e8e6ff", "stroke-width": 1, opacity: 0 }, F.g));
+        F.tab = el("polygon", { fill: "#262a52", stroke: "#3d4280", "stroke-width": 1.2, "stroke-linejoin": "round" }, F.g);
+        F.label = txt(F.name, { "font-family": "InterL", "font-weight": 600, "font-size": 14, fill: TEXT }, F.g);
+        F.files = cards.filter((C) => C.f === F.k).map((C) => C.file + 0.5).sort((a, b) => a - b);
+      });
+      const FBYK = {}; FOL.forEach((F) => (FBYK[F.k] = F));
+      function folderShape(F, hz) {
+        const { gx, gy } = F, a = P(gx, gy + FD, 0), b = P(gx + FW, gy + FD, 0), c = P(gx + FW, gy, 0);
+        const at = P(gx, gy + FD, hz), bt = P(gx + FW, gy + FD, hz), ct = P(gx + FW, gy, hz), dt = P(gx, gy, hz);
+        set(F.left, { points: pts([a, b, bt, at]) }); set(F.right, { points: pts([b, c, ct, bt]) }); set(F.top, { points: pts([dt, ct, bt, at]) });
+        set(F.tab, { points: pts([P(gx + 0.08, gy + FD, hz), P(gx + 0.5, gy + FD, hz), P(gx + 0.46, gy + FD, hz + 0.1), P(gx + 0.12, gy + FD, hz + 0.1)]) });
+        const L = P(gx + 0.1, gy + FD, hz * 0.42);
+        F.label.setAttribute("transform", mtx(C30, 0.5, 0, 1, L[0], L[1] + 5));
+        F.label.setAttribute("opacity", hz > 0.2 ? 1 : 0);
+        return P(gx + FW / 2, gy + FD / 2, hz);
+      }
+
+      // ---------------- III · search: a field, a scan, the words that lift, the matches that rise
+      const SR = el("g", { opacity: 0 }, G.title);
+      el("rect", { x: 84, y: 112, width: 560, height: 62, rx: 14, fill: PANEL2, stroke: ACC, "stroke-width": 2 }, SR);
+      el("circle", { cx: 120, cy: 141, r: 11, fill: "none", stroke: LAV, "stroke-width": 3 }, SR);
+      el("path", { d: "M128 149L138 159", stroke: LAV, "stroke-width": 3, "stroke-linecap": "round" }, SR);
+      const qT = txt("", { x: 156, y: 153, "font-family": "InterL", "font-weight": 600, "font-size": 30, fill: TEXT }, SR);
+      const caret = el("rect", { y: 124, width: 2.5, height: 34, fill: LAV }, SR);
+      const ocrG = el("g", { opacity: 0 }, SR);
+      el("rect", { x: 84, y: 188, width: 352, height: 34, rx: 8, fill: "#1c1f3d" }, ocrG);
+      txt("TEXT IN IMAGES · OFFLINE OCR", { x: 100, y: 211, "font-family": "JBM", "font-weight": 500, "font-size": 15, fill: LAV, "letter-spacing": 1.5 }, ocrG);
+      const scanG = el("g", { opacity: 0 }, G.city);
+      const scanB = el("rect", { height: 70, fill: ACC, "fill-opacity": 0.1 }, scanG);
+      const scanL = el("line", { stroke: LAV, "stroke-width": 2 }, scanG);
+      const wordsG = el("g", {}, G.city);
+      const WORDS = [];
+      FOL.forEach((F) => {
+        const ws = []; cards.filter((C) => C.f === F.k).forEach((C) => C.words.forEach((w) => { if (w !== "invoice" && ws.length < 3 && !ws.includes(w)) ws.push(w); }));
+        ws.forEach((w, i) => WORDS.push({ F, w, i, n: ws.length, e: txt(w, { "font-family": "JBM", "font-weight": 500, "font-size": 17, fill: "#b4bbcc", "text-anchor": "middle", opacity: 0 }, wordsG) }));
+      });
+      const MATCHES = TB.matches.map((k, j) => { const C = cards[k];
+        const wg = el("g", { opacity: 0 }, wordsG), wr = el("rect", { x: -48, y: -20, width: 96, height: 30, rx: 7, fill: "#1c1f3d", stroke: ACC, "stroke-width": 1.5 }, wg);
+        txt("invoice", { x: 0, y: 1, "font-family": "JBM", "font-weight": 600, "font-size": 16, fill: LAV, "text-anchor": "middle" }, wg);
+        const ch = el("g", { opacity: 0 }, G.cards);
+        el("rect", { x: -104, y: 0, width: 208, height: 30, rx: 8, fill: "#0e1016", stroke: "#2f3550", "stroke-width": 1.2 }, ch);
+        el("circle", { cx: -86, cy: 15, r: 7, fill: GREEN }, ch); el("path", { d: "M-89.5 15L-87 17.5L-82.5 12.5", fill: "none", stroke: BG, "stroke-width": 2 }, ch);
+        txt("text in image · match", { x: -72, y: 20, "font-family": "JBM", "font-weight": 500, "font-size": 13.5, fill: TEXT }, ch);
+        return { C, j, wg, ch, t: TB.rise[j] }; });
+
+      // ---------------- IV and V · the big card: markup, solid pixels, a backdrop, a recording
+      const B = G.big;
+      const backG = el("g", {}, B);
+      const backFlat = el("rect", { fill: PANEL2 }, backG);
+      const floodClip = el("clipPath", { id: "flood", clipPathUnits: "userSpaceOnUse" }, defs);
+      const floodC = el("circle", { r: 0 }, floodClip);
+      const backGrad = el("rect", { fill: "url(#brand)", "clip-path": "url(#flood)" }, backG);
+      const bigG = el("g", {}, B);
+      const shadow = el("rect", { x: -500, y: -312.5, width: 1000, height: 625, rx: 22, fill: "#05040f", opacity: 0 }, bigG);
+      const bigC = el("g", {}, bigG);
+      el("use", { href: "#inv" }, bigC);
+      const MK = el("g", {}, bigC);
+      const arrowP = el("path", { d: "M-170 262C-60 262 40 232 140 228", fill: "none", stroke: ACC, "stroke-width": 9, "stroke-linecap": "round" }, MK);
+      const arrowH = el("path", { d: "M124 210L158 227L126 246Z", fill: ACC, "stroke-linejoin": "round", stroke: ACC, "stroke-width": 4 }, MK);
+      const boxP = el("rect", { x: 172, y: 196, width: 286, height: 82, rx: 14, fill: "none", stroke: ACC, "stroke-width": 7 }, MK);
+      const badge = (x, y, n) => { const g = el("g", { transform: `translate(${x} ${y})` }, MK); el("circle", { r: 24, fill: ACC, stroke: PANEL, "stroke-width": 4 }, g);
+        txt(n, { x: 0, y: 8.5, "font-family": "InterL", "font-weight": 600, "font-size": 24, fill: "#ffffff", "text-anchor": "middle" }, g); return g; };
+      const badges = [badge(-196, 262, "1"), badge(458, 196, "2")];
+      const PIXG = el("g", {}, bigC);
+      const redChip = el("g", { opacity: 0 }, bigC);
+      const redChipR = el("rect", { y: -46, height: 34, rx: 8, fill: CHIP }, redChip);
+      const redChipT = txt("redact · solid pixels", { y: -23, "font-family": "JBM", "font-weight": 500, "font-size": 16, fill: "#ffffff" }, redChip);
+      let PIX = [];
+      // the recording: corner brackets, REC and a timer, a cursor, a strip of frames
+      const RG = el("g", { opacity: 0 }, B);
+      const brk = [0, 1, 2, 3].map(() => el("path", { fill: "none", stroke: "#ffffff", "stroke-width": 4, "stroke-linecap": "round" }, RG));
+      const recDot = el("circle", { r: 9, fill: "#ffffff" }, RG);
+      const recT = txt("", { "font-family": "JBM", "font-weight": 600, "font-size": 20, fill: "#ffffff", "letter-spacing": 2 }, RG);
+      const cursor = el("path", { d: "M0 0L0 30L8 22L14 36L20 33L14 20L25 20Z", fill: "#ffffff", stroke: BG, "stroke-width": 2, "stroke-linejoin": "round" }, bigC);
+      const stripG = el("g", { opacity: 0 }, B);
+      const FR = TB.frames.map((t0, k) => { const g = el("g", { opacity: 0 }, stripG);
+        el("rect", { x: -60, y: -40, width: 120, height: 80, rx: 9, fill: BG, stroke: "#ffffff", "stroke-opacity": 0.5, "stroke-width": 1.5 }, g);
+        const cp = el("clipPath", { id: "fr" + k }, defs); el("rect", { x: -55, y: -35, width: 110, height: 70, rx: 6 }, cp);
+        const cg = el("g", { "clip-path": `url(#fr${k})` }, g);
+        el("use", { href: "#inv", transform: `translate(0 ${(-8 + k * 4).toFixed(1)}) scale(${0.112 + k * 0.004})` }, cg);
+        return { g, t0 }; });
+
+      // ---------------- VI · title: the overlay returns, selects the centre, the shutter fires on the logo
+      const LG = el("g", { opacity: 0 }, G.title);
+      const logo = el("image", { href: "assets/brand/snapline-logo.svg", width: 180, height: 180 }, LG);
+      const word = txt("Snapline", { "font-family": "Brico", "font-weight": 800, "font-size": 148, fill: "#f4f2ff", "letter-spacing": -3.5 }, LG);
+
+      // ---------------- the selection, shared by the first shutter and the last
+      function selection(t, x0, y0, x1, y1, on, cur, label = true) {
+        show(antsB, on); show(ants, on); handles.forEach((h) => show(h, on)); show(chipG, on && label);
+        const x = Math.min(x0, x1), y = Math.min(y0, y1), w = Math.abs(x1 - x0), h = Math.abs(y1 - y0);
+        set(hole, on ? { x, y, width: w, height: h } : { x: 0, y: 0, width: 0, height: 0 });
+        if (!on) return;
+        set(antsB, { x, y, width: w, height: h }); set(ants, { x, y, width: w, height: h, "stroke-dashoffset": (-t * 46).toFixed(1) });
+        [[x, y], [x + w, y], [x, y + h], [x + w, y + h]].forEach(([a, b], i) => set(handles[i], { x: a - 7, y: b - 7 }));
+        chipT.textContent = `${Math.round(w)} × ${Math.round(h)}`;
+        set(chipR, { width: (chipT.getComputedTextLength() + 24).toFixed(1) });
+        chipG.setAttribute("transform", `translate(${(x + w - chipT.getComputedTextLength() - 24).toFixed(1)} ${(y + h + 14).toFixed(1)})`);
+      }
+
+      // ---------------- paint(t): every frame from the table
+      const SEL = [620, 300, 1300, 725];
+      function paint(t) {
+        paintShutter(t); paintCards(t); paintCity(t); paintBig(t); paintTitle(t); paintUI(t);
+        const f0 = 1 - r(t, TB.shot0, TB.shot0 + 0.22), f1 = 1 - r(t, TB.shot1, TB.shot1 + 0.26);
+        flash.setAttribute("opacity", ((t >= TB.shot0 && f0 < 1 ? 0.55 * f0 : 0) + (t >= TB.shot1 && f1 < 1 ? 0.6 * f1 : 0)).toFixed(3));
+      }
+
+      function paintShutter(t) {
+        const deskO = 1 - eOut(r(t, TB.lift[0] + 0.1, T.flood[0] + 0.5));
+        G.desk.setAttribute("opacity", ((0.3 + 0.7 * deskO) * (1 - r(t, TB.tilt[0], TB.tilt[1] - 0.2))).toFixed(3));
+        if (t >= T.title) return;
+        const ov = eOut(r(t, TB.overlay, TB.overlay + 0.35)) * (1 - r(t, TB.shot0, TB.shot0 + 0.3));
+        scrim.setAttribute("opacity", (0.62 * ov).toFixed(3));
+        // the cursor: wanders in, then drags the selection out
+        const d = r(t, TB.drag[0], TB.drag[1]), de = eIO(d);
+        let cx, cy;
+        if (t < TB.drag[0]) { const u = eIO(r(t, TB.overlay, TB.drag[0])); cx = lerp(1500, SEL[0], u) + Math.sin(t * 3.1) * 14 * (1 - u); cy = lerp(760, SEL[1], u) + Math.cos(t * 2.3) * 10 * (1 - u); }
+        else { cx = lerp(SEL[0], SEL[2], de); cy = lerp(SEL[1], SEL[3], de); }
+        const pre = t >= TB.overlay && t < TB.shot0;
+        const crossO = pre ? ov * (t < TB.drag[0] ? 1 : 0.5) : 0;
+        set(crossV, { x1: cx, x2: cx, opacity: (0.7 * crossO).toFixed(3) }); set(crossH, { y1: cy, y2: cy, opacity: (0.7 * crossO).toFixed(3) });
+        // the loupe: the desk under the cursor, magnified five times, with its pixel grid
+        const lo = pre ? ov * (1 - r(t, TB.shot0 - 0.25, TB.shot0)) : 0, lx = cx - 160, ly = cy + 160;
+        LOUPE(lx, ly, cx, cy, lo);
+        const on = t >= TB.drag[0] && t < TB.shot0 + 0.3 && ov > 0;
+        selection(t, SEL[0], SEL[1], cx, cy, on, [cx, cy]);
+        [antsB, ants, chipG, ...handles].forEach((e) => e.setAttribute("opacity", on ? (t < TB.shot0 ? 1 : 1 - r(t, TB.shot0, TB.shot0 + 0.3)).toFixed(3) : 0));
+      }
+      function LOUPE(lx, ly, cx, cy, o) {
+        LG_SHOW(o);
+        if (o <= 0) return;
+        set(loupeC, { cx: lx, cy: ly }); set(loupeRing, { cx: lx, cy: ly });
+        const M = 4;
+        loupeUse.setAttribute("transform", `translate(${lx.toFixed(1)} ${ly.toFixed(1)}) scale(${M}) translate(${-cx.toFixed(1)} ${-cy.toFixed(1)})`);
+        loupeGrid.setAttribute("transform", `translate(${((lx - cx * M) % 4).toFixed(2)} ${((ly - cy * M) % 4).toFixed(2)})`);
+        loupeX.setAttribute("d", `M${lx - 14} ${ly}H${lx + 14}M${lx} ${ly - 14}V${ly + 14}`);
+        set(loupeT, { x: lx, y: ly + 124 }); loupeT.textContent = `x ${Math.round(cx)}  y ${Math.round(cy)}`;
+      }
+      function LG_SHOW(o) { [loupeG, loupeRing, loupeX, loupeT].forEach((e) => e.setAttribute("opacity", o.toFixed(3))); }
+
+      // card positions: lift, hang, tilt, file
+      const RISE = 118;
+      const TILT = (t) => eIO(r(t, TB.tilt[0], TB.tilt[1]));
+      function cardPose(C, t) {
+        const tu = TILT(t);
+        const x = lerp(C.x, 960 + (C.x - 960) * 0.86, tu), y = lerp(C.y, 128 + (C.y - 150) * 0.32, tu);
+        return { x, y, s: lerp(1, 0.6, tu), rot: C.rot * (1 - 0.4 * tu) };
+      }
+      function paintCards(t) {
+        const inFlood = t >= TB.lift[0] && t < T.search[0] + 0.1;
+        G.cards.setAttribute("opacity", t < T.mark[0] ? 1 : 0);
+        cards.forEach((C) => {
+          let o = 0, tr = "";
+          if (inFlood && t >= (C.k === 0 ? TB.lift[0] : C.t)) {
+            let { x, y, s, rot } = cardPose(C, t);
+            if (C.k === 0 && t < TB.lift[1]) {   // the selection lifts off the desk and shrinks to a card
+              const u = eExpoIO(r(t, TB.lift[0], TB.lift[1]));
+              x = lerp(960, x, u); y = lerp(512.5, y, u); s = lerp(680 / CW, 1, u); rot = lerp(0, C.rot, u);
+            } else if (C.k !== 0) s *= lerp(1.18, 1, eExpo(r(t, C.t, C.t + 0.35)));
+            const fu = r(t, C.file, C.file + 0.5);
+            if (fu > 0) {   // fly along an arc into the folder, the card's matrix turning into the folder's floor
+              const F = FBYK[C.f], dst = P(F.gx + FW / 2, F.gy + FD / 2, F.h), e = eIO(fu);
+              const k = 0.42, ang = (rot * Math.PI) / 180, fa = [s * Math.cos(ang), s * Math.sin(ang), -s * Math.sin(ang), s * Math.cos(ang)];
+              const ia = [C30 * k, 0.5 * k, -C30 * k, 0.5 * k];
+              const m = fa.map((v, i) => lerp(v, ia[i], e));
+              const px = lerp(x, dst[0], e), py = lerp(y, dst[1], e) - Math.sin(Math.PI * e) * 90;
+              tr = mtx(m[0], m[1], m[2], m[3], px, py); o = fu < 0.9 ? 1 : 1 - r(fu, 0.9, 1);
+            } else { tr = `translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${rot.toFixed(2)}) scale(${s.toFixed(4)})`; o = 1; }
+            const fo = C.k === 0 ? 0 : 1 - r(t, C.t, C.t + 0.22);
+            C.fl.setAttribute("opacity", fo.toFixed(3));
+          }
+          // a match rises back out of its folder, flat to the camera
+          const M = MATCHES.find((m) => m.C === C);
+          if (M && t >= M.t && t < TB.dive[0] + (M.j === 0 ? 0 : 0.6)) {
+            const F = FBYK[C.f], top = P(F.gx + FW / 2, F.gy + FD / 2, F.h), u = eExpo(r(t, M.t, M.t + 0.55));
+            const k = 0.42, ia = [C30 * k, 0.5 * k, -C30 * k, 0.5 * k], fa = [0.62, 0, 0, 0.62], m = ia.map((v, i) => lerp(v, fa[i], u));
+            tr = mtx(m[0], m[1], m[2], m[3], top[0], top[1] - RISE * u); o = r(t, M.t, M.t + 0.1);
+            if (M.j !== 0) o *= 1 - r(t, TB.dive[0], TB.dive[0] + 0.4);
+            C.fl.setAttribute("opacity", 0);
+          }
+          C.g.setAttribute("transform", tr || "translate(-999 -999)");
+          C.g.setAttribute("opacity", o.toFixed(3));
+        });
+      }
+
+      let CAM = { z: 1, cx: 960, cy: 600, tx: 960, ty: 600 };
+      function paintCity(t) {
+        const on = t >= TB.tilt[0] - 0.2 && t < T.mark[0];
+        G.city.setAttribute("opacity", on ? 1 : 0);
+        // the camera: a slow push through the search, then a dive into the first match
+        const push = lerp(1, 1.05, eIO(r(t, T.search[0], TB.dive[0])));
+        const hero = MATCHES[0], HF = FBYK[hero.C.f], hp = P(HF.gx + FW / 2, HF.gy + FD / 2, HF.h);
+        const hw = [hp[0], hp[1] - RISE];
+        const dv = eIn(r(t, TB.dive[0], TB.dive[1]));
+        const sw0 = [960 + (hw[0] - 960) * push, 600 + (hw[1] - 600) * push];
+        CAM = dv > 0 ? { z: push * Math.pow(3.2, dv), cx: hw[0], cy: hw[1], tx: sw0[0], ty: sw0[1] } : { z: push, cx: 960, cy: 600, tx: 960, ty: 600 };
+        const camT = `translate(${CAM.tx.toFixed(2)} ${CAM.ty.toFixed(2)}) scale(${CAM.z.toFixed(4)}) translate(${-CAM.cx.toFixed(2)} ${-CAM.cy.toFixed(2)})`;
+        G.city.setAttribute("transform", camT); G.cards.setAttribute("transform", camT);
+        G.city.setAttribute("opacity", (on ? 1 - r(t, TB.dive[0] + 0.3, TB.dive[1] - 0.2) : 0).toFixed(3));
+        if (!on) return;
+        // the floor tilts: the flat grid's matrix becomes the isometric one
+        const tu = TILT(t), gs = 110;
+        const fm = [gs, 0, 0, gs], im = [C30 * S, 0.5 * S, -C30 * S, 0.5 * S], m = fm.map((v, i) => lerp(v, im[i], tu));
+        const o = lerp(-560, 0, tu);
+        grid.setAttribute("transform", mtx(m[0], m[1], m[2], m[3], lerp(960 + o, OX, tu), lerp(140, OY, tu)));
+        grid.setAttribute("opacity", (0.5 + 0.5 * tu).toFixed(3));
+        FOL.forEach((F) => {
+          const u = eExpo(r(t, F.rise, F.rise + 0.6));
+          F.g.setAttribute("opacity", r(t, F.rise - 0.05, F.rise + 0.15).toFixed(3));
+          folderShape(F, Math.max(0.001, F.h * u));
+          const n = F.files.filter((f) => t >= f).length;
+          F.sheets.forEach((e, i) => {
+            const on = i < Math.min(3, n), sx = F.gx + 0.18 + i * 0.12, sy = F.gy + FD * (0.3 + i * 0.18), up = 0.12 + 0.04 * ((i + F.k) % 2);
+            const pu = on ? eOut(r(t, F.files[i], F.files[i] + 0.25)) : 0;
+            set(e, { points: pts([P(sx, sy, F.h), P(sx + 0.72, sy, F.h), P(sx + 0.72, sy, F.h + up * pu), P(sx, sy, F.h + up * pu)]), opacity: on ? 1 : 0 });
+          });
+          const last = F.files.filter((f) => t >= f).pop(), hit = last ? 1 - r(t, last, last + 0.35) : 0;
+          const lit = MATCHES.some((M) => M.C.f === F.k && t >= M.t);
+          F.top.setAttribute("stroke", lit ? LAV : hit > 0 ? mixC(hit) : "#2c3244");
+          F.top.setAttribute("stroke-width", lit ? 2.5 : 1.5 + 1.5 * hit);
+          F.tab.setAttribute("fill", lit ? ACC : "#262a52");
+          const dim = t >= TB.rise[0] && !lit ? 0.45 : 1;
+          F.g.setAttribute("opacity", (r(t, F.rise - 0.05, F.rise + 0.15) * dim).toFixed(3));
+        });
+        // the scan: a band crossing the city back to front, lifting the words inside every card
+        const yTop = OY - 110, yBot = OY + 4.725 * S + 30;
+        const su = r(t, TB.scan[0], TB.scan[1]), sy = lerp(yTop, yBot, su);
+        scanG.setAttribute("opacity", su > 0 && su < 1 ? 1 : 0);
+        set(scanL, { x1: 300, x2: 1620, y1: sy, y2: sy }); set(scanB, { x: 300, y: sy - 70, width: 1320 });
+        const passT = (y) => TB.scan[0] + (TB.scan[1] - TB.scan[0]) * cl((y - yTop) / (yBot - yTop));
+        WORDS.forEach((Wd) => {
+          const F = Wd.F, top = P(F.gx + FW / 2, F.gy + FD / 2, F.h), t0 = passT(top[1]) + Wd.i * 0.06;
+          const u = r(t, t0, t0 + 1.1);
+          set(Wd.e, { x: (top[0] + (Wd.i - (Wd.n - 1) / 2) * 74).toFixed(1), y: (top[1] - 14 - 70 * eOut(u) - 22 * Wd.i * (Wd.i % 2)).toFixed(1), opacity: (u > 0 ? Math.min(1, u * 5) * (1 - r(u, 0.55, 1)) : 0).toFixed(3) });
+        });
+        MATCHES.forEach((M) => {
+          const F = FBYK[M.C.f], top = P(F.gx + FW / 2, F.gy + FD / 2, F.h), t0 = passT(top[1]);
+          const u = eOut(r(t, t0, t0 + 0.5)), o = r(t, t0, t0 + 0.12) * (1 - r(t, M.t, M.t + 0.25));
+          M.wg.setAttribute("transform", `translate(${top[0].toFixed(1)} ${(top[1] - 20 - 64 * u).toFixed(1)})`);
+          M.wg.setAttribute("opacity", o.toFixed(3));
+          const co = r(t, M.t + 0.3, M.t + 0.5) * (1 - r(t, TB.dive[0], TB.dive[0] + 0.3));
+          M.ch.setAttribute("transform", `translate(${top[0].toFixed(1)} ${(top[1] - RISE + 52).toFixed(1)})`);
+          M.ch.setAttribute("opacity", co.toFixed(3));
+        });
+      }
+      const mixC = (u) => (u > 0.5 ? LAV : ACC);
+
+      // the big card: dive in, mark up, redact, lift onto the backdrop, record
+      const BIGX = 960, BIGY = 476, RY = 440;
+      function paintBig(t) {
+        const on = t >= TB.dive[0] && t < T.title + 0.5;
+        B.setAttribute("opacity", on ? 1 : 0);
+        if (!on) return;
+        // the dive: from the risen card on screen to the centre
+        const hero = MATCHES[0], HF = FBYK[hero.C.f], hp = P(HF.gx + FW / 2, HF.gy + FD / 2, HF.h);
+        const push = 1.05, s0 = 0.24 * 0.62 * push, x0 = 960 + (hp[0] - 960) * push, y0 = 600 + (hp[1] - RISE - 600) * push;
+        const du = eExpoIO(r(t, TB.dive[0], TB.dive[1]));
+        let x = lerp(x0, BIGX, du), y = lerp(y0, BIGY, du), s = s0 * Math.pow(1 / s0, du), rot = 0;
+        // client-ready: it lifts, gains padding and corners, and settles facing the camera
+        const fu = eExpoIO(r(t, TB.face[0], TB.face[1]));
+        s *= lerp(1, 0.78, fu); rot = Math.sin(Math.PI * fu) * -3; y = lerp(y, RY, fu);
+        const ready = t >= TB.flood_bg[0];
+        // the fold at the title
+        const fold = eIn(r(t, T.title, T.title + 0.45));
+        const fs = 1 - 0.85 * fold;
+        bigG.setAttribute("transform", `translate(${x.toFixed(1)} ${(y + 60 * fold).toFixed(1)}) rotate(${rot.toFixed(2)}) scale(${(s * fs).toFixed(4)})`);
+        B.setAttribute("opacity", (1 - fold).toFixed(3));
+        set(shadow, { transform: `translate(${(18 * fu).toFixed(1)} ${(26 * fu).toFixed(1)})`, opacity: (0.45 * fu).toFixed(3) });
+        // the markup
+        draw(arrowP, eOut(r(t, TB.arrow[0], TB.arrow[1])));
+        arrowH.setAttribute("opacity", r(t, TB.arrow[1] - 0.12, TB.arrow[1]));
+        draw(boxP, eExpoIO(r(t, TB.box[0], TB.box[1])));
+        badges.forEach((g, i) => { const bt = i === 0 ? TB.badges[0] : TB.badges[1], u = eBack(r(t, bt, bt + 0.3));
+          const bx = i === 0 ? -196 : 458, by = i === 0 ? 262 : 196;
+          g.setAttribute("transform", `translate(${bx} ${by}) scale(${Math.max(0.001, u).toFixed(3)})`); g.setAttribute("opacity", u > 0 ? 1 : 0); });
+        // the redaction: square by square, left to right, opaque
+        PIX.forEach((p) => { const on = t >= p.t; p.e.setAttribute("opacity", on ? 1 : 0); p.e.setAttribute("fill", t < p.t + 0.12 ? "#ffffff" : p.c); });
+        const rc = r(t, TB.redact[0] + 0.2, TB.redact[0] + 0.45) * (1 - r(t, TB.flood_bg[0], TB.flood_bg[0] + 0.3));
+        redChip.setAttribute("opacity", rc.toFixed(3));
+        // the backdrop floods from flat ground into the gradient
+        const BW = (1000 + 2 * 74 / 0.78) * 0.78 * fs, BHh = (625 + 2 * 74 / 0.78) * 0.78 * fs;
+        const bo = ready ? 1 : 0;
+        const bx = BIGX - BW / 2, by = RY + 60 * fold - BHh / 2;
+        set(backFlat, { x: bx, y: by, width: BW, height: BHh, rx: 40 * fs, opacity: bo * r(t, TB.flood_bg[0], TB.flood_bg[0] + 0.2) });
+        set(backGrad, { x: bx, y: by, width: BW, height: BHh, rx: 40 * fs, opacity: bo });
+        set(floodC, { cx: bx + 40, cy: by + BHh - 40, r: 1700 * eOut(r(t, TB.flood_bg[0] + 0.1, TB.flood_bg[1])) });
+        backG.setAttribute("opacity", fu > 0 ? 1 : 0);
+        // the recording
+        const ru = r(t, TB.rec[0], TB.rec[0] + 0.3);
+        RG.setAttribute("opacity", (ru * (1 - fold)).toFixed(3));
+        if (ru > 0) {
+          const L = 46, x0r = bx + 22, y0r = by + 22, x1r = bx + BW - 22, y1r = by + BHh - 22;
+          set(brk[0], { d: `M${x0r} ${y0r + L}V${y0r}H${x0r + L}` }); set(brk[1], { d: `M${x1r - L} ${y0r}H${x1r}V${y0r + L}` });
+          set(brk[2], { d: `M${x0r} ${y1r - L}V${y1r}H${x0r + L}` }); set(brk[3], { d: `M${x1r - L} ${y1r}H${x1r}V${y1r - L}` });
+          const blink = Math.floor((t - TB.rec[0]) / (TB.beat)) % 2 === 0;
+          set(recDot, { cx: x0r + 70, cy: y0r + 2, opacity: blink ? 1 : 0.35 });
+          const secs = Math.max(0, Math.floor((t - TB.rec[0]) * 1));
+          set(recT, { x: x0r + 90, y: y0r + 9 }); recT.textContent = `REC  00:00:${pad2(secs)}`;
+        }
+        const cu = r(t, TB.rec[0] + 0.2, TB.rec[1]);
+        cursor.setAttribute("opacity", cu > 0 && cu < 1 ? 1 : 0);
+        cursor.setAttribute("transform", `translate(${lerp(-300, 300, eIO(cu)).toFixed(1)} ${(-120 + Math.sin(cu * 6.5) * 90 + 170 * cu).toFixed(1)}) scale(1.6)`);
+        stripG.setAttribute("opacity", (1 - fold).toFixed(3));
+        FR.forEach((f, k) => { const u = eExpo(r(t, f.t0, f.t0 + 0.45)), fx = 960 + (k - 4) * 136, fy = by + BHh + 48;
+          f.g.setAttribute("transform", `translate(${lerp(fx + 220, fx, u).toFixed(1)} ${fy.toFixed(1)})`); f.g.setAttribute("opacity", r(t, f.t0, f.t0 + 0.15).toFixed(3)); });
+      }
+
+      const TSEL = [500, 290, 1420, 618];
+      const URL_TEXT = "snapline.joaoqueiros.com";
+      function paintTitle(t) {
+        if (t < T.title) { LG.setAttribute("opacity", 0); return; }
+        const ov = eOut(r(t, T.title + 0.15, T.title + 0.45)) * (1 - r(t, TB.shot1, TB.shot1 + 0.3));
+        scrim.setAttribute("opacity", (0.62 * ov).toFixed(3));
+        const d = eIO(r(t, TB.sel[0], TB.sel[1]));
+        const cx = lerp(TSEL[0], TSEL[2], d), cy = lerp(TSEL[1], TSEL[3], d);
+        const pre = t < TB.sel[0];
+        set(crossV, { x1: pre ? 960 : cx, x2: pre ? 960 : cx, opacity: t < TB.shot1 ? 0.5 * ov : 0 }); set(crossH, { y1: pre ? 454 : cy, y2: pre ? 454 : cy, opacity: t < TB.shot1 ? 0.5 * ov : 0 });
+        LG_SHOW(0);
+        const on = t >= TB.sel[0];
+        selection(t, TSEL[0], TSEL[1], cx, cy, on, [cx, cy], t < TB.shot1);
+        const ao = on ? (t < TB.shot1 + 1.4 ? 1 : 1 - r(t, TB.shot1 + 1.4, TB.shot1 + 1.9)) : 0;
+        [antsB, ants, chipG, ...handles].forEach((e) => e.setAttribute("opacity", ao.toFixed(3)));
+        // the logo, flat in the selection
+        const lo = t >= TB.shot1 ? 1 : 0;
+        LG.setAttribute("opacity", lo);
+        const ww = word.getComputedTextLength(), tot = 180 + 44 + ww, x0 = 960 - tot / 2;
+        set(logo, { x: x0, y: 454 - 90 });
+        set(word, { x: x0 + 224, y: 454 + 52 });
+        LG.setAttribute("transform", `translate(960 454) scale(${lerp(1.04, 1, eExpo(r(t, TB.shot1, TB.shot1 + 0.8))).toFixed(4)}) translate(-960 -454)`);
+      }
+
+      const STATIONS = [[0.7, 3.4], [7.0, 8.75], [9.3, 14.0], [15.4, 20.9], [21.7, 23.7], [24.0, 27.0]];
+      const HUD = [[0, "capture · region"], [T.flood[0], "capture · every shot filed"], [TB.tilt[0], "library · real folders"], [T.search[0], "search · text in images"],
+        [T.mark[0], "editor · annotate"], [TB.redact[0], "editor · redact"], [T.ready[0], "beautify · backdrop"], [TB.rec[0], "record · screen"], [T.title, "snapline.joaoqueiros.com"]];
+      function paintUI(t) {
+        let st = HUD[0][1]; for (const [a, s] of HUD) if (t >= a) st = s;
+        $("#hud-st").textContent = st;
+        const hudO = r(t, 0.3, 0.7) * (1 - r(t, T.title, T.title + 0.3));
+        $("#hud-l").style.opacity = hudO; $("#hud-r").style.opacity = hudO;
+        STATIONS.forEach(([t0, t1], k) => {
+          const e = $("#st-" + k), a = r(t, t0, t0 + 0.35), b = r(t, t1, t1 + 0.25), on = t >= t0 && t < t1 + 0.25;
+          e.style.opacity = on ? 1 - b : 0;
+          e.style.clipPath = `inset(0 ${(100 * (1 - eExpo(a))).toFixed(1)}% 0 0)`;
+          e.style.transform = `translateY(${(30 * eIn(b)).toFixed(1)}px)`;
+        });
+        // search
+        const so = r(t, T.search[0] + 0.2, T.search[0] + 0.5) * (1 - r(t, TB.dive[0], TB.dive[0] + 0.4));
+        SR.setAttribute("opacity", so.toFixed(3));
+        qT.textContent = typed(TB.query, r(t, TB.type[0], TB.type[1]));
+        caret.setAttribute("x", (158 + (qT.textContent ? qT.getComputedTextLength() : 0) + 3).toFixed(1));
+        caret.setAttribute("opacity", Math.floor(t / (TB.beat / 2)) % 2 === 0 || (t > TB.type[0] && t < TB.type[1]) ? 1 : 0);
+        ocrG.setAttribute("opacity", r(t, TB.scan[0], TB.scan[0] + 0.3).toFixed(3));
+        // title
+        $("#title").style.opacity = t >= T.title ? 1 : 0;
+        const lu = r(t, TB.line, TB.line + 0.45); $("#t-line").style.opacity = lu; $("#t-line").style.transform = `translateY(${(18 * (1 - eOut(lu))).toFixed(1)}px)`;
+        $("#t-url").textContent = typed(URL_TEXT, r(t, TB.line + 0.5, TB.line + 1.2));
+        $("#t-badge").style.opacity = r(t, TB.line + 1.3, TB.line + 1.7);
+      }
+
+      function buildPixels() {   // the redaction squares over the email, measured once the fonts have loaded
+        const pr = EMAIL.cloneNode(true); pr.setAttribute("visibility", "hidden"); svg.appendChild(pr); const bb = pr.getBBox(); pr.remove();
+        const SQ = 13, x0 = bb.x - 6, y0 = bb.y - 3, cols = Math.ceil((bb.width + 12) / SQ), rows = Math.ceil((bb.height + 6) / SQ);
+        const shades = ["#2b2f42", "#3a3f58", "#4a4f6e", "#5c6286", "#353a50", "#6f72a8"];
+        for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) {
+          const n = i * 7 + j * 13, t = TB.redact[0] + 0.25 + (i / cols) * (TB.redact[1] - TB.redact[0] - 0.9) + hsh(n) * 0.18;
+          PIX.push({ t, c: shades[Math.floor(hsh(n * 1.7) * shades.length)], e: el("rect", { x: x0 + i * SQ, y: y0 + j * SQ, width: SQ, height: SQ, opacity: 0 }, PIXG) });
+        }
+        set(redChipR, { x: bb.x + bb.width + 24, width: redChipT.getComputedTextLength() + 24 }); set(redChipT, { x: bb.x + bb.width + 36 });
+      }
+
+      const tl = gsap.timeline({ paused: true });
+      const clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+
+      async function build() {
+        await Promise.all([document.fonts.load('800 40px "Brico"'), document.fonts.load('700 40px "Brico"'), document.fonts.load('400 20px "InterL"'),
+          document.fonts.load('600 20px "InterL"'), document.fonts.load('500 20px "JBM"'), document.fonts.load('600 20px "JBM"')]);
+        buildPixels();
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = window.__hf.buildReady || {};
+      window.__hf.buildReady["real-folders"] = build();
+    </script>
+  </body>
+</html>

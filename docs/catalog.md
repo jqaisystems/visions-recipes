@@ -106,6 +106,14 @@ Made for: Imagined Worlds · Stills. Stack: Three.js, TSL, GSAP, Python (score).
 
 ## Products and systems
 
+### R28 · Real Folders
+
+A film for a screenshot manager, drawn entirely in SVG: a capture overlay whose selection is a live mask, a loupe over a pixel grid, a flood of captures on the beat, a camera that tilts into an isometric city of folders as every card is filed, a search that lifts the words out of every card, an email snapped into solid pixels, and a gradient backdrop for the client.
+
+Made for: Snapline · screenshot manager for Windows. Stack: SVG, GSAP, Python (table, score).
+
+[Recipe and poster](../recipes/r28-real-folders/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r28-real-folders-v1)
+
 ### R27 · Ten Seconds
 
 A film for a local voice cloning studio, drawn entirely in SVG: ninety seconds of voice as a racing ribbon, a window that keeps the strongest ten, a clone that locks on inside your machine while a cloud never reaches it, a typed line that melts letter by letter into the cloned voice speaking it, and one ribbon branching to a wall of named player pages.
