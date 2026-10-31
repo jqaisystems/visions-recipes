@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <!--
+      R27 · Ten Seconds. 32 s, 2D vector motion design: SVG and GSAP only (season 2, film 2). For Tembr, a local voice
+      cloning studio whose line is "Your voice, everywhere you can't be." A voice is a line: a hairline breathes and
+      ninety seconds of voice race past; a window weighs the take and keeps the strongest ten seconds while the rest
+      peels away; a frame draws on, your machine, the clone locks on and a cloud never touches it; a line types itself,
+      the clone speaks it, and each word melts into a ribbon shaped by its real loudness; the ribbon becomes one lead's
+      page, then branches to a wall of them, a quality check flags three and redraws them, and it all pulls back into
+      one bar and the lockup.
+      Technique: no canvas and no WebGL. One SVG stage, a camera that is one root group. Voices are variable-width
+      ribbons, filled polygons built from a centreline and a loudness envelope. The spoken line is baked to glyph
+      outlines, so each letter is resampled and morphed into its slice of the ribbon. One GSAP clock drives paint(t), a
+      pure function of time. The clock is one baked table (assets/table.js, from bake/table.py); score/compose.py reads
+      it too.
+    -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/table.js"></script>
+    <style>
+      @font-face { font-family: "Archivo"; src: url("assets/fonts/archivo-800-latin.woff2") format("woff2"); font-weight: 800; }
+      @font-face { font-family: "Instrument Sans"; src: url("assets/fonts/instrumentsans-500-latin.woff2") format("woff2"); font-weight: 500; }
+      @font-face { font-family: "IBM Plex Mono"; src: url("assets/fonts/ibmplexmono-400-latin.woff2") format("woff2"); font-weight: 400; }
+      @font-face { font-family: "IBM Plex Mono"; src: url("assets/fonts/ibmplexmono-500-latin.woff2") format("woff2"); font-weight: 500; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #131110; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #131110; color: #f2ead9; }
+      #ct-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #stage { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #ct-ui { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      .hud { position: absolute; top: 46px; font: 500 18px "IBM Plex Mono", monospace; letter-spacing: 0.16em; white-space: nowrap; color: #a89e8c; text-transform: uppercase; }
+      #hud-l { left: 64px; color: #f2ead9; letter-spacing: 0.24em; }
+      #hud-l span { color: #f3a530; margin-left: 16px; letter-spacing: 0.12em; text-transform: none; }
+      #hud-r { right: 64px; }
+      .st { position: absolute; left: 84px; bottom: 76px; opacity: 0; }
+      .st i { display: inline-block; background: #131110; padding: 7px 14px 6px; border: 1.5px solid #f3a530; color: #f3a530; font: 500 18px "IBM Plex Mono", monospace; font-style: normal; letter-spacing: 0.24em; }
+      .st b { display: table; margin-top: 12px; padding: 6px 24px 12px 0; background: #131110; box-shadow: -40px 0 0 #131110; font: 800 76px/1 "Archivo", sans-serif; letter-spacing: -0.025em; color: #f2ead9; white-space: nowrap; }
+      .st b em { font-style: normal; color: #f3a530; }
+      #title { position: absolute; inset: 0; opacity: 0; }
+      #t-line { position: absolute; left: 0; right: 0; top: 590px; text-align: center; font: 800 60px/1.1 "Archivo", sans-serif; letter-spacing: -0.02em; color: #f2ead9; white-space: nowrap; opacity: 0; }
+      #t-line em { font-style: normal; color: #f3a530; }
+      #t-url { position: absolute; left: 0; right: 0; top: 690px; text-align: center; font: 500 30px "IBM Plex Mono", monospace; color: #f3a530; white-space: nowrap; letter-spacing: 0.04em; }
+      #t-rule { position: absolute; left: 690px; top: 752px; width: 540px; height: 1.5px; background: #2e2a25; transform: scaleX(0); }
+      #t-note { position: absolute; left: 0; right: 0; top: 780px; text-align: center; font: 500 17px "IBM Plex Mono", monospace; letter-spacing: 0.32em; color: #a89e8c; white-space: nowrap; opacity: 0; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="32" data-width="1920" data-height="1080">
+      <div id="ct-stage" class="clip" data-start="0" data-duration="32" data-track-index="0">
+        <svg id="stage" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="1920" height="1080"></svg>
+      </div>
+      <div id="ct-ui" class="clip" data-start="0" data-duration="32" data-track-index="1">
+        <div class="hud" id="hud-l" data-layout-allow-occlusion>TEMBR<span>/local voice studio</span></div>
+        <div class="hud" id="hud-r" data-layout-allow-occlusion><span id="hud-st">step 01 · record</span></div>
+        <div class="st" id="st-0" data-layout-allow-occlusion><i>01 · RECORD</i><b>Record ninety <em>seconds</em>.</b></div>
+        <div class="st" id="st-1" data-layout-allow-occlusion><i>02 · KEEP</i><b>Keep the best <em>ten</em>.</b></div>
+        <div class="st" id="st-2" data-layout-allow-occlusion><i>03 · CLONE</i><b>Cloned on your own <em>machine</em>.</b></div>
+        <div class="st" id="st-3" data-layout-allow-occlusion><i>04 · OUTREACH</i><b>A voice note for every <em>lead</em>.</b></div>
+        <div id="title" data-layout-allow-occlusion>
+          <div id="t-line">Your voice, <em>everywhere</em> you can't be.</div>
+          <div id="t-url"></div>
+          <div id="t-rule"></div>
+          <div id="t-note">ONE CLONED VOICE · DRAWN AND SCORED IN CODE</div>
+        </div>
+      </div>
+      <audio id="score" src="assets/bgm/score.wav" data-start="0" data-duration="32" data-track-index="7" data-volume="0.7"></audio>
+      <audio id="clone" src="assets/audio/clone-line.wav" data-start="15" data-duration="3.6" data-track-index="8" data-volume="1"></audio>
+    </div>
+
+    <script>
+      const TB = window.TABLE, T = TB.T, DUR = TB.dur;
+      const W = 1920, H = 1080;
+      const $ = (s) => document.querySelector(s);
+      const NS = "http://www.w3.org/2000/svg";
+      const BG = "#131110", SURF = "#1c1916", RAISED = "#262019", LINE = "#2e2a25", TEXT = "#f2ead9", MUTED = "#a89e8c", FAINT = "#6b6357",
+        AMBER = "#f3a530", EMBER = "#d1622b", GREEN = "#7d9a5e";
+      const cl = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x)), r = (t, a, b) => cl((t - a) / (b - a)), lerp = (a, b, u) => a + (b - a) * u;
+      const E = (n) => gsap.parseEase(n), eOut = E("power3.out"), eIn = E("power3.in"), eIO = E("power3.inOut"), eExpo = E("expo.out"), eExpoIO = E("expo.inOut"), eBack = E("back.out(1.6)");
+      const hsh = (n) => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+      const el = (tag, a = {}, p = null) => { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); if (p) p.appendChild(e); return e; };
+      const set = (e, a) => { for (const k in a) e.setAttribute(k, a[k]); };
+      const show = (e, on) => e.setAttribute("display", on ? "inline" : "none");
+      const tf = (x, y, s = 1, rot = 0, sx = null) => `translate(${x.toFixed(2)} ${y.toFixed(2)}) rotate(${rot.toFixed(2)}) scale(${(sx ?? s).toFixed(4)} ${s.toFixed(4)})`;
+      const hex = (c) => [16, 8, 0].map((s) => (parseInt(c.slice(1), 16) >> s) & 255);
+      const mix = (a, b, u) => { const A = hex(a), B = hex(b); return "#" + A.map((v, i) => Math.round(lerp(v, B[i], cl(u))).toString(16).padStart(2, "0")).join(""); };
+      const lens = new Map();
+      const draw = (e, u) => { let L = lens.get(e); if (L === undefined) { L = e.getTotalLength(); lens.set(e, L); } e.setAttribute("stroke-dasharray", `${L.toFixed(1)} ${(L + 1).toFixed(1)}`); e.setAttribute("stroke-dashoffset", (L * (1 - cl(u))).toFixed(1)); e.setAttribute("opacity", u > 0 ? 1 : 0); };
+      const typed = (s, u) => s.slice(0, Math.round(s.length * cl(u)));
+      let Z = 1;                                   // the camera zoom this frame: hairlines keep their screen width
+      const sw = (e, px) => e.setAttribute("stroke-width", (px / Z).toFixed(3));
+      const scene_ = (t) => t < T.keep[0] ? "rec" : t < T.machine[0] ? "keep" : t < T.speak[0] ? "machine" : t < T.every[0] ? "speak" : t < T.title ? "every" : "title";
+
+      // ---------------- the stage: a world under the camera, a screen layer above it
+      const svg = $("#stage");
+      const defs = el("defs", {}, svg);
+      el("rect", { x: 0, y: 0, width: W, height: H, fill: BG }, svg);
+      const cam = el("g", { "data-layout-allow-overflow": "" }, svg);
+      const scr = el("g", {}, svg);
+      const topG = el("g", { "data-layout-allow-overflow": "" }, svg);
+      const G = { strip: el("g", {}, cam), every: el("g", {}, cam), speak: el("g", {}, scr), title: el("g", {}, topG) };
+
+      // ---------------- a ribbon: a filled polygon from a centreline and a half-width at each x
+      const ribbonD = (xs, y, hs) => { let d = "M" + xs[0].toFixed(1) + " " + (y - hs[0]).toFixed(1); for (let i = 1; i < xs.length; i++) d += "L" + xs[i].toFixed(1) + " " + (y - hs[i]).toFixed(1); for (let i = xs.length - 1; i >= 0; i--) d += "L" + xs[i].toFixed(1) + " " + (y + hs[i]).toFixed(1); return d + "Z"; };
+      const envAt = (A, u) => { const f = cl(u) * (A.length - 1), i = Math.floor(f), k = f - i; return lerp(A[i], A[Math.min(A.length - 1, i + 1)], k); };
+
+      // morphs: any closed outline resampled to N points, aligned, interpolated
+      const N = 96;
+      const probe = el("path", { visibility: "hidden" }, defs);
+      function sample(d, n = N) { probe.setAttribute("d", d); const L = probe.getTotalLength(), P = []; for (let i = 0; i < n; i++) { const p = probe.getPointAtLength((L * i) / n); P.push([p.x, p.y]); } return P; }
+      function align(A, B) { let best = 0, bd = Infinity; for (let s = 0; s < B.length; s++) { let d = 0; for (let i = 0; i < A.length; i += 3) { const b = B[(i + s) % B.length]; d += (A[i][0] - b[0]) ** 2 + (A[i][1] - b[1]) ** 2; } if (d < bd) { bd = d; best = s; } } return A.map((_, i) => B[(i + best) % B.length]); }
+      const poly = (P) => "M" + P.map((p) => p[0].toFixed(1) + " " + p[1].toFixed(1)).join("L") + "Z";
+      const morph = (A, B, u) => poly(A.map((a, i) => [lerp(a[0], B[i][0], u), lerp(a[1], B[i][1], u)]));
+
+      // ---------------- I and II · the take: ninety seconds, 100 px a second, cut into one-second chunks
+      const PX = 100, CY = 540, HA = 150, TAKE = TB.take, SR = TB.sr, STEP = PX / SR;
+      const takeH = (i) => HA * TAKE[i] * (0.5 + 0.5 * hsh(i * 1.31));
+      const B0 = TB.best * PX, B1 = B0 + 10 * PX;
+      const hair = el("line", { x1: -4000, y1: CY, x2: 13000, y2: CY, stroke: AMBER }, G.strip);
+      const breathP = el("path", { fill: AMBER }, G.strip);
+      const revealClip = el("clipPath", { id: "reveal", clipPathUnits: "userSpaceOnUse" }, defs);
+      const revealR = el("rect", { x: -100, y: -2000, width: 0, height: 5000 }, revealClip);
+      const chunksG = el("g", { "clip-path": "url(#reveal)" }, G.strip);
+      const chunks = [];
+      for (let k = 0; k < 90; k++) {
+        const xs = [], hs = [];
+        for (let i = k * SR; i <= Math.min(TAKE.length - 1, (k + 1) * SR); i++) { xs.push(i * STEP); hs.push(Math.max(0.6, takeH(i))); }
+        const x = (k + 0.5) * PX, inside = x > B0 && x < B1;
+        chunks.push({ e: el("path", { d: ribbonD(xs, CY, hs), fill: AMBER }, chunksG), x, inside, side: x < B0 ? -1 : 1, dist: inside ? 0 : Math.min(Math.abs(x - B0), Math.abs(x - B1)) });
+      }
+      const head = el("line", { x1: 0, y1: CY - 230, x2: 0, y2: CY + 230, stroke: EMBER, "stroke-linecap": "round" }, G.strip);
+      const RECY = 300;
+      const recT = el("text", { "font-family": "IBM Plex Mono", "font-weight": 500, "font-size": 22, "letter-spacing": 3, fill: TEXT }, topG);
+      const recDot = el("circle", { r: 8, fill: EMBER }, topG);
+      // the window that weighs the take
+      const win = el("rect", { y: CY - 200, width: 10 * PX, height: 400, rx: 24, fill: AMBER, "fill-opacity": 0.07, stroke: AMBER }, G.strip);
+      const winT = el("text", { "font-family": "IBM Plex Mono", "font-weight": 500, "font-size": 18, "letter-spacing": 3, fill: AMBER }, topG);
+      const meterBg = el("rect", { height: 8, rx: 4, fill: LINE }, topG), meterF = el("rect", { height: 8, rx: 4, fill: AMBER }, topG);
+      const mean10 = (x) => { const i0 = Math.max(0, Math.round(x / STEP)); let s = 0; for (let i = i0; i < i0 + 10 * SR && i < TAKE.length; i++) s += TAKE[i]; return s / (10 * SR); };
+      const bestMean = mean10(B0);
+
+      // ---------------- III · your machine: a frame, the clone, a cloud that never touches it
+      const FX = B0 - 80, FY = CY - 260, FW = 10 * PX + 160, FH = 520;
+      const frameR = el("path", { d: `M ${FX + 30} ${FY} H ${FX + FW - 30} A 30 30 0 0 1 ${FX + FW} ${FY + 30} V ${FY + FH - 30} A 30 30 0 0 1 ${FX + FW - 30} ${FY + FH} H ${FX + 30} A 30 30 0 0 1 ${FX} ${FY + FH - 30} V ${FY + 30} A 30 30 0 0 1 ${FX + 30} ${FY} Z`, fill: "none", stroke: MUTED }, G.strip);
+      const frameT = el("text", { x: FX + 34, y: FY + 50, "font-family": "IBM Plex Mono", "font-weight": 500, "font-size": 20, "letter-spacing": 4, fill: MUTED }, G.strip); frameT.textContent = "YOUR MACHINE";
+      const frameT2 = el("text", { x: FX + FW - 34, y: FY + 50, "text-anchor": "end", "font-family": "IBM Plex Mono", "font-weight": 500, "font-size": 20, "letter-spacing": 4, fill: MUTED }, G.strip); frameT2.textContent = "OFFLINE · LOCAL GPU";
+      const segXs = [], segHs = [];
+      for (let i = Math.round(B0 / STEP); i <= Math.round(B1 / STEP); i++) { segXs.push(i * STEP); segHs.push(Math.max(0.6, takeH(i))); }
+      const cloneP = el("path", { d: ribbonD(segXs, CY, segHs), fill: "none", stroke: TEXT, "stroke-linejoin": "round" }, G.strip);
+      const cloudD = "M -110 40 A 40 40 0 0 1 -80 -26 A 58 58 0 0 1 24 -52 A 46 46 0 0 1 96 -6 A 40 40 0 0 1 110 40 Z";
+      const cloud = el("path", { d: cloudD, fill: "none", stroke: MUTED, "stroke-linejoin": "round" }, G.strip);
+      const zeroT = el("text", { x: W / 2, y: 196, "text-anchor": "middle", "font-family": "IBM Plex Mono", "font-weight": 500, "font-size": 20, "letter-spacing": 5, fill: AMBER }, topG); zeroT.textContent = "0 CLOUD CALLS · 0 API KEYS";
+
+      // ---------------- IV · it speaks: the line as glyph outlines, the clone's real envelope as the ribbon
+      const SX0 = 260, SX1 = 1660, SY = 780, SH = 120, ENV = TB.env, CLIP = TB.clip;
+      const sxOf = (a) => lerp(SX0, SX1, a / CLIP);
+      const speakH = (x) => { const u = (x - SX0) / (SX1 - SX0); return Math.max(1.5, SH * envAt(ENV, u) * (0.55 + 0.45 * hsh(Math.round(x / 2) * 0.77))); };
+      const sliceD = (xa, xb) => { const xs = []; for (let x = xa; x <= xb + 0.01; x += 2) xs.push(x); if (xs[xs.length - 1] < xb) xs.push(xb); return ribbonD(xs, SY, xs.map(speakH)); };
+      const sBase = el("line", { x1: SX0 - 40, y1: SY, x2: SX1 + 40, y2: SY, stroke: LINE, "stroke-width": 2 }, G.speak);
+      const speakG = el("g", {}, G.speak);
+      const fullRib = el("path", { d: sliceD(SX0, SX1), fill: AMBER, opacity: 0 }, speakG);
+      const WD = TB.words;
+      const letters = TB.letters.map((L, j) => {
+        const w = WD[L.word], wl = TB.letters.filter((o) => o.word === L.word), wx0 = wl[0].x0, wx1 = wl[wl.length - 1].x1;
+        const xa = sxOf(w.a) + (sxOf(w.b) - sxOf(w.a)) * (L.x0 - wx0) / (wx1 - wx0), xb = sxOf(w.a) + (sxOf(w.b) - sxOf(w.a)) * (L.x1 - wx0) / (wx1 - wx0);
+        const from = sample(L.outer), to = align(from, sample(sliceD(xa, xb)));
+        const gl = el("path", { d: L.d, fill: TEXT }, speakG), mp = el("path", { fill: AMBER, opacity: 0 }, speakG);
+        const tMelt = w.t + (L.i / L.n) * (w.b - w.a) * 0.7 - 0.06;
+        return { gl, mp, from, to, tType: lerp(TB.type[0], TB.type[1], j / TB.letters.length), tMelt, w };
+      });
+      const hiT = el("text", { x: W / 2, y: 350, "text-anchor": "middle", "font-family": "Archivo", "font-weight": 800, "font-size": 112, "letter-spacing": -2, fill: TEXT }, G.speak);
+      const hiA = el("tspan", {}, hiT); hiA.textContent = "Hi ";
+      const hiN = el("tspan", { fill: AMBER }, hiT);
+      const hiC = el("tspan", {}, hiT); hiC.textContent = ",";
+      const NAMES = ["Tomás", "Inês", "Priya", "Leo", "Ana", "Maya"];
+
+      // ---------------- V · everywhere: the wall of pages, the branch tree, the quality check
+      const LEADS = TB.leads, HERO = LEADS[TB.hero];
+      const RIB_X0 = -78, RIB_X1 = 132, RIB_Y = 46, RIB_H = 16;
+      const miniD = (kind) => {
+        const xs = [], hs = [];
+        for (let x = RIB_X0; x <= RIB_X1; x += 1.5) {
+          let u = (x - RIB_X0) / (RIB_X1 - RIB_X0), m = 1;
+          if (kind === 0 && u > 0.38 && u < 0.66) m = 0.04;                       // a long pause
+          if (kind === 1 && u > 0.45 && u < 0.75) u -= 0.3;                       // a repeated word
+          if (kind === 2 && u > 0.78) m = 0.4 + 1.4 * hsh(Math.round(x) * 3.7);  // a mangled ending
+          xs.push(x); hs.push(Math.max(0.5, RIB_H * envAt(ENV, u) * (0.55 + 0.45 * hsh(Math.round((SX0 + u * (SX1 - SX0)) / 2) * 0.77)) * m));
+        }
+        return ribbonD(xs, RIB_Y, hs);
+      };
+      const CLEAN = miniD(-1);
+      const treeG = el("g", { fill: "none", stroke: AMBER, "stroke-linecap": "round" }, G.every);
+      const cardsG = el("g", {}, G.every);
+      const curve = (a, b) => { const mx = (a[0] + b[0]) / 2; return `M ${a[0].toFixed(1)} ${a[1].toFixed(1)} C ${mx.toFixed(1)} ${a[1].toFixed(1)} ${mx.toFixed(1)} ${b[1].toFixed(1)} ${b[0].toFixed(1)} ${b[1].toFixed(1)}`; };
+      const branches = [], landAt = new Map();
+      const H0 = [HERO.x, HERO.y];
+      TB.tree.forEach((b) => {
+        branches.push({ e: el("path", { d: curve(H0, b.p) }, treeG), px: 9, t0: TB.b1[0], t1: TB.b1[1] });
+        b.kids.forEach((kd) => {
+          branches.push({ e: el("path", { d: curve(b.p, kd.p) }, treeG), px: 5, t0: TB.b2[0], t1: TB.b2[1] });
+          kd.leaves.forEach((lf) => { const L = LEADS[lf.k]; branches.push({ e: el("path", { d: curve(kd.p, [L.x, L.y]) }, treeG), px: 2.2, t0: lf.t - 0.45, t1: lf.t, leaf: lf.k }); landAt.set(lf.k, lf.t); });
+        });
+      });
+      const flagOf = new Map(TB.flags.map((f) => [f.k, f]));
+      const cards = LEADS.map((L, k) => {
+        const g = el("g", { transform: `translate(${L.x} ${L.y})` }, cardsG);
+        const ghost = el("rect", { x: -150, y: -95, width: 300, height: 190, rx: 14, fill: "none", stroke: LINE }, g);
+        const face = el("g", {}, g);
+        const box = el("rect", { x: -150, y: -95, width: 300, height: 190, rx: 14, fill: SURF, stroke: LINE }, face);
+        el("text", { x: -126, y: -58, "font-family": "IBM Plex Mono", "font-weight": 500, "font-size": 10, "letter-spacing": 2, fill: MUTED }, face).textContent = "A VOICE NOTE FOR";
+        el("text", { x: -126, y: -22, "font-family": "Archivo", "font-weight": 800, "font-size": 30, fill: TEXT }, face).textContent = L.name;
+        el("text", { x: -126, y: 0, "font-family": "Instrument Sans", "font-weight": 500, "font-size": 13, fill: MUTED }, face).textContent = L.biz;
+        el("circle", { cx: -106, cy: RIB_Y, r: 18, fill: AMBER }, face);
+        el("path", { d: `M -112 ${RIB_Y - 8} L -98 ${RIB_Y} L -112 ${RIB_Y + 8} Z`, fill: BG }, face);
+        const rib = el("g", {}, face);
+        const f = flagOf.get(k);
+        const ribP = el("path", { d: f ? miniD(f.kind) : CLEAN, fill: AMBER }, rib);
+        const fixP = f ? el("path", { d: CLEAN, fill: AMBER, opacity: 0 }, rib) : null;
+        return { g, ghost, face, box, rib, ribP, fixP, L, f, land: k === TB.hero ? TB.into_page[1] : landAt.get(k) };
+      });
+      const scanL = el("line", { y1: -2000, y2: 2000, stroke: TEXT }, G.every);
+      const scanB = el("rect", { y: -2000, width: 260, height: 4000, fill: AMBER, opacity: 0.06 }, G.every);
+      const chips = TB.flags.map((f) => {
+        const g = el("g", { opacity: 0 }, topG);
+        const bx = el("rect", { x: 0, y: -22, height: 34, rx: 6, fill: RAISED, stroke: AMBER, "stroke-width": 1.5 }, g);
+        const tx = el("text", { x: 12, y: 1, "font-family": "IBM Plex Mono", "font-weight": 500, "font-size": 16, "letter-spacing": 2, fill: AMBER }, g); tx.textContent = f.word;
+        const ok = el("g", { opacity: 0 }, g);
+        const okB = el("rect", { x: 0, y: -22, height: 34, rx: 6, fill: GREEN }, ok);
+        const okT = el("text", { x: 12, y: 1, "font-family": "IBM Plex Mono", "font-weight": 500, "font-size": 16, "letter-spacing": 2, fill: BG }, ok); okT.textContent = "RE-RENDERED";
+        return { g, bx, tx, ok, okB, okT, f };
+      });
+
+      // ---------------- VI · title: one bar, then the lockup
+      const MARKY = 400;
+      const barR = el("rect", { x: -17, width: 34, rx: 17, fill: AMBER }, G.title);
+      const lockup = el("image", { href: "assets/brand/tembr-lockup-dark.svg", x: -380, y: -103, width: 760, height: 206.5 }, G.title);
+
+      // ---------------- the camera
+      const HZ = (1000 / (RIB_X1 - RIB_X0)), HSHIFT = 1;   // Maya's page at the zoom where her ribbon matches the spoken one; HSHIFT 0 centres the page instead
+      const HCX = HERO.x + (RIB_X0 + RIB_X1) / 2 * HSHIFT, HCY = HERO.y + RIB_Y - (SY - H / 2) / HZ;
+      const WALLZ = 0.36;
+      function camAt(t, sc) {
+        if (sc === "rec" || sc === "keep" || sc === "machine") {
+          const w0 = TB.write[0], w1 = TB.write[1];
+          const hd = 9000 * Math.pow(r(t, w0, w1), 1.35);
+          let cx = Math.max(-150, hd - 200), z = lerp(1.5, 0.6, eIO(r(t, TB.breath[1] - 0.2, w0 + 0.7)));
+          const pu = eIO(r(t, TB.pull[0], TB.pull[1]));
+          cx = lerp(cx, 4500, pu); z = lerp(z, 1800 / 9300, pu);
+          const du = eExpoIO(r(t, TB.dive[0], TB.dive[1]));
+          cx = lerp(cx, (B0 + B1) / 2, du); z = Math.exp(lerp(Math.log(z), Math.log(1.2), du));
+          return [cx, CY, z];
+        }
+        if (sc === "every") {
+          const u = eExpoIO(r(t, TB.pullout[0], TB.pullout[1]));
+          return [lerp(HCX, 0, u), lerp(HCY, 0, u), Math.exp(lerp(Math.log(HZ), Math.log(WALLZ), u))];
+        }
+        if (sc === "title") { const u = eIO(r(t, T.title, TB.bar)); return [lerp(0, HERO.x, u), lerp(0, HERO.y, u), Math.exp(lerp(Math.log(WALLZ), Math.log(1.6), u))]; }
+        return [960, 540, 1];
+      }
+      const toScr = (x, y, c) => [W / 2 + (x - c[0]) * c[2], H / 2 + (y - c[1]) * c[2]];
+
+      // ---------------- one frame
+      function paint(t) {
+        const sc = scene_(t);
+        const c = camAt(t, sc); Z = c[2];
+        set(cam, { transform: `translate(${W / 2} ${H / 2}) scale(${Z.toFixed(5)}) translate(${(-c[0]).toFixed(2)} ${(-c[1]).toFixed(2)})` });
+        show(G.strip, sc === "rec" || sc === "keep" || sc === "machine");
+        show(G.speak, sc === "speak" || (sc === "every" && t < TB.into_page[1]));
+        show(G.every, (sc === "every" && t >= TB.into_page[0]) || sc === "title");
+        paintStrip(t, sc, c); paintSpeak(t, sc); paintEvery(t, sc, c); paintTitle(t, sc);
+        paintUI(t);
+      }
+
+      function paintStrip(t, sc, c) {
+        const on = sc === "rec" || sc === "keep" || sc === "machine";
+        for (const e of [recT, recDot, winT, meterBg, meterF, zeroT]) e.setAttribute("opacity", 0);
+        if (!on) return;
+        const w0 = TB.write[0], w1 = TB.write[1];
+        const hd = 9000 * Math.pow(r(t, w0, w1), 1.35);
+        // the hairline: amber while it breathes, then the quiet centreline of the take
+        sw(hair, lerp(4, 2, r(t, w0, w0 + 0.5))); hair.setAttribute("stroke", mix(AMBER, LINE, r(t, w0 + 0.2, w0 + 1.2)));
+        hair.setAttribute("opacity", r(t, 0, 0.1) * (1 - r(t, TB.peel[0], TB.peel[1])));
+        const hu = eExpoIO(r(t, 0, 0.55)); hair.setAttribute("transform", hu < 1 ? `translate(-150 0) scale(${Math.max(0.0001, hu).toFixed(4)} 1) translate(150 0)` : "");
+        const bu = Math.sin(Math.PI * r(t, TB.breath[0], TB.breath[1] + 0.25));
+        if (bu > 0.001 && t < w0 + 0.3) {
+          const xs = [], hs = []; for (let x = -340; x <= 0; x += 4) { xs.push(x); hs.push(Math.max(0.3, 46 * bu * Math.exp(-(((x + 170) / 80) ** 2)) * (0.6 + 0.4 * Math.abs(Math.sin(x * 0.11 + t * 9))))); }
+          breathP.setAttribute("d", ribbonD(xs, CY, hs)); breathP.setAttribute("opacity", 1);
+        } else breathP.setAttribute("opacity", 0);
+        // the take writes itself behind the head: ember while it plays, amber at rest
+        revealR.setAttribute("width", (hd + 100).toFixed(1));
+        const lk = r(t, TB.lock, TB.lock + 0.4);
+        chunks.forEach((k) => {
+          const d = hd - k.x;
+          let col = t < w1 + 0.1 ? (d < 0 ? AMBER : mix(EMBER, AMBER, d / 700)) : AMBER;
+          if (!k.inside) col = mix(col, FAINT, lk);
+          else if (sc === "machine") col = mix(AMBER, TEXT, Math.sin(Math.PI * r(t, TB.clone[1] - 0.05, TB.clone[1] + 0.45)));
+          k.e.setAttribute("fill", col);
+          if (!k.inside) {
+            const st = TB.peel[0] + (k.dist / 5500) * 0.9, u = eIn(r(t, st, st + 0.75));
+            const rot = k.side * 260 * u * (0.7 + 0.6 * hsh(k.x)), dy = (hsh(k.x * 1.7) - 0.5) * 900 * u, s = 1 - 0.85 * u;
+            k.e.setAttribute("transform", u > 0 ? `translate(${k.x} ${CY + dy}) rotate(${rot.toFixed(1)}) scale(${s.toFixed(3)}) translate(${-k.x} ${-CY})` : "");
+            k.e.setAttribute("opacity", (1 - r(u, 0.6, 1)).toFixed(3));
+          }
+        });
+        // the head and the timer
+        const writing = t >= w0 && t < w1 + 0.25;
+        head.setAttribute("opacity", writing ? 1 - r(t, w1, w1 + 0.25) : 0); set(head, { x1: hd, x2: hd }); sw(head, 3);
+        if (t < TB.pull[1]) {
+          const [hx0] = toScr(hd, CY, c), hx = Math.min(hx0, W - 420), secs = Math.min(90, hd / PX);
+          const mm = String(Math.floor(secs / 60)).padStart(2, "0"), ss = String(Math.floor(secs % 60)).padStart(2, "0");
+          recT.textContent = `REC  ${mm}:${ss} / 01:30`;
+          const o = r(t, w0 - 0.2, w0 + 0.1) * (1 - r(t, TB.pull[0], TB.pull[0] + 0.4));
+          set(recT, { x: (hx + 38).toFixed(1), y: RECY, opacity: o.toFixed(3) }); set(recDot, { cx: (hx + 20).toFixed(1), cy: RECY - 7, opacity: (o * (Math.floor(t * 4) % 2 ? 1 : 0.35)).toFixed(3) });
+        }
+        // the window weighs the take, then locks on the strongest ten seconds
+        const su = r(t, TB.scan[0], TB.scan[1]);
+        let wx = su < 0.55 ? lerp(0, 8000, eIO(su / 0.55)) : lerp(8000, B0, eIO((su - 0.55) / 0.45));
+        if (t >= TB.scan[1]) wx = B0;
+        const wo = r(t, TB.scan[0] - 0.2, TB.scan[0] + 0.1) * (1 - r(t, TB.frame[0], TB.frame[0] + 0.6));
+        const pulse = 1 + 0.06 * Math.sin(Math.PI * r(t, TB.lock, TB.lock + 0.3));
+        set(win, { x: (wx + 500 - 500 * pulse).toFixed(1), width: (1000 * pulse).toFixed(1), y: (CY - 200 * pulse).toFixed(1), height: (400 * pulse).toFixed(1), opacity: wo.toFixed(3), stroke: t >= TB.lock && t < TB.lock + 0.25 ? TEXT : AMBER });
+        sw(win, t >= TB.lock ? 5 : 3);
+        if (wo > 0 && t < TB.dive[0] + 0.3) {
+          const [ax, ay] = toScr(wx, CY - 200, c), o2 = wo * (1 - r(t, TB.dive[0], TB.dive[0] + 0.3));
+          winT.textContent = t < TB.lock ? "WEIGHING THE TAKE" : "THE STRONGEST TEN SECONDS · FOUND AUTOMATICALLY";
+          set(winT, { x: Math.max(64, ax).toFixed(1), y: (ay - 22).toFixed(1), opacity: o2.toFixed(3) });
+          const [, by] = toScr(wx, CY + 200, c), mw = 1000 * c[2], m = mean10(wx) / bestMean;
+          set(meterBg, { x: Math.max(64, ax).toFixed(1), y: (by + 16).toFixed(1), width: mw.toFixed(1), opacity: o2.toFixed(3) });
+          set(meterF, { x: Math.max(64, ax).toFixed(1), y: (by + 16).toFixed(1), width: (mw * cl(m)).toFixed(1), opacity: o2.toFixed(3), fill: t >= TB.lock ? TEXT : AMBER });
+        }
+        // your machine: the frame draws on, the clone locks on, the cloud never reaches it
+        const fo = 1 - r(t, T.speak[0], T.speak[0] + 0.5);
+        draw(frameR, eOut(r(t, TB.frame[0], TB.frame[1]))); sw(frameR, 3); frameR.setAttribute("opacity", r(t, TB.frame[0], TB.frame[0] + 0.05) * fo);
+        frameT.setAttribute("opacity", r(t, TB.frame[1] - 0.3, TB.frame[1])); frameT2.setAttribute("opacity", r(t, TB.frame[1] - 0.2, TB.frame[1] + 0.1));
+        const cu = eExpoIO(r(t, TB.clone[0], TB.clone[1]));
+        cloneP.setAttribute("transform", `translate(${(80 * (1 - cu)).toFixed(1)} ${(250 * (1 - cu)).toFixed(1)})`); sw(cloneP, 2);
+        cloneP.setAttribute("opacity", (r(t, TB.clone[0], TB.clone[0] + 0.2) * (1 - r(t, TB.clone[1], TB.clone[1] + 0.35))).toFixed(3));
+        const ku = eOut(r(t, TB.cloud[0], TB.cloud[1]));
+        cloud.setAttribute("transform", `translate(${lerp(B1 + 640, B1 + 220, ku).toFixed(1)} ${CY - 330}) scale(0.7)`); sw(cloud, 3);
+        const eu = r(t, TB.erase[0], TB.erase[1]);
+        if (t < TB.cloud[0]) cloud.setAttribute("opacity", 0); else draw(cloud, 1 - eIn(eu));
+        zeroT.setAttribute("opacity", (r(t, TB.erase[0], TB.erase[0] + 0.3) * fo).toFixed(3));
+        // into the next scene: the voice drops to the speaking line
+        const xu = eIO(r(t, T.speak[0], T.speak[0] + 0.5));
+        G.strip.setAttribute("opacity", 1 - xu);
+      }
+
+      function paintSpeak(t, sc) {
+        if (!(sc === "speak" || (sc === "every" && t < TB.into_page[1]))) return;
+        const s0 = T.speak[0];
+        sBase.setAttribute("opacity", r(t, s0, s0 + 0.4) * (1 - r(t, TB.switch, TB.switch + 0.3)));
+        letters.forEach((L) => {
+          const tu = eOut(r(t, L.tType, L.tType + 0.18)), mu = eExpoIO(r(t, L.tMelt, L.tMelt + 0.42));
+          L.gl.setAttribute("opacity", mu > 0 ? 0 : tu); L.gl.setAttribute("transform", `translate(0 ${(26 * (1 - tu)).toFixed(1)})`);
+          if (mu > 0) {
+            L.mp.setAttribute("d", morph(L.from, L.to, mu));
+            const playing = t >= L.w.t && t < L.w.t + (L.w.b - L.w.a) + 0.05;
+            L.mp.setAttribute("fill", mu < 1 ? mix(TEXT, EMBER, mu) : playing ? EMBER : AMBER);
+            L.mp.setAttribute("opacity", 1);
+          } else L.mp.setAttribute("opacity", 0);
+          if (t >= TB.voice + CLIP + 0.3) L.mp.setAttribute("opacity", 0);
+        });
+        // once spoken, the slices are one ribbon
+        fullRib.setAttribute("opacity", t >= TB.voice + CLIP + 0.3 ? 1 : 0);
+        // Hi {name}: the slot flicks through sample names, then the voice flows into Maya's page
+        let nm = "{name}"; NAMES.forEach((n, k) => { if (t >= TB.names_at[k]) nm = n; });
+        hiN.textContent = nm; hiN.setAttribute("fill", nm === "{name}" ? MUTED : AMBER);
+        const hu = eOut(r(t, TB.switch, TB.switch + 0.4)), ho = 1 - r(t, TB.into_page[0], TB.into_page[0] + 0.4);
+        set(hiT, { opacity: (hu * ho).toFixed(3), transform: `translate(0 ${(30 * (1 - hu)).toFixed(1)})` });
+        const pu = eExpoIO(r(t, TB.into_page[0], TB.into_page[1]));
+        const sx = lerp(1, (RIB_X1 - RIB_X0) * HZ / (SX1 - SX0), pu), sy = lerp(1, RIB_H / SH * HZ, pu);
+        const cxm = (SX0 + SX1) / 2;   // the hero page sits where this ribbon lands
+        const dx = (HERO.x + (RIB_X0 + RIB_X1) / 2 - HCX) * HZ * pu;
+        speakG.setAttribute("transform", `translate(${(cxm + dx).toFixed(2)} ${SY}) scale(${sx.toFixed(4)} ${sy.toFixed(4)}) translate(${-cxm} ${-SY})`);
+      }
+
+      function paintEvery(t, sc, c) {
+        for (const ch of chips) ch.g.setAttribute("opacity", 0);
+        if (!(sc === "every" && t >= TB.into_page[0]) && sc !== "title") return;
+        const pf = r(t, TB.into_page[0] + 0.45, TB.into_page[1]);
+        const ret = r(t, TB.retract[0], TB.retract[1]);
+        branches.forEach((b) => {
+          let u = eOut(r(t, b.t0, b.t1));
+          if (ret > 0) u = Math.min(u, 1 - eIn(r(ret, b.leaf != null ? 0 : b.px > 6 ? 0.55 : 0.3, b.leaf != null ? 0.5 : b.px > 6 ? 1 : 0.8)));
+          draw(b.e, u); sw(b.e, b.px);
+          b.e.setAttribute("stroke", b.leaf != null && t < b.t1 + 0.3 && t > b.t0 ? EMBER : AMBER);
+        });
+        const wallO = r(t, TB.pullout[0], TB.pullout[0] + 0.8);
+        cards.forEach((C, k) => {
+          const isHero = k === TB.hero;
+          const land = C.land ?? 99;
+          const u = isHero ? 1 : eBack(r(t, land, land + 0.3));
+          sw(C.ghost, 1.5); C.ghost.setAttribute("opacity", isHero ? 0 : wallO * (1 - r(t, land, land + 0.1)) * (1 - ret));
+          sw(C.box, isHero ? 1.5 : 1.5);
+          let s = u, o = isHero ? pf : (u > 0 ? 1 : 0);
+          if (ret > 0) { const rk = isHero ? 1 : eIn(r(ret, 0.35 * (1 - (land - TB.b3[0]) / 2.6), 0.35 * (1 - (land - TB.b3[0]) / 2.6) + 0.45)); if (!isHero) s *= 1 - rk; }
+          if (isHero && sc === "title") { const bu = eIn(r(t, TB.bar - 0.3, TB.bar)); s = 1 - bu; }
+          C.face.setAttribute("transform", `scale(${Math.max(0.0001, s).toFixed(4)})`); C.face.setAttribute("opacity", s > 0.01 ? o : 0);
+          // the ribbon on the page plays out from the button
+          const ru = isHero ? 1 : eOut(r(t, land + 0.1, land + 0.55));
+          C.rib.setAttribute("transform", `translate(${RIB_X0} 0) scale(${Math.max(0.0001, ru).toFixed(4)} 1) translate(${-RIB_X0} 0)`);
+          C.ribP.setAttribute("fill", t > land && t < land + 0.55 ? EMBER : AMBER);
+          if (C.f) {
+            const fu = r(t, C.f.t, C.f.t + 0.15), fx = r(t, C.f.t + TB.beat, C.f.t + TB.beat + 0.4);
+            C.box.setAttribute("stroke", fu > 0 && fx < 1 ? AMBER : LINE); sw(C.box, fu > 0 && fx < 1 ? 3 : 1.5);
+            C.ribP.setAttribute("opacity", 1 - fx); C.fixP.setAttribute("opacity", fx);
+          }
+        });
+        // the quality check: one scan across the wall
+        const qu = r(t, TB.qc[0] - 0.2, TB.qc[1] + 0.2), qx = lerp(-TB.half - 260, TB.half + 260, qu);
+        set(scanL, { x1: qx, x2: qx, opacity: qu > 0 && qu < 1 ? 0.9 : 0 }); sw(scanL, 2);
+        set(scanB, { x: qx - 260, opacity: qu > 0 && qu < 1 ? 0.06 : 0 });
+        chips.forEach((ch) => {
+          const f = ch.f, L = LEADS[f.k], a = r(t, f.t, f.t + 0.15) * (1 - r(t, f.t + TB.beat * 2.4, f.t + TB.beat * 2.8));
+          if (a <= 0 || sc === "title") return;
+          const [x, y] = toScr(L.x - 150, L.y - 95, c);
+          ch.bx.setAttribute("width", (ch.tx.getComputedTextLength() + 24).toFixed(1)); ch.okB.setAttribute("width", (ch.okT.getComputedTextLength() + 24).toFixed(1));
+          ch.g.setAttribute("transform", `translate(${x.toFixed(1)} ${(y - 18).toFixed(1)})`); ch.g.setAttribute("opacity", a.toFixed(3));
+          const oku = r(t, f.t + TB.beat, f.t + TB.beat + 0.15);
+          ch.ok.setAttribute("opacity", oku); ch.tx.setAttribute("opacity", oku > 0 ? 0 : 1); ch.bx.setAttribute("opacity", 1 - oku);
+        });
+      }
+
+      function paintTitle(t, sc) {
+        if (sc !== "title") { G.title.setAttribute("opacity", 0); return; }
+        G.title.setAttribute("opacity", 1);
+        const b = TB.bar, mk = TB.mark;
+        const bu = eExpo(r(t, b - 0.1, b + 0.25)), bo = 1 - r(t, mk, mk + 0.25);
+        set(barR, { y: (-110 * bu).toFixed(1), height: Math.max(0, 220 * bu).toFixed(1), opacity: (t >= b - 0.1 ? bo : 0).toFixed(3), transform: `translate(${W / 2} ${lerp(H / 2, MARKY, eIO(r(t, mk - 0.2, mk + 0.3))).toFixed(1)})` });
+        const mu = eExpo(r(t, mk, mk + 0.6));
+        lockup.setAttribute("transform", `translate(${W / 2} ${MARKY}) scale(${lerp(0.94, 1, mu).toFixed(4)})`);
+        lockup.setAttribute("opacity", r(t, mk, mk + 0.3));
+      }
+
+      const STATIONS = [[0.5, 3.4], [4.4, 8.4], [9.3, 13.4], [22.7, 26.6]];
+      const HUD = [[0, "step 01 · record"], [T.keep[0], "step 02 · the best ten seconds"], [T.machine[0], "step 03 · local clone"], [T.speak[0], "step 04 · generate"],
+        [T.every[0], "step 05 · outreach"], [TB.qc[0] - 0.2, "quality check"], [T.title, "ai.joaoqueiros.com/tembr"]];
+      const URL_TEXT = "ai.joaoqueiros.com/tembr";
+      function paintUI(t) {
+        let st = HUD[0][1]; for (const [a, s] of HUD) if (t >= a) st = s;
+        $("#hud-st").textContent = st;
+        const hudO = r(t, 0.4, 0.8) * (1 - r(t, T.title, T.title + 0.3));
+        $("#hud-l").style.opacity = hudO; $("#hud-r").style.opacity = hudO;
+        STATIONS.forEach(([t0, t1], k) => {
+          const e = $("#st-" + k), a = r(t, t0, t0 + 0.35), b = r(t, t1, t1 + 0.25), on = t >= t0 && t < t1 + 0.25;
+          e.style.opacity = on ? 1 - b : 0;
+          e.style.clipPath = `inset(0 ${(100 * (1 - eExpo(a))).toFixed(1)}% 0 0)`;
+          e.style.transform = `translateY(${(30 * eIn(b)).toFixed(1)}px)`;
+        });
+        const mk = TB.mark;
+        $("#title").style.opacity = t >= T.title ? 1 : 0;
+        const lu = r(t, mk + 0.5, mk + 1.0); $("#t-line").style.opacity = lu; $("#t-line").style.transform = `translateY(${(20 * (1 - eOut(lu))).toFixed(1)}px)`;
+        $("#t-url").textContent = typed(URL_TEXT, r(t, mk + 1.0, mk + 1.7));
+        $("#t-rule").style.transform = `scaleX(${eExpoIO(r(t, mk + 1.6, mk + 2.3)).toFixed(3)})`;
+        $("#t-note").style.opacity = r(t, mk + 2.1, mk + 2.6);
+      }
+
+      const tl = gsap.timeline({ paused: true });
+      const clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+
+      async function build() {
+        await Promise.all([document.fonts.load('800 40px "Archivo"'), document.fonts.load('500 20px "Instrument Sans"'),
+          document.fonts.load('500 20px "IBM Plex Mono"'), document.fonts.load('400 20px "IBM Plex Mono"')]);
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = window.__hf.buildReady || {};
+      window.__hf.buildReady["ten-seconds"] = build();
+    </script>
+  </body>
+</html>

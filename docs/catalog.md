@@ -12,7 +12,7 @@ An anime film for a brand identity studio, told as an anime cut is made, in penc
 
 Made for: João Queirós · brand identity studio. Stack: Three.js, TSL, Canvas 2D, GSAP, Python (table, score).
 
-[Recipe and poster](../recipes/r25-first-line/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r25-first-line-v1)
+[Recipe and poster](../recipes/r25-first-line/) · [Watch the film](https://visions.joaoqueiros.com/recipes/first-line/?utm_source=github&utm_medium=referral&utm_campaign=recipes) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r25-first-line-v1)
 
 ### R24 · Cairn
 
@@ -106,13 +106,21 @@ Made for: Imagined Worlds · Stills. Stack: Three.js, TSL, GSAP, Python (score).
 
 ## Products and systems
 
+### R27 · Ten Seconds
+
+A film for a local voice cloning studio, drawn entirely in SVG: ninety seconds of voice as a racing ribbon, a window that keeps the strongest ten, a clone that locks on inside your machine while a cloud never reaches it, a typed line that melts letter by letter into the cloned voice speaking it, and one ribbon branching to a wall of named player pages.
+
+Made for: Tembr · local voice cloning. Stack: SVG, GSAP, Python (table, glyphs, score).
+
+[Recipe and poster](../recipes/r27-ten-seconds/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r27-ten-seconds-v1)
+
 ### R26 · The Gate
 
 A film for a self-hosted outreach workspace, drawn entirely in SVG: a storm of envelopes frozen by a kill switch, a street map that draws itself and pins that morph into shopfronts, a dial that scores leads into lanes, drafts struck and repaired by a tone audit, and a monumental art-deco gate that opens only when a person clicks Approve.
 
 Made for: OutreachIQ · self-hosted outreach. Stack: SVG, GSAP, Python (table, score).
 
-[Recipe and poster](../recipes/r26-the-gate/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r26-the-gate-v1)
+[Recipe and poster](../recipes/r26-the-gate/) · [Watch the film](https://visions.joaoqueiros.com/recipes/the-gate/?utm_source=github&utm_medium=referral&utm_campaign=recipes) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r26-the-gate-v1)
 
 ### R21 · Kitted
 
