@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <!--
+      R30 · Ninefold. 32 s at 128 bpm, raymarched shader (season 3). For Grid Studio, twelve free Instagram
+      tools that run in the browser. One image, ninefold: a glass tile spins with the photo split into colour through it
+      and bursts into nine; the camera pulls back over an endless field of glass tiles with a wave on every beat; a dolly
+      zoom down a profile column, and nine tiles drop in posting order into one seamless picture; ten tools in ten hard
+      cuts, each a new shape of the same field; a kaleidoscope folds the field into one tile in a browser, and three
+      words shatter on it; the nine tiles lock into the mark.
+      Technique: one WebGL2 fragment shader on a full-screen triangle. An infinite field from one cell (domain
+      repetition, the nearest four cells evaluated per step), heights from a travelling wave and beat pulses, a polar
+      fold for the kaleidoscope, per-cell shape blends for the tools (box, sphere, bars, lines, squircle, QR bits). Glass
+      shading: three rays refracted per pixel, one per colour, read the photo at the tile's base, so the picture splits
+      into colour at every bevel; Fresnel reflections of a procedural studio. paint(t) sets every uniform from one
+      baked table (assets/table.js, from bake/table.py); score/compose.py reads it too.
+    -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/table.js"></script>
+    <style>
+      @font-face { font-family: "Archivo"; src: url("assets/fonts/Archivo.ttf") format("truetype"); font-weight: 100 900; }
+      @font-face { font-family: "Instrument Serif"; src: url("assets/fonts/InstrumentSerif-Regular.ttf") format("truetype"); font-weight: 400; font-style: normal; }
+      @font-face { font-family: "Instrument Serif"; src: url("assets/fonts/InstrumentSerif-Italic.ttf") format("truetype"); font-weight: 400; font-style: italic; }
+      @font-face { font-family: "JBM"; src: url("assets/fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 100 800; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #0c0a09; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #0c0a09; color: #faf8f4; }
+      #ct-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #gl { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #ct-ui { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      .hud { position: absolute; top: 44px; font: 500 17px "JBM", monospace; letter-spacing: 0.18em; white-space: nowrap; color: #c9c2b2; text-transform: uppercase; }
+      #hud-l { left: 64px; color: #faf8f4; letter-spacing: 0.26em; }
+      #hud-l span { color: #e0805a; }
+      #hud-r { right: 64px; }
+      .slam { position: absolute; font: 850 172px/0.86 "Archivo", sans-serif; letter-spacing: -0.035em; text-transform: uppercase; color: #faf8f4; white-space: nowrap; opacity: 0; text-shadow: 0 8px 48px rgba(0, 0, 0, 0.55); }
+      .slam em { font-style: normal; color: #ff8a52; }
+      .slam.bl { left: 76px; bottom: 74px; transform-origin: 0 100%; }
+      .slam.br { right: 76px; bottom: 74px; text-align: right; transform-origin: 100% 100%; }
+      .slam.tl { left: 76px; top: 108px; transform-origin: 0 0; }
+      .slam.c { left: 0; right: 0; top: 128px; text-align: center; transform-origin: 50% 50%; }
+      .slam.s { font-size: 104px; }
+      .num { position: absolute; left: 0; top: 0; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%; background: #0c0a09; border: 2px solid #faf8f4; color: #faf8f4; font: 700 22px/48px "JBM", monospace; text-align: center; opacity: 0; }
+      .num.first { background: #c24d21; border-color: #c24d21; }
+      #win { position: absolute; border: 2px solid rgba(250, 248, 244, 0.7); border-radius: 22px; opacity: 0; }
+      #win-bar { position: absolute; left: 0; right: 0; top: 0; height: 52px; border-bottom: 1.5px solid rgba(250, 248, 244, 0.35); }
+      #win-bar i { position: absolute; top: 20px; width: 12px; height: 12px; border-radius: 50%; background: rgba(250, 248, 244, 0.5); }
+      #win-url { position: absolute; left: 112px; top: 15px; font: 500 18px "JBM", monospace; color: #c9c2b2; white-space: nowrap; }
+      .fly { position: absolute; left: 0; top: 0; font: 900 150px/1 "Archivo", sans-serif; letter-spacing: -0.03em; color: #faf8f4; white-space: nowrap; opacity: 0; }
+      .fly b { position: absolute; left: 0; top: 0; font-weight: 900; }
+      .no { position: absolute; right: 110px; font: 400 66px/1 "Instrument Serif", serif; color: #faf8f4; white-space: nowrap; opacity: 0; }
+      .no em { color: #ff8a52; }
+      #flash { position: absolute; inset: 0; background: #faf8f4; opacity: 0; }
+      #veil { position: absolute; inset: 0; background: #000; opacity: 1; }
+      #title { position: absolute; inset: 0; opacity: 0; }
+      #t-mark { position: absolute; left: 780px; top: 250px; width: 360px; height: 360px; opacity: 0; }
+      #t-name { position: absolute; left: 0; right: 0; top: 650px; text-align: center; font: 400 104px/1 "Instrument Serif", serif; color: #faf8f4; white-space: nowrap; opacity: 0; }
+      #t-line { position: absolute; left: 0; right: 0; top: 780px; text-align: center; font: 500 30px "Archivo", sans-serif; color: #c9c2b2; white-space: nowrap; opacity: 0; }
+      #t-url { position: absolute; left: 0; right: 0; top: 846px; height: 40px; text-align: center; font: 500 30px "JBM", monospace; color: #e0805a; white-space: nowrap; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="32" data-width="1920" data-height="1080">
+      <div id="ct-stage" class="clip" data-start="0" data-duration="32" data-track-index="0">
+        <canvas id="gl" width="1920" height="1080" data-layout-allow-overflow></canvas>
+      </div>
+      <div id="ct-ui" class="clip" data-start="0" data-duration="32" data-track-index="1">
+        <div class="hud" id="hud-l" data-layout-allow-occlusion>GRID STUDIO <span>· ninefold</span></div>
+        <div class="hud" id="hud-r" data-layout-allow-occlusion><span id="hud-st">one image</span></div>
+        <div id="nums" data-layout-allow-occlusion data-layout-allow-overlap></div>
+        <div id="win" data-layout-allow-occlusion><div id="win-bar"><i style="left:24px"></i><i style="left:46px"></i><i style="left:68px"></i><span id="win-url">ai.joaoqueiros.com/gridstudio</span></div></div>
+        <div id="words" data-layout-allow-occlusion data-layout-allow-overlap data-layout-allow-overflow></div>
+        <div id="flies" data-layout-allow-occlusion data-layout-allow-overlap data-layout-allow-overflow></div>
+        <div class="no" id="no-0" data-layout-allow-occlusion style="top: 372px">No <em>upload</em>.</div>
+        <div class="no" id="no-1" data-layout-allow-occlusion style="top: 462px">No <em>account</em>.</div>
+        <div class="no" id="no-2" data-layout-allow-occlusion style="top: 552px">No <em>watermark</em>.</div>
+        <div id="title" data-layout-allow-occlusion>
+          <img id="t-mark" src="assets/brand/gridstudio-mark.svg" alt="Grid Studio">
+          <div id="t-name">Grid Studio</div>
+          <div id="t-line">Twelve free Instagram tools in your browser</div>
+          <div id="t-url"></div>
+        </div>
+        <div id="flash" data-layout-allow-occlusion></div>
+        <div id="veil" data-layout-allow-occlusion></div>
+      </div>
+      <audio id="score" src="assets/bgm/score.wav" data-start="0" data-duration="32" data-track-index="7" data-volume="0.8"></audio>
+    </div>
+
+    <script>
+      // the fragment shader: the whole picture
+      const FS = `#version 300 es
+precision highp float;
+uniform vec2 uRes;
+uniform vec3 uCamP, uCamT, uUp;
+uniform float uFocal;
+uniform vec2 uPitch;
+uniform vec3 uHalf;
+uniform float uRound, uFlat;
+uniform vec3 uMask;              // window half-size in cells (x, z), soft edge in cells
+uniform mat3 uRot;
+uniform float uBurst;
+uniform vec4 uWave;              // travelling wave amp, phase, beat-pulse age, pulse amp
+uniform float uDrop[9];
+uniform vec4 uShape;             // sphere, bars, lines, squircle
+uniform float uSlide, uQR, uBio, uKal, uKalRot, uInk, uPaper, uSeam, uDim, uOff, uPal, uFloorY, uGlow;
+uniform vec4 uTint;
+uniform vec2 uWin, uImgH, uFog;
+uniform vec3 uPalC[5];
+uniform sampler2D uImg;
+out vec4 fragColor;
+
+vec2 gId; float gKind; vec3 gLoc;
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+mat2 rot(float a) { float c = cos(a), s = sin(a); return mat2(c, -s, s, c); }
+float sdRB(vec3 p, vec3 b, float r) { vec3 q = abs(p) - b + r; return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0) - r; }
+float sdFlat(vec3 p, vec3 b, float r) { vec2 q = abs(p.xz) - b.xz + r; float d2 = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
+  vec2 w = vec2(d2, abs(p.y) - b.y); return min(max(w.x, w.y), 0.0) + length(max(w, 0.0)); }
+float qrBit(vec2 ij) {
+  for (int f = 0; f < 3; f++) {
+    vec2 o = f == 0 ? vec2(0.0) : (f == 1 ? vec2(14.0, 0.0) : vec2(0.0, 14.0));
+    vec2 l = ij - o;
+    if (l.x >= -0.5 && l.y >= -0.5 && l.x <= 6.5 && l.y <= 6.5) { float m = max(abs(l.x - 3.0), abs(l.y - 3.0)); return (m > 2.5 || m < 1.5) ? 1.0 : 0.0; }
+    if (l.x >= -1.5 && l.y >= -1.5 && l.x <= 7.5 && l.y <= 7.5) return 0.0;
+  }
+  return step(0.5, hash(ij * 1.37 + 0.2));
+}
+// the field's own frame: the kaleidoscope's fold, the spin, the title's offset
+vec3 toField(vec3 p) {
+  if (uKal > 0.5) { float s = 6.2831853 / uKal, a = atan(p.z, p.x) + uKalRot; a = abs(mod(a + 0.5 * s, s) - 0.5 * s); p.xz = length(p.xz) * vec2(cos(a), sin(a)); }
+  p = uRot * p;
+  p.z -= uOff;
+  return p;
+}
+float waveY(vec2 m) {
+  float y = uWave.x * sin(m.x * 0.55 + m.y * 0.35 - uWave.y), d = length(m), a = uWave.z;
+  return y + uWave.w * exp(-pow(d - a * 11.0, 2.0) / 5.0) * exp(-a * 1.2);
+}
+float cellD(vec3 p, vec2 id, out vec3 lp) {
+  vec2 c = id * uPitch; c.x += uSlide;
+  vec2 m = c / uPitch;
+  float e = max(abs(m.x) - uMask.x, abs(m.y) - uMask.y);
+  float f = clamp(1.0 - e / uMask.z, 0.0, 1.0);
+  vec3 h = uHalf;
+  float sph = uShape.x, rs = 0.0, cap = uShape.z;
+  if (uBio > 0.5 && id.x < -1.5) { cap = 0.0; if (abs(id.y) < 0.5) { sph = 1.0; rs = 0.9; } else f = 0.0; }
+  if (cap > 0.0) {
+    float x0 = uBio > 0.5 ? -1.0 : -2.0, last = x0 + 1.0 + floor(hash(vec2(id.y, 3.0)) * 3.2);
+    if (id.x > last + 0.5 && cap > 0.5) f = 0.0;
+    h.x = mix(h.x, uPitch.x * 0.5 + 0.002, cap); h.z = mix(h.z, h.z * 0.26, cap);
+  }
+  if (uQR > 0.0) f *= mix(1.0, qrBit(id + 10.0), uQR);
+  float y = waveY(m);
+  if (abs(id.x) < 1.5 && abs(id.y) < 1.5) { int k = int(id.y + 1.0) * 3 + int(id.x + 1.0); float dy = uDrop[k]; if (dy > 49.0) f = 0.0; else y += dy; }
+  if (f < 0.02) { lp = vec3(9.0); return max(0.45 * min(uPitch.x, uPitch.y), 0.05); }
+  float hb = hash(id + 0.37), hb2 = hash(id + 9.1);
+  y += uBurst * (0.4 + 1.3 * hb);
+  vec3 q = p - vec3(c.x, y, c.y);
+  float gx = waveY(m + vec2(0.5, 0.0)) - waveY(m - vec2(0.5, 0.0)), gz = waveY(m + vec2(0.0, 0.5)) - waveY(m - vec2(0.0, 0.5));
+  q.xy = rot(gx * 0.55 + uBurst * (hb - 0.5) * 2.4) * q.xy;
+  q.zy = rot(gz * 0.55 + uBurst * (hb2 - 0.5) * 2.4) * q.zy;
+  h.y = mix(h.y, 0.17, uShape.w);
+  h *= f;
+  lp = q;
+  float r = min(mix(uRound, 0.45 * min(h.x, h.z), uShape.w), min(h.x, min(h.y, h.z)));
+  float d = sdRB(q, h, r);
+  if (uFlat > 0.0) d = mix(d, sdFlat(q, h, min(uRound, min(h.x, h.z))), uFlat);
+  if (sph > 0.0) { float R = rs > 0.0 ? rs * f : h.x * 0.98; d = mix(d, length(q - vec3(0.0, R - h.y, 0.0)) - R, sph); }
+  if (uShape.y > 0.0) {
+    float w = 0.07 * f, L = h.x * 0.98, o = h.x * 0.36;
+    float b1 = sdRB(vec3(abs(q.x) - o, q.y, q.z), vec3(w, h.y * 1.3, L), 0.03), b2 = sdRB(vec3(q.x, q.y, abs(q.z) - o), vec3(L, h.y * 1.3, w), 0.03);
+    d = mix(d, min(b1, b2), uShape.y);
+  }
+  return d;
+}
+float map(vec3 p) {
+  vec3 fp = toField(p);
+  vec2 pc = vec2(fp.x - uSlide, fp.z) / uPitch, b = floor(pc + 0.5), o = sign(pc - b);
+  o = mix(vec2(1.0), o, abs(o));
+  float d = 1e5; vec3 lp;
+  for (int j = 0; j < 4; j++) {
+    vec2 id = b + vec2(float(j & 1), float(j >> 1)) * o;
+    float dj = cellD(fp, id, lp);
+    if (dj < d) { d = dj; gId = id; gLoc = lp; gKind = 0.0; }
+  }
+  if (uPaper > 0.0) { float dp = sdFlat(p - vec3(0.0, -0.05 - 1.4 * (1.0 - uPaper), 0.0), vec3(1.92, 0.1, 1.92), 0.72); if (dp < d) { d = dp; gKind = 1.0; } }
+  return d;
+}
+vec3 nrm(vec3 p) { vec2 e = vec2(0.0012, -0.0012); return normalize(e.xyy * map(p + e.xyy) + e.yyx * map(p + e.yyx) + e.yxy * map(p + e.yxy) + e.xxx * map(p + e.xxx)); }
+vec3 env(vec3 r) {
+  vec3 c = mix(vec3(0.006, 0.005, 0.005), vec3(0.03, 0.026, 0.022), clamp(r.y * 0.5 + 0.5, 0.0, 1.0));
+  if (r.y > 0.05) { vec2 sb = r.xz / r.y; c += vec3(1.9, 1.86, 1.78) * smoothstep(0.95, 0.75, abs(sb.x + 0.35)) * smoothstep(0.62, 0.45, abs(sb.y + 0.25)); }
+  c += vec3(0.9, 0.88, 0.84) * 1.0 * smoothstep(0.2, 0.3, r.y) * smoothstep(0.47, 0.37, r.y) * smoothstep(0.1, -0.3, r.z) * smoothstep(1.0, 0.5, abs(r.x));
+  c += vec3(0.62, 0.11, 0.035) * 3.0 * smoothstep(0.72, 0.84, r.x) * smoothstep(0.32, 0.12, abs(r.y - 0.12));
+  c += vec3(0.8, 0.78, 0.74) * 0.9 * smoothstep(-0.7, -0.86, r.x) * smoothstep(0.42, 0.18, abs(r.y - 0.3));
+  return c;
+}
+vec3 photo(vec2 xz, vec2 id, float lod) {
+  vec2 uv;
+  bool win = abs(id.x) < uWin.x && abs(id.y) < uWin.y;
+  if (win) uv = vec2(xz.x / (2.0 * uImgH.x) + 0.5, xz.y / (2.0 * uImgH.y) + 0.5);
+  else { vec2 hh = vec2(hash(id + 1.3), hash(id + 5.7)), l = (xz - id * uPitch) / uPitch + 0.5; uv = 0.12 + hh * 0.5 + l * 0.36; }
+  vec3 c = pow(textureLod(uImg, uv, lod).rgb, vec3(2.2));
+  return win ? c : c * uDim;
+}
+const vec3 L = normalize(vec3(-0.35, 1.0, 0.45));
+const vec3 BG = vec3(0.0042, 0.0035, 0.003);
+const vec3 TERRA = vec3(0.539, 0.073, 0.016), INK = vec3(0.0091, 0.0079, 0.0063), PAPER = vec3(0.955, 0.94, 0.905);
+vec3 aces(vec3 x) { return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }
+void main() {
+  vec2 uv = (gl_FragCoord.xy - 0.5 * uRes) / uRes.y;
+  vec3 fw = normalize(uCamT - uCamP), rt = normalize(cross(fw, uUp)), up = cross(rt, fw);
+  vec3 rd = normalize(uv.x * rt + uv.y * up + uFocal * fw), ro = uCamP;
+  float tF = rd.y < -1e-4 ? (uFloorY - ro.y) / rd.y : 1e4;
+  float t = rd.y < 0.0 ? max(0.0, (ro.y - 3.4) / -rd.y) : 0.0, d = 1.0; bool hit = false;
+  for (int i = 0; i < 170; i++) {
+    d = map(ro + rd * t);
+    if (d < 0.0008 * t + 0.0004) { hit = true; break; }
+    t += clamp(d * 0.8, 0.0015, 0.45);
+    if (t > tF || t > 120.0) break;
+  }
+  vec3 col;
+  if (hit && t < tF) {
+    vec3 p = ro + rd * t;
+    map(p);
+    vec2 id = gId; float kind = gKind; vec3 loc = gLoc;
+    vec3 n = nrm(p);
+    vec3 r = reflect(rd, n), er = r.y > 0.0 ? env(r) : BG * 2.0;
+    float fr = 0.04 + 0.96 * pow(1.0 - clamp(dot(n, -rd), 0.0, 1.0), 5.0), dif = max(dot(n, L), 0.0);
+    if (kind > 0.5) {
+      col = PAPER * (0.08 + 0.92 * dif) + er * fr * 0.15;
+    } else {
+      // glass: three rays, one per colour, refract through the tile and read the photo at its base
+      vec3 base;
+      for (int c = 0; c < 3; c++) {
+        vec3 rr = refract(rd, n, 1.0 / (1.42 + 0.06 * float(c)));
+        if (dot(rr, rr) < 0.5) rr = rd;
+        vec3 q = toField(p + rr * (2.0 * uHalf.y + 0.04) / max(-rr.y, 0.3));
+        base[c] = photo(vec2(q.x - uSlide, q.z), id, 0.0)[c];
+      }
+      base = mix(base, uPalC[int(clamp(id.x + 2.0, 0.0, 4.0))], uPal);
+      base = mix(base, uTint.rgb, uTint.w);
+      vec3 ink = (abs(id.x - 1.0) < 0.5 && abs(id.y - 1.0) < 0.5) ? TERRA : INK;
+      float lum = mix(0.78 + 0.32 * dif, 0.06 + 0.94 * dif, uInk);
+      base = mix(base, ink, uInk);
+      col = base * lum + er * fr * mix(1.0, 0.2, uInk);
+      float edge = max(abs(loc.x) / uHalf.x, abs(loc.z) / uHalf.z);
+      col += TERRA * 3.0 * smoothstep(0.84, 1.0, edge) * uSeam * step(abs(id.x), 1.5) * step(abs(id.y), 1.5);
+    }
+    col = mix(col, BG, 1.0 - exp(-max(0.0, t - uFog.x) * uFog.y));
+  } else if (tF < 1e3) {
+    vec3 p = ro + rd * tF, fp = toField(p);
+    vec2 id = floor(vec2(fp.x - uSlide, fp.z) / uPitch + 0.5);
+    vec2 fuv = vec2(fp.x - uSlide, fp.z) / (2.0 * uImgH) + 0.5;
+    col = BG * 1.6 + pow(textureLod(uImg, fuv, 7.0).rgb, vec3(2.2)) * uGlow * exp(-0.04 * dot(fp.xz, fp.xz));
+    col = mix(col, BG, 1.0 - exp(-max(0.0, tF - uFog.x) * uFog.y));
+  } else col = BG;
+  col *= 1.0 - 0.32 * dot(uv, uv);
+  col = aces(col * 1.12);
+  col = pow(col, vec3(1.0 / 2.2));
+  col += (hash(gl_FragCoord.xy) - 0.5) / 255.0;
+  fragColor = vec4(col, 1.0);
+}
+`;
+    </script>
+
+    <script>
+      const TB = window.TABLE, T = TB.T, DUR = TB.dur, BEAT = TB.beat;
+      const W = 1920, H = 1080;
+      const $ = (s) => document.querySelector(s);
+      const cl = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x)), r = (t, a, b) => cl((t - a) / (b - a)), lerp = (a, b, u) => a + (b - a) * u;
+      const lv = (A, B, u) => A.map((v, i) => lerp(v, B[i], u));
+      const E = (n) => gsap.parseEase(n), eOut = E("power3.out"), eIn = E("power3.in"), eIO = E("power3.inOut"), eExpo = E("expo.out"), eExpoIn = E("expo.in"),
+        eExpoIO = E("expo.inOut"), eQuadIn = E("power2.in"), eBack = E("back.out(2.2)");
+      const lin = (h) => [16, 8, 0].map((s) => Math.pow(((parseInt(h.slice(1), 16) >> s) & 255) / 255, 2.2));
+      const typed = (s, u) => s.slice(0, Math.round(s.length * cl(u)));
+      const at = (x) => x;   // a time from the table
+
+      // ---------------- the camera, matching the shader's lookAt and focal length
+      const sub = (a, b) => a.map((v, i) => v - b[i]), dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+      const norm = (a) => { const l = Math.hypot(...a); return a.map((v) => v / l); };
+      const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+      let CAM = { p: [0, 4, 6], t: [0, 0, 0], up: [0, 1, 0], f: 1.8 };
+      function project(p) {
+        const fw = norm(sub(CAM.t, CAM.p)), rt = norm(cross(fw, CAM.up)), up = cross(rt, fw), d = sub(p, CAM.p), z = dot(d, fw);
+        return [W / 2 + (dot(d, rt) / z) * CAM.f * H, H / 2 - (dot(d, up) / z) * CAM.f * H];
+      }
+      const orbit = (p, a) => [p[0] * Math.cos(a) + p[2] * Math.sin(a), p[1], -p[0] * Math.sin(a) + p[2] * Math.cos(a)];
+      const cam = (p, t, up = [0, 1, 0], f = 1.8) => ({ p, t, up, f });
+      const camMix = (A, B, u) => ({ p: lv(A.p, B.p, u), t: lv(A.t, B.t, u), up: lv(A.up, B.up, u), f: lerp(A.f, B.f, u) });
+      const TOP = [0, 0, -1];
+      // y then x rotation, column-major for uniformMatrix3fv
+      function euler(ax, ay) {
+        const cx = Math.cos(ax), sx = Math.sin(ax), cy = Math.cos(ay), sy = Math.sin(ay);
+        const m = [[cy, sy * sx, sy * cx], [0, cx, -sx], [-sy, cy * sx, cy * cx]];
+        return [m[0][0], m[1][0], m[2][0], m[0][1], m[1][1], m[2][1], m[0][2], m[1][2], m[2][2]];
+      }
+      const lastPulse = (t, list) => { let a = 99; for (const b of list) if (t >= b) a = t - b; return a; };
+
+      // ---------------- the scene at time t: every uniform
+      function base() {
+        return { pitch: [1, 1], half: [0.46, 0.08, 0.46], round: 0.06, flat: 0, mask: [99, 99, 0.01], rot: [0, 0], burst: 0, wave: [0, 0, 99, 0],
+          drop: new Array(9).fill(0), shape: [0, 0, 0, 0], slide: 0, qr: 0, bio: 0, kal: 0, kalRot: 0, ink: 0, paper: 0, seam: 0, dim: 0.5, off: 0,
+          pal: 0, tint: [1, 1, 1, 0], win: [99, 99], imgH: [6, 8], fog: [14, 0.04], floorY: -0.5, glow: 0.06, cam: cam([0, 8, 10], [0, 0, 0]) };
+      }
+      const SQ = (k = 1) => [1.5 * k, 2 * k];   // the photo cropped square over the 3x3
+      const TOOLCFG = [
+        (S, tt) => { S.mask = [1.5, 1.5, 0.01]; S.win = [1.5, 1.5]; S.imgH = SQ(); S.seam = 1 - r(tt, 0, 0.6);
+          const u = eOut(r(tt, 0.08, 0.4)); S.half = [lerp(0.5, 0.44, u), 0.08, lerp(0.5, 0.44, u)];
+          S.cam = cam(orbit([3.2, 4.4, 4.4], 0.25 * tt), [0, 0, 0]); },
+        (S, tt) => { S.mask = [1.5, 0.5, 0.01]; S.pitch = [1.0, 1.25]; S.half = [0.46, 0.08, 0.575]; S.imgH = [2.0, 2.667];
+          S.slide = -1.0 * eExpoIO(r(tt, 0.12, 0.55)); S.cam = cam([0, 2.0, 4.6 - 0.2 * tt], [0, 0, 0]); },
+        (S, tt) => { S.mask = [2.5, 0.5, 0.01]; S.shape = [eBack(r(tt, 0, 0.32)), 0, 0, 0]; S.half = [0.42, 0.08, 0.42]; S.win = [-1, -1]; S.dim = 1;
+          S.cam = cam([0.4 - 0.5 * tt, 1.25, 5.2], [0, 0.32, 0]); },
+        (S, tt) => { S.mask = [2.5, 0.5, 0.01]; S.shape = [1 - eIO(r(tt, 0.05, 0.4)), 0, 0, 0]; S.pal = eOut(r(tt, 0, 0.25)); S.half = [0.42, 0.08, 0.42];
+          S.cam = cam([0, 5.6 - 0.3 * tt, 2.8], [0, 0, 0]); },
+        (S, tt) => { const a = [1, 1.25, 1.78]; let pz = a[0]; for (let j = 1; j < 3; j++) pz = lerp(pz, a[j], eExpoIO(r(tt, 0.22 * j - 0.12, 0.22 * j + 0.06)));
+          S.mask = [1.5, 1.5, 0.01]; S.pitch = [1, pz]; S.half = [0.46, 0.08, 0.46 * pz + 0.02 * (pz - 1)]; S.win = [1.5, 1.5]; S.imgH = SQ(Math.max(1, 0.75 * pz));
+          S.cam = cam([0, 9.4, 3.6], [0, 0, 0.25]); },
+        (S, tt) => { S.mask = [10.5, 10.5, 0.01]; S.qr = eOut(r(tt, 0, 0.35)); S.tint = [...lin("#faf8f4"), 0.88]; S.imgH = [7, 9.333];
+          S.wave = [0, 0, tt, 0.4]; S.cam = cam([0, 40 + 3 * tt, 16], [0, 0, 0.4]); },
+        (S, tt) => { S.mask = [2.5, 1.5, 0.01]; S.shape = [0, 0, 0, eBack(r(tt, 0, 0.3))]; S.pal = 0.8; S.half = [0.4, 0.08, 0.4];
+          S.cam = cam(orbit([-3.6, 4.6, 5.0], -0.2 * tt), [0, 0, 0]); },
+        (S, tt) => { S.mask = [2.5, 3.5, 0.01]; S.shape = [0, 0, eOut(r(tt, 0, 0.3)), 0]; S.tint = [...lin("#faf8f4"), 0.75];
+          S.cam = cam([0.9, 12 - 0.6 * tt, 1.4001], [0.9, 0, 1.4], TOP); },
+        (S, tt) => { S.mask = [1.5, 1.5, 0.01]; S.shape = [0, eOut(r(tt, 0, 0.3)), 0, 0]; S.win = [1.5, 1.5]; S.imgH = SQ();
+          S.cam = cam(orbit([2.6, 3.8, 4.4], 0.3 * tt), [-1.0, 0, 0.5]); },
+        (S, tt) => { S.mask = [2.5, 2.5, 0.01]; S.bio = 1; S.shape = [0, 0, eOut(r(tt, 0, 0.3)), 0]; S.tint = [...lin("#faf8f4"), 0.65];
+          S.cam = cam([0, 9.5 - 0.5 * tt, 0.001], [0, 0, 0], TOP); },
+      ];
+      const SINGLE = cam([0, 2.9, 2.15], [0, 0, 0.05], TOP);
+      const TITLECAM = cam([0, 20.836, 1.1733], [0, 0.1, 1.1733], TOP, 1.8);   // 93.75 px a unit at the tiles' tops: the official mark's size
+
+      function scene(t) {
+        const S = base();
+        // I · one glass tile spins, the photo split into colour through it; it bursts into nine
+        if (t < T.field[0]) {
+          const u = eExpo(r(t, 0, TB.spin)), sb = r(t, TB.shatter, T.field[0]);
+          S.mask = [1.5, 1.5, 0.01]; S.win = [1.5, 1.5]; S.imgH = SQ();
+          S.rot = [0.9 * (1 - u), -5.2 * (1 - u)];
+          S.half = [lerp(0.499, 0.44, eOut(sb)), 0.08, lerp(0.499, 0.44, eOut(sb))];
+          S.burst = 0.9 * eOut(sb);
+          S.fog = [99, 0]; S.glow = 0.05;
+          S.cam = cam([0, 3.1, lerp(5.8, 4.7, eOut(r(t, 0, T.field[0])))], [0, 0, 0]);
+        }
+        // II · the field: a speed-ramped pull back over endless glass, a wave on every beat
+        else if (t < T.feed[0]) {
+          const s = r(t, TB.reveal[0], TB.reveal[1]), R = 1.5 + 46 * Math.pow(s, 2.2);
+          S.mask = [R, R, 2.5];
+          S.burst = 0.9 * (1 - eOut(r(t, T.field[0], T.field[0] + 1.0)));
+          S.imgH = lv(SQ(), [7, 9.333], eIO(r(t, T.field[0], TB.reveal[1] + 0.8)));
+          S.wave = [0.12 * eIO(s), t * 2.4, lastPulse(t, TB.pulses), 0.6];
+          const pull = eExpo(r(t, T.field[0], T.field[0] + 1.7));
+          S.cam = cam(orbit(lv([0, 3.1, 4.7], [0, 10.5, 15], pull), 0.42 * eIO(r(t, T.field[0] + 1.0, T.feed[0]))), lv([0, 0, 0], [0, 0, -3], pull));
+          S.fog = [16, 0.03];
+        }
+        // III · the feed: a dolly zoom down a profile column, then nine tiles drop in posting order
+        else if (t < T.tools[0]) {
+          S.mask = [1.5, 99, 0.01]; S.win = [1.5, 1.5]; S.imgH = SQ(); S.dim = 0.42;
+          S.drop = TB.posts.map(() => 99);
+          TB.order.forEach(([c, rr], j) => { const k = rr * 3 + c, tp = TB.posts[j];
+            if (t < tp - 0.26) S.drop[k] = 99;
+            else if (t < tp) S.drop[k] = 4.2 * (1 - eQuadIn((t - tp + 0.26) / 0.26));
+            else { const a = t - tp; S.drop[k] = -0.14 * Math.exp(-a * 7) * Math.cos(a * 24); } });
+          if (t < TB.topcut) {
+            const u = eIO(r(t, TB.runway[0], TB.runway[1])), p = [0, lerp(2.2, 3.6, u), lerp(42, 8.5, u)];
+            S.cam = cam(p, [0, 0, 0], [0, 1, 0], 1.8 * Math.hypot(...p) / Math.hypot(3.6, 8.5));   // the dolly zoom: the slot stays the same size
+            S.fog = [30, 0.025];
+          } else {
+            S.cam = cam([-1.45, lerp(7.4, 6.6, eOut(r(t, TB.topcut, T.tools[0]))), 0.001], [-1.45, 0, 0], TOP); S.glow = 0.03;
+            S.fog = [99, 0];
+          }
+          S.seam = t >= TB.seam ? 1 - r(t, TB.seam, TB.seam + 0.7) : 0;
+        }
+        // IV · ten tools in ten cuts, then the whole field again
+        else if (t < T.device[0]) {
+          if (t < TB.twelve) {
+            let j = 0; TB.tools.forEach((x, k) => { if (t >= x.t) j = k; });
+            TOOLCFG[j](S, t - TB.tools[j].t);
+            S.fog = [99, 0];
+          } else {
+            const s = r(t, TB.twelve, TB.twelve + 0.8);
+            S.mask = [1.5 + 46 * Math.pow(s, 2), 1.5 + 46 * Math.pow(s, 2), 2.5];
+            S.wave = [0.14, t * 2.6, t - TB.twelve, 0.7];
+            S.imgH = [7, 9.333];
+            S.cam = cam(orbit([0, 9, 11], lerp(-0.5, 0.5, r(t, TB.twelve, T.device[0]))), [0, 0, -1]);
+            S.fog = [16, 0.03];
+          }
+        }
+        // V · a kaleidoscope folds the field into one tile in a browser; three words shatter on it
+        else if (t < T.title) {
+          if (t < TB.collapse[1]) {
+            S.kal = 8; S.kalRot = 0.9 * (t - T.device[0]);
+            const R = t < TB.collapse[0] ? 99 : 0.5 + 46 * Math.pow(1 - r(t, TB.collapse[0], TB.collapse[1]), 2.4);
+            S.mask = [R, R, 2.5]; S.imgH = [5, 6.667];
+            S.wave = [0.1, t * 2.4, lastPulse(t, [T.device[0], T.device[0] + BEAT * 2]), 0.6];
+            S.cam = cam([0, lerp(13, 11, r(t, T.device[0], TB.collapse[1])), 0.001], [0, 0, 0], TOP);
+            S.fog = [99, 0];
+          } else {
+            S.mask = [0.5, 0.5, 0.01]; S.win = [0.5, 0.5]; S.imgH = [0.5, 0.667];
+            let ax = 0, y = 0;
+            TB.noes.forEach((n) => { const a = t - n.hit; if (a >= 0) { ax += 0.28 * Math.exp(-a * 6) * Math.sin(a * 28); y += -0.12 * Math.exp(-a * 8) * Math.cos(a * 30); } });
+            S.rot = [ax, 0.15 * Math.sin(t * 0.8)]; S.drop[4] = y;
+            S.cam = SINGLE; S.fog = [99, 0];
+          }
+        }
+        // VI · title: one tile becomes nine, and the nine lock into the mark
+        else {
+          const g = eExpoIO(r(t, TB.morph[0], TB.morph[1]));
+          S.mask = [lerp(0.5, 1.5, eOut(r(t, T.title, T.title + 0.45))), lerp(0.5, 1.5, eOut(r(t, T.title, T.title + 0.45))), 0.3];
+          S.win = [1.5, 1.5]; S.imgH = SQ();
+          S.pitch = lv([1, 1], [0.78, 0.84], g); S.half = lv([0.46, 0.08, 0.46], [0.3, 0.1, 0.36], g);
+          S.round = lerp(0.06, 0.12, g); S.flat = g; S.off = 0.12 * g;
+          S.ink = eOut(r(t, T.title, T.title + 0.7)); S.paper = eOut(r(t, TB.morph[0] + 0.3, TB.morph[1]));
+          S.cam = camMix(SINGLE, TITLECAM, eExpoIO(r(t, T.title, TB.morph[1]))); S.fog = [99, 0]; S.glow = 0;
+        }
+        return S;
+      }
+
+      // ---------------- WebGL2
+      let gl, prog, U = {}, img;
+      const UNI = ["uRes", "uCamP", "uCamT", "uUp", "uFocal", "uPitch", "uHalf", "uRound", "uFlat", "uMask", "uRot", "uBurst", "uWave", "uDrop", "uShape", "uSlide", "uQR", "uBio",
+        "uKal", "uKalRot", "uInk", "uPaper", "uSeam", "uDim", "uOff", "uPal", "uFloorY", "uGlow", "uTint", "uWin", "uImgH", "uFog", "uPalC", "uImg"];
+      function initGL() {
+        gl = $("#gl").getContext("webgl2", { antialias: false, alpha: false, depth: false, stencil: false, preserveDrawingBuffer: true });
+        const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+        prog = gl.createProgram();
+        gl.attachShader(prog, sh(gl.VERTEX_SHADER, "#version 300 es\nin vec2 p; void main(){ gl_Position = vec4(p, 0.0, 1.0); }"));
+        gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS));
+        gl.linkProgram(prog); if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+        gl.useProgram(prog);
+        const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+        const loc = gl.getAttribLocation(prog, "p"); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+        for (const n of UNI) U[n] = gl.getUniformLocation(prog, n);
+        const tex = gl.createTexture(); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+        gl.generateMipmap(gl.TEXTURE_2D);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.MIRRORED_REPEAT); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.MIRRORED_REPEAT);
+        gl.uniform1i(U.uImg, 0); gl.uniform2f(U.uRes, W, H);
+        gl.uniform3fv(U.uPalC, new Float32Array(TB.palette.flatMap(lin)));
+        gl.viewport(0, 0, W, H);
+      }
+      function drawGL(S) {
+        const f1 = (n, v) => gl.uniform1f(U[n], v);
+        gl.uniform3fv(U.uCamP, CAM.p); gl.uniform3fv(U.uCamT, CAM.t); gl.uniform3fv(U.uUp, CAM.up); f1("uFocal", CAM.f);
+        gl.uniform2fv(U.uPitch, S.pitch); gl.uniform3fv(U.uHalf, S.half); f1("uRound", S.round); f1("uFlat", S.flat);
+        gl.uniform3fv(U.uMask, S.mask); gl.uniformMatrix3fv(U.uRot, false, new Float32Array(euler(S.rot[0], S.rot[1]))); f1("uBurst", S.burst);
+        gl.uniform4fv(U.uWave, S.wave); gl.uniform1fv(U.uDrop, new Float32Array(S.drop)); gl.uniform4fv(U.uShape, S.shape);
+        f1("uSlide", S.slide); f1("uQR", S.qr); f1("uBio", S.bio); f1("uKal", S.kal); f1("uKalRot", S.kalRot); f1("uInk", S.ink); f1("uPaper", S.paper);
+        f1("uSeam", S.seam); f1("uDim", S.dim); f1("uOff", S.off); f1("uPal", S.pal); f1("uFloorY", S.floorY); f1("uGlow", S.glow);
+        gl.uniform4fv(U.uTint, S.tint); gl.uniform2fv(U.uWin, S.win); gl.uniform2fv(U.uImgH, S.imgH); gl.uniform2fv(U.uFog, S.fog);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+      }
+
+      // ---------------- the type: slammed in on the beat, cut out on the next
+      const WTB = TB.words;
+      const WORDS = [
+        { t: WTB.one, end: T.field[0], cls: "bl", html: "One <em>image</em>." },
+        { t: WTB.nine, end: WTB.zero, cls: "bl", html: "Nine <em>posts</em>." },
+        { t: WTB.zero, end: T.feed[0], cls: "br", html: "Zero <em>seams</em>." },
+        { t: WTB.order, end: TB.posts[8] + 0.2, cls: "tl s", html: "Posted<br>in <em>order</em>." },
+        { t: WTB.profile, end: T.tools[0], cls: "tl s", html: "Seamless<br>on your<br><em>profile</em>." },
+        ...TB.tools.map((x, j) => ({ t: x.t, end: j < 9 ? TB.tools[j + 1].t : TB.twelve, cls: j % 2 ? "br" : "bl", html: x.name.replace(" ", "<br>") })),
+        { t: WTB.twelve, end: T.device[0], cls: "c", html: "Twelve free <em>tools</em>." },
+        { t: WTB.browser, end: TB.collapse[1], cls: "c", html: "In your <em>browser</em>." },
+      ];
+      WORDS.forEach((w, j) => { const d = document.createElement("div"); d.className = "slam " + w.cls; d.innerHTML = w.html; $("#words").appendChild(d); w.el = d; });
+      const FLIES = TB.noes.map((n) => { const d = document.createElement("div"); d.className = "fly";
+        d.innerHTML = `<b style="clip-path: inset(0 0 52% 0)">${n.word}</b><b style="clip-path: inset(48% 0 0 0)">${n.word}</b><span style="visibility:hidden">${n.word}</span>`;
+        $("#flies").appendChild(d); return { ...n, el: d, a: d.children[0], b: d.children[1] }; });
+      const nums = []; for (let j = 0; j < 9; j++) { const d = document.createElement("div"); d.className = "num" + (j === 0 ? " first" : ""); d.textContent = j + 1; $("#nums").appendChild(d); nums.push(d); }
+      const HUD = [[0, "one image"], [T.field[0], "nine posts · zero seams"], [T.feed[0], "your profile · posting order"], [T.tools[0], "the tools"],
+        [T.device[0], "in your browser"]];
+      const URL_TEXT = "ai.joaoqueiros.com/gridstudio";
+
+      function paint(t) {
+        const S = scene(t);
+        CAM = S.cam;
+        if (gl) drawGL(S);
+        // slammed words: three frames in with an overshoot, two frames out
+        WORDS.forEach((w) => { const on = t >= w.t && t < w.end + 0.07;
+          if (!on) { w.el.style.opacity = 0; return; }
+          const a = r(t, w.t, w.t + 0.1), b = r(t, w.end, w.end + 0.07);
+          w.el.style.opacity = 1;
+          w.el.style.transform = `scale(${(1.22 - 0.22 * eBack(a)).toFixed(3)})`;
+          w.el.style.clipPath = `inset(${(100 * b).toFixed(1)}% 0 ${(100 * (1 - eExpo(a))).toFixed(1)}% 0)`; });
+        // posting numbers ride the tiles as they land
+        TB.order.forEach(([c, rr], j) => { const d = nums[j], tp = TB.posts[j];
+          if (t < tp || t >= TB.seam + 0.2 || t >= T.tools[0]) { d.style.opacity = 0; return; }
+          const [x, y] = project([(c - 1) * S.pitch[0], 0.1, (rr - 1) * S.pitch[1]]);
+          d.style.opacity = (1 - r(t, TB.seam, TB.seam + 0.2)).toFixed(3);
+          d.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) scale(${(1.5 - 0.5 * eBack(r(t, tp, tp + 0.18))).toFixed(3)})`; });
+        // the browser around the one tile
+        const wo = t >= TB.collapse[1] && t < T.title + 0.3 ? r(t, TB.collapse[1], TB.collapse[1] + 0.25) * (1 - r(t, T.title, T.title + 0.3)) : 0;
+        if (wo > 0) {
+          const P = [[-0.95, 0, -0.95], [0.95, 0, -0.95], [-0.95, 0, 0.95], [0.95, 0, 0.95]].map(project);
+          const x0 = Math.min(...P.map((p) => p[0])) - 70, x1 = Math.max(...P.map((p) => p[0])) + 70, y0 = Math.min(...P.map((p) => p[1])) - 110, y1 = Math.max(...P.map((p) => p[1])) + 50;
+          Object.assign($("#win").style, { left: x0 + "px", top: y0 + "px", width: x1 - x0 + "px", height: y1 - y0 + "px", opacity: wo });
+        } else $("#win").style.opacity = 0;
+        // three words fly at the glass and shatter on it
+        const [cx, cy] = project([0, 0.1, 0]);
+        FLIES.forEach((F, j) => {
+          if (t < F.launch || t >= F.hit + 0.6 || t >= T.title) { F.el.style.opacity = 0; return; }
+          const w = F.w, hh = 150;
+          if (t < F.hit) { const u = eOut(r(t, F.launch, F.hit)), s = lerp(0.14, 1, u);
+            F.el.style.opacity = r(t, F.launch, F.launch + 0.12);
+            F.el.style.transform = `translate(${(cx - w / 2).toFixed(1)}px, ${(cy - hh / 2).toFixed(1)}px) scale(${(1 / s).toFixed(3)})`;
+            F.el.style.transformOrigin = "50% 50%"; F.a.style.transform = F.b.style.transform = "none";
+          } else { const a = t - F.hit, u = eOut(r(a, 0, 0.6));
+            F.el.style.opacity = (1 - r(a, 0.15, 0.6)).toFixed(3);
+            F.el.style.transform = `translate(${(cx - w / 2).toFixed(1)}px, ${(cy - hh / 2).toFixed(1)}px)`;
+            F.a.style.transform = `translate(${(-220 * u).toFixed(1)}px, ${(-260 * u).toFixed(1)}px) rotate(${(-18 * u).toFixed(1)}deg)`;
+            F.b.style.transform = `translate(${(240 * u).toFixed(1)}px, ${(300 * u).toFixed(1)}px) rotate(${(14 * u).toFixed(1)}deg)`; }
+        });
+        TB.noes.forEach((n, j) => { const u = r(t, n.hit + 0.05, n.hit + 0.35), e = $("#no-" + j);
+          e.style.opacity = (u * (1 - r(t, T.title, T.title + 0.3))).toFixed(3); e.style.transform = `translateX(${(40 * (1 - eOut(u))).toFixed(1)}px)`; });
+        // flash on every cut and impact, a veil in from black
+        let fl = 0; for (const c of TB.cuts) if (t >= c && t < c + 0.07) fl = Math.max(fl, 0.55 * (1 - (t - c) / 0.07));
+        $("#flash").style.opacity = fl.toFixed(3);
+        $("#veil").style.opacity = (1 - eOut(r(t, 0.0, 0.5))).toFixed(3);
+        // HUD
+        let st = HUD[0][1]; for (const [a, s] of HUD) if (t >= a) st = s;
+        $("#hud-st").textContent = st;
+        const hudO = r(t, 0.4, 0.8) * (1 - r(t, T.title, T.title + 0.3));
+        $("#hud-l").style.opacity = hudO; $("#hud-r").style.opacity = hudO;
+        // title: the flat mark resolves over the liquid's own, then the name, the line, the URL
+        $("#title").style.opacity = t >= T.title ? 1 : 0;
+        $("#t-mark").style.opacity = r(t, TB.mark, TB.mark + 0.5);
+        const nu = r(t, TB.line, TB.line + 0.5); $("#t-name").style.opacity = nu; $("#t-name").style.transform = `translateY(${(20 * (1 - eOut(nu))).toFixed(1)}px)`;
+        $("#t-line").style.opacity = r(t, TB.line + 0.5, TB.line + 1.0);
+        $("#t-url").textContent = typed(URL_TEXT, r(t, TB.line + 1.0, TB.line + 1.8));
+      }
+
+      const tl = gsap.timeline({ paused: true });
+      const clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+
+      async function build() {
+        img = new Image(); img.src = "assets/img/demo-banner.jpg";
+        await Promise.all([img.decode(), document.fonts.load('850 40px "Archivo"'), document.fonts.load('400 40px "Instrument Serif"'),
+          document.fonts.load('italic 400 40px "Instrument Serif"'), document.fonts.load('500 20px "JBM"')]);
+        FLIES.forEach((F) => { F.w = F.el.offsetWidth; });   // measured once, with the fonts loaded
+        initGL();
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = window.__hf.buildReady || {};
+      window.__hf.buildReady["ninefold"] = build();
+    </script>
+  </body>
+</html>

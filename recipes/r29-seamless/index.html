@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <!--
+      R29 · Seamless. 32 s, raymarched liquid shader (season 3, film 1). For Grid Studio, twelve free Instagram tools
+      that run in the browser: "No upload, no account, no watermark: your images never leave your device." One image,
+      poured into a seamless grid: a chrome drop falls into a pool and the photo surfaces in it; seams draw a 3x3 grid,
+      stretch into necks and snap on the beat; the tiles are posted in order into a profile and melt seamless; the liquid
+      takes the shape of five tools; an upload tries to pull a drop out of the browser and it springs back; the liquid
+      gathers into the mark.
+      Technique: one WebGL2 fragment shader on a full-screen triangle, no meshes. Up to twelve rounded boxes joined by a
+      smooth minimum (metaballs), a capsule for the stretched drop and a block field for the QR, raymarched per pixel
+      over an analytic floor, lit by a procedural studio with Fresnel reflections, soft shadows and ambient occlusion
+      from the distance field. The photo is sampled on the liquid's top faces in image space, so each tile carries its
+      piece wherever it goes. paint(t) sets every uniform from one baked table (assets/table.js, from bake/table.py);
+      score/compose.py reads it too.
+    -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/table.js"></script>
+    <style>
+      @font-face { font-family: "Archivo"; src: url("assets/fonts/Archivo.ttf") format("truetype"); font-weight: 100 900; }
+      @font-face { font-family: "Instrument Serif"; src: url("assets/fonts/InstrumentSerif-Regular.ttf") format("truetype"); font-weight: 400; font-style: normal; }
+      @font-face { font-family: "Instrument Serif"; src: url("assets/fonts/InstrumentSerif-Italic.ttf") format("truetype"); font-weight: 400; font-style: italic; }
+      @font-face { font-family: "JBM"; src: url("assets/fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 100 800; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #181512; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #181512; color: #faf8f4; }
+      #ct-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #gl { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #ct-ui { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      .hud { position: absolute; top: 46px; font: 500 18px "JBM", monospace; letter-spacing: 0.16em; white-space: nowrap; color: #c9c2b2; text-transform: uppercase; }
+      #hud-l { left: 64px; color: #faf8f4; letter-spacing: 0.24em; }
+      #hud-l span { color: #e0805a; margin-left: 16px; letter-spacing: 0.06em; text-transform: none; }
+      #hud-r { right: 64px; }
+      .st { position: absolute; left: 84px; bottom: 80px; opacity: 0; }
+      .st i { display: inline-block; padding: 7px 14px 6px; border: 1.5px solid #c24d21; border-radius: 4px; background: #181512; color: #f0b79f; font: 600 17px "Archivo", sans-serif; font-style: normal; letter-spacing: 0.22em; }
+      .st b { display: table; margin-top: 14px; padding: 4px 26px 10px 0; background: #181512; box-shadow: -40px 0 0 #181512; font: 400 84px/1 "Instrument Serif", serif; letter-spacing: -0.01em; color: #faf8f4; white-space: nowrap; }
+      .st b em { color: #e0805a; }
+      .num { position: absolute; left: 0; top: 0; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; background: #181512; border: 1.5px solid #faf8f4; color: #faf8f4; font: 600 20px/43px "JBM", monospace; text-align: center; opacity: 0; }
+      .num.first { background: #c24d21; border-color: #c24d21; }
+      #tool { position: absolute; right: 84px; bottom: 96px; padding: 10px 20px 9px; border-radius: 6px; background: #faf8f4; color: #181512; font: 700 26px "Archivo", sans-serif; letter-spacing: 0.02em; white-space: nowrap; opacity: 0; }
+      #win { position: absolute; border: 2px solid rgba(250, 248, 244, 0.55); border-radius: 18px; opacity: 0; }
+      #win-bar { position: absolute; left: 0; right: 0; top: 0; height: 48px; border-bottom: 1.5px solid rgba(250, 248, 244, 0.3); }
+      #win-bar i { position: absolute; top: 18px; width: 12px; height: 12px; border-radius: 50%; background: rgba(250, 248, 244, 0.45); }
+      #win-url { position: absolute; left: 110px; top: 13px; font: 500 17px "JBM", monospace; color: #c9c2b2; white-space: nowrap; }
+      #upl { position: absolute; padding: 9px 18px 8px 16px; border-radius: 30px; border: 1.5px dashed #faf8f4; color: #faf8f4; font: 600 18px "Archivo", sans-serif; letter-spacing: 0.16em; white-space: nowrap; opacity: 0; }
+      #upl.x { border-color: #c24d21; color: #f0b79f; text-decoration: line-through; }
+      .no { position: absolute; right: 120px; font: 400 54px/1 "Instrument Serif", serif; color: #faf8f4; white-space: nowrap; opacity: 0; }
+      .no em { color: #e0805a; }
+      #title { position: absolute; inset: 0; opacity: 0; }
+      #t-mark { position: absolute; left: 780px; top: 250px; width: 360px; height: 360px; opacity: 0; }
+      #t-name { position: absolute; left: 0; right: 0; top: 650px; text-align: center; font: 400 104px/1 "Instrument Serif", serif; color: #faf8f4; white-space: nowrap; opacity: 0; }
+      #t-line { position: absolute; left: 0; right: 0; top: 780px; text-align: center; font: 500 30px "Archivo", sans-serif; color: #c9c2b2; white-space: nowrap; opacity: 0; }
+      #t-url { position: absolute; left: 0; right: 0; top: 846px; height: 40px; text-align: center; font: 500 30px "JBM", monospace; color: #e0805a; white-space: nowrap; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="32" data-width="1920" data-height="1080">
+      <div id="ct-stage" class="clip" data-start="0" data-duration="32" data-track-index="0">
+        <canvas id="gl" width="1920" height="1080"></canvas>
+      </div>
+      <div id="ct-ui" class="clip" data-start="0" data-duration="32" data-track-index="1">
+        <div class="hud" id="hud-l" data-layout-allow-occlusion>GRID STUDIO<span>/twelve free instagram tools</span></div>
+        <div class="hud" id="hud-r" data-layout-allow-occlusion><span id="hud-st">grid maker · upload</span></div>
+        <div id="nums" data-layout-allow-occlusion data-layout-allow-overlap></div>
+        <div id="win" data-layout-allow-occlusion><div id="win-bar"><i style="left:22px"></i><i style="left:44px"></i><i style="left:66px"></i><span id="win-url">ai.joaoqueiros.com/gridstudio</span></div></div>
+        <div id="upl" data-layout-allow-occlusion>UPLOAD</div>
+        <div class="no" id="no-0" data-layout-allow-occlusion style="top: 300px">No <em>upload</em>.</div>
+        <div class="no" id="no-1" data-layout-allow-occlusion style="top: 380px">No <em>account</em>.</div>
+        <div class="no" id="no-2" data-layout-allow-occlusion style="top: 460px">No <em>watermark</em>.</div>
+        <div id="tool" data-layout-allow-occlusion>Carousel</div>
+        <div class="st" id="st-0" data-layout-allow-occlusion><i>GRID MAKER</i><b>One <em>image</em>.</b></div>
+        <div class="st" id="st-1" data-layout-allow-occlusion><i>CUT</i><b>A <em>seamless</em> grid.</b></div>
+        <div class="st" id="st-2" data-layout-allow-occlusion><i>POST IN ORDER</i><b>Seamless on the <em>profile</em>.</b></div>
+        <div class="st" id="st-3" data-layout-allow-occlusion><i>AND MORE</i><b>Twelve free <em>tools</em>.</b></div>
+        <div class="st" id="st-4" data-layout-allow-occlusion><i>IN YOUR BROWSER</i><b>Never leaves your <em>device</em>.</b></div>
+        <div id="title" data-layout-allow-occlusion>
+          <img id="t-mark" src="assets/brand/gridstudio-mark.svg" alt="Grid Studio">
+          <div id="t-name">Grid Studio</div>
+          <div id="t-line">Twelve free Instagram tools in your browser</div>
+          <div id="t-url"></div>
+        </div>
+      </div>
+      <audio id="score" src="assets/bgm/score.wav" data-start="0" data-duration="32" data-track-index="7" data-volume="0.8"></audio>
+    </div>
+
+    <script>
+      // the fragment shader: the whole picture
+      const FS = `#version 300 es
+precision highp float;
+uniform vec2 uRes;
+uniform vec3 uCamP, uCamT, uUp;
+uniform float uFocal;
+uniform vec4 uE[12], uH[12], uU[12], uC[12];
+uniform float uK;
+uniform vec4 uRip;          // x, z, age, amplitude
+uniform vec4 uCapA, uCapB;  // a.xyz radius ; b.xyz on
+uniform vec4 uQR;           // centre x, centre z, half size, amount
+uniform float uSeam;        // how far the cut lines have drawn
+uniform vec4 uSeamA;        // each cut line's opacity
+uniform float uFloorO;
+uniform sampler2D uImg;
+out vec4 fragColor;
+
+int gId; float gIdD;
+float sdRB(vec3 p, vec3 b, float r) { vec3 q = abs(p) - b + r; return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0) - r; }
+float sdFlat(vec3 p, vec3 b, float r) { vec2 q = abs(p.xz) - b.xz + r; float d2 = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
+  vec2 w = vec2(d2, abs(p.y) - b.y); return min(max(w.x, w.y), 0.0) + length(max(w, 0.0)); }
+float smin(float a, float b, float k) { float h = max(k - abs(a - b), 0.0) / k; return min(a, b) - h * h * k * 0.25; }
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float qrBit(vec2 ij) {
+  // three finder squares and a seeded field, 21 x 21
+  for (int f = 0; f < 3; f++) {
+    vec2 o = f == 0 ? vec2(0.0) : (f == 1 ? vec2(14.0, 0.0) : vec2(0.0, 14.0));
+    vec2 l = ij - o;
+    if (l.x >= -0.5 && l.y >= -0.5 && l.x <= 6.5 && l.y <= 6.5) { float m = max(abs(l.x - 3.0), abs(l.y - 3.0)); return (m > 2.5 || m < 1.5) ? 1.0 : 0.0; }
+    if (l.x >= -1.5 && l.y >= -1.5 && l.x <= 7.5 && l.y <= 7.5) return 0.0;
+  }
+  return step(0.52, hash(ij));
+}
+float map(vec3 p) {
+  float d = 1e5; gIdD = 1e5; gId = 0;
+  for (int i = 0; i < 12; i++) {
+    if (uH[i].w < 0.5) continue;
+    vec3 h = uH[i].xyz;
+    float r = min(uE[i].w, min(h.x, min(h.y, h.z))), fl = clamp(uH[i].w - 1.0, 0.0, 1.0);
+    float di = sdRB(p - uE[i].xyz, h, r);
+    if (fl > 0.0) di = mix(di, sdFlat(p - uE[i].xyz, h, min(uE[i].w, min(h.x, h.z))), fl);
+    if (di < gIdD) { gIdD = di; gId = i; }
+    d = smin(d, di, uK);
+  }
+  if (uCapB.w > 0.5) {
+    vec3 pa = p - uCapA.xyz, ba = uCapB.xyz - uCapA.xyz;
+    float hh = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-4), 0.0, 1.0);
+    float dc = (length(pa - ba * hh) - uCapA.w * mix(1.0, 0.8, hh) * (1.0 - 0.55 * sin(3.14159 * hh))) * 0.8;
+    if (dc < gIdD) { gIdD = dc; gId = 11; }
+    d = smin(d, dc, 0.4);
+  }
+  if (uQR.w > 0.001) {
+    float s = uQR.z, cell = 2.0 * s / 21.0;
+    vec2 lp = p.xz - uQR.xy + s;
+    vec2 ij = clamp(floor(lp / cell), 0.0, 20.0);
+    vec2 cc = (ij + 0.5) * cell;
+    float hb = 0.11 * uQR.w * qrBit(ij);
+    float top = uE[0].y + uH[0].y;
+    float db = sdRB(vec3(lp.x - cc.x, p.y - top - hb * 0.5, lp.y - cc.y), vec3(cell * 0.46, max(hb * 0.5, 0.001), cell * 0.46), 0.008);
+    vec2 e = min(lp - ij * cell, (ij + 1.0) * cell - lp);
+    db = min(db, max(min(e.x, e.y), 0.0) + 0.004);
+    float bb = sdRB(vec3(p.x - uQR.x, p.y - top - 0.06, p.z - uQR.y), vec3(s, 0.07, s), 0.0);
+    if (bb > 0.01) db = bb;
+    if (hb > 0.002 && db < gIdD) { gIdD = db; gId = 10; }
+    d = min(d, db);
+  }
+  if (uRip.w > 0.0) {
+    float rr = length(p.xz - uRip.xy), a = uRip.z;
+    float front = smoothstep(a * 3.2 + 0.25, a * 3.2 - 0.25, rr);
+    d -= uRip.w * sin(rr * 11.0 - a * 14.0) * exp(-a * 1.6) * exp(-rr * 0.45) * front * smoothstep(0.6, 0.0, abs(p.y - 0.2));
+  }
+  return d;
+}
+vec3 nrm(vec3 p) { vec2 e = vec2(0.0015, -0.0015); return normalize(e.xyy * map(p + e.xyy) + e.yyx * map(p + e.yyx) + e.yxy * map(p + e.yxy) + e.xxx * map(p + e.xxx)); }
+float shadow(vec3 ro, vec3 rd) {
+  float res = 1.0, t = 0.03;
+  for (int i = 0; i < 28; i++) { float h = map(ro + rd * t); res = min(res, 9.0 * h / t); t += clamp(h, 0.03, 0.4); if (res < 0.01 || t > 7.0) break; }
+  return clamp(res, 0.0, 1.0);
+}
+float ao(vec3 p, vec3 n) { float o = 0.0, s = 1.0; for (int i = 1; i <= 4; i++) { float h = 0.06 * float(i); o += (h - map(p + n * h)) * s; s *= 0.6; } return clamp(1.0 - 2.2 * o, 0.0, 1.0); }
+vec3 env(vec3 r) {
+  vec3 c = mix(vec3(0.010, 0.008, 0.007), vec3(0.030, 0.026, 0.022), clamp(r.y * 0.5 + 0.5, 0.0, 1.0));
+  if (r.y > 0.05) { vec2 sb = r.xz / r.y; c += vec3(1.9, 1.86, 1.78) * smoothstep(0.95, 0.75, abs(sb.x + 0.35)) * smoothstep(0.62, 0.45, abs(sb.y + 0.25)); }
+  c += vec3(0.9, 0.88, 0.84) * 1.1 * smoothstep(0.22, 0.32, r.y) * smoothstep(0.47, 0.37, r.y) * smoothstep(0.1, -0.3, r.z) * smoothstep(1.0, 0.5, abs(r.x));
+  c += vec3(0.62, 0.11, 0.035) * 2.6 * smoothstep(0.72, 0.84, r.x) * smoothstep(0.32, 0.12, abs(r.y - 0.12));
+  c += vec3(0.8, 0.78, 0.74) * 0.9 * smoothstep(-0.7, -0.86, r.x) * smoothstep(0.42, 0.18, abs(r.y - 0.3));
+  return c;
+}
+const vec3 FLOOR = vec3(0.0091, 0.0079, 0.0063);
+const vec3 L = normalize(vec3(-0.35, 1.0, 0.45));
+vec3 floorCol(vec3 p) {
+  float spot = exp(-dot(p.xz - vec2(0.0, 0.2), p.xz - vec2(0.0, 0.2)) / 22.0);
+  float sh = shadow(p + vec3(0.0, 0.002, 0.0), L);
+  float a = clamp(0.35 + 0.65 * map(p + vec3(0.0, 0.25, 0.0)) / 0.25, 0.0, 1.0);
+  return FLOOR * (0.6 + 4.5 * spot * (0.35 + 0.65 * sh)) * a * uFloorO;
+}
+vec3 aces(vec3 x) { return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }
+void main() {
+  vec2 uv = (gl_FragCoord.xy - 0.5 * uRes) / uRes.y;
+  vec3 fw = normalize(uCamT - uCamP), rt = normalize(cross(fw, uUp)), up = cross(rt, fw);
+  vec3 rd = normalize(uv.x * rt + uv.y * up + uFocal * fw), ro = uCamP;
+  float tF = rd.y < -1e-4 ? -ro.y / rd.y : 1e4;
+  float t = 0.0, d = 1.0; bool hit = false;
+  // start the march at the top of the liquid's bounding slab
+  float tTop = rd.y < 0.0 ? max(0.0, (ro.y - 4.6) / -rd.y) : 0.0;
+  t = tTop;
+  for (int i = 0; i < 110; i++) {
+    vec3 p = ro + rd * t;
+    d = map(p);
+    if (d < 0.0012 * t) { hit = true; break; }
+    t += d * 0.85;
+    if (t > tF + 0.01 || t > 60.0) break;
+  }
+  vec3 col;
+  if (hit && t < tF + 0.01) {
+    vec3 p = ro + rd * t;
+    map(p); int id = gId;
+    vec3 n = nrm(p);
+    vec4 U = uU[id], C = uC[id];
+    vec3 c0 = id == 11 ? vec3(0.0) : (id == 10 ? vec3(uQR.x, 0.0, uQR.y) : uE[id].xyz);
+    vec2 ip = U.xy + (p.xz - c0.xz) * U.w + n.xz * 0.05;
+    vec2 iuv = vec2((ip.x + 1.5) / 3.0, (ip.y + 2.0) / 4.0);
+    float inside = step(0.0, iuv.x) * step(iuv.x, 1.0) * step(0.0, iuv.y) * step(iuv.y, 1.0);
+    float top = smoothstep(0.5, 0.9, n.y);
+    float im = U.z * top * inside * (id == 10 ? 0.0 : 1.0);
+    vec3 img = pow(texture(uImg, clamp(iuv, 0.001, 0.999)).rgb, vec3(2.2));
+    float sh = shadow(p + n * 0.01, L), o = ao(p, n);
+    float dif = max(dot(n, L), 0.0);
+    vec3 r = reflect(rd, n);
+    vec3 er = env(r);
+    if (r.y < 0.0) er = FLOOR * 3.0;
+    float fr = 0.04 + 0.96 * pow(1.0 - clamp(dot(n, -rd), 0.0, 1.0), 5.0);
+    vec3 tint = id == 10 ? vec3(0.92, 0.9, 0.86) : C.rgb;
+    float chrome = id == 10 ? 0.55 : C.w;
+    vec3 lit = img * (0.25 * o + 1.25 * dif * (0.3 + 0.7 * sh));
+    vec3 metal = er * tint * (0.35 + 0.65 * sh * 0.5 + 0.5);
+    vec3 diffuse = tint * (0.05 * o + 0.9 * dif * (0.25 + 0.75 * sh));
+    vec3 surf = mix(mix(diffuse, metal, chrome), lit, im);
+    col = surf + er * fr * mix(0.9, 0.35, im) * mix(0.2, 1.0, chrome);
+    // the cut lines, drawn in image space on the top faces
+    if (uSeam > 0.0 && im > 0.0) {
+      float w = 0.012;
+      float lx0 = smoothstep(w, w * 0.4, abs(ip.x + 0.5)) * step(iuv.y, uSeam) * uSeamA.x;
+      float lx1 = smoothstep(w, w * 0.4, abs(ip.x - 0.5)) * step(iuv.y, uSeam) * uSeamA.y;
+      float lz0 = smoothstep(w, w * 0.4, abs(ip.y + 0.6667)) * step(iuv.x, uSeam) * uSeamA.z;
+      float lz1 = smoothstep(w, w * 0.4, abs(ip.y - 0.6667)) * step(iuv.x, uSeam) * uSeamA.w;
+      col = mix(col, vec3(0.62, 0.11, 0.035) * 1.6, clamp(lx0 + lx1 + lz0 + lz1, 0.0, 1.0));
+    }
+  } else if (tF < 1e3) {
+    col = floorCol(ro + rd * tF);
+  } else {
+    col = FLOOR * 0.6;
+  }
+  col = aces(col * 1.15);
+  col = pow(col, vec3(1.0 / 2.2));
+  col += (hash(gl_FragCoord.xy) - 0.5) / 255.0;
+  fragColor = vec4(col, 1.0);
+}
+`;
+    </script>
+
+    <script>
+      const TB = window.TABLE, T = TB.T, DUR = TB.dur, BEAT = TB.beat;
+      const W = 1920, H = 1080;
+      const $ = (s) => document.querySelector(s);
+      const cl = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x)), r = (t, a, b) => cl((t - a) / (b - a)), lerp = (a, b, u) => a + (b - a) * u;
+      const E = (n) => gsap.parseEase(n), eOut = E("power3.out"), eIn = E("power3.in"), eIO = E("power3.inOut"), eExpo = E("expo.out"), eExpoIO = E("expo.inOut"), eQuadIn = E("power2.in");
+      const lin = (h) => [16, 8, 0].map((s) => Math.pow(((parseInt(h.slice(1), 16) >> s) & 255) / 255, 2.2));
+      const CHROME = [0.62, 0.6, 0.57], TERRA = lin("#c24d21"), PAPER = lin("#faf8f4"), INK = [0.16, 0.145, 0.13];
+      const typed = (s, u) => s.slice(0, Math.round(s.length * cl(u)));
+
+      // ---------------- elements: a rounded box each; positions, half sizes, image mapping and colour
+      const N = 12, TH = 4 / 3;
+      const el = (o = {}) => ({ c: [0, 0.1, 0], h: [0.001, 0.001, 0.001], r: 0.05, uv: [0, 0, 0, 1], col: [...CHROME, 0.85], on: 0, flat: 0, ...o });
+      const mixEl = (A, B, u) => ({ c: A.c.map((v, i) => lerp(v, B.c[i], u)), h: A.h.map((v, i) => lerp(v, B.h[i], u)), r: lerp(A.r, B.r, u),
+        uv: A.uv.map((v, i) => lerp(v, B.uv[i], u)), col: A.col.map((v, i) => lerp(v, B.col[i], u)), on: Math.max(A.on, B.on), flat: lerp(A.flat, B.flat, u) });
+      const mixAll = (A, B, u) => A.map((a, i) => mixEl(a, B[i], u));
+      // a tile of the 3x3 grid, home in image space; gaps open per column and row
+      const tile = (k, gx = [0, 0], gz = [0, 0], im = 1) => { const col = k % 3, row = Math.floor(k / 3);
+        const x = col - 1 + (col === 0 ? -gx[0] : col === 2 ? gx[1] : 0), z = (row - 1) * TH + (row === 0 ? -gz[0] : row === 2 ? gz[1] : 0);
+        return el({ c: [x, 0.11, z], h: [0.5, 0.11, TH / 2], r: 0.05, uv: [col - 1, (row - 1) * TH, im, 1], on: 1 }); };
+      const xs = (c, g) => c - 1 + (c === 0 ? -g[0] : c === 2 ? g[1] : 0), zs = (rr, g) => (rr - 1) * TH + (rr === 0 ? -g[0] : rr === 2 ? g[1] : 0);
+      // a slab spanning columns c0..c1 and rows r0..r1: the liquid before a seam has split it
+      const slab = (c0, c1, r0, r1, gx = [0, 0], gz = [0, 0], im = 1) => { const x0 = xs(c0, gx) - 0.5, x1 = xs(c1, gx) + 0.5, z0 = zs(r0, gz) - TH / 2, z1 = zs(r1, gz) + TH / 2;
+        return el({ c: [(x0 + x1) / 2, 0.11, (z0 + z1) / 2], h: [(x1 - x0) / 2, 0.11, (z1 - z0) / 2], r: 0.05, uv: [(c0 + c1) / 2 - 1, ((r0 + r1) / 2 - 1) * TH, im, 1], on: 1 }); };
+      const GRID = (gap, im = 1) => { const A = []; for (let k = 0; k < 9; k++) A.push(tile(k, [gap, gap], [gap, gap], im)); while (A.length < N) A.push(el()); return A; };
+      // the whole pool: one slab in the centre slot, the other tiles shrunk to nothing where they stand
+      const ONE = (im = 1) => GRID(0, im).map((e, k) => (k === 4 ? slab(0, 2, 0, 2, [0, 0], [0, 0], im) : el({ c: [...e.c], uv: [...e.uv] })));
+      // inactive elements hide inside the nearest active one
+      const fill = (A, src) => { while (A.length < N) { const s = src[A.length % src.length]; A.push(el({ c: [...s.c], uv: [...s.uv], col: [...s.col] })); } return A; };
+      const CAROUSEL = () => { const A = [0, 1, 2].map((k) => el({ c: [(k - 1) * 1.78, 0.11, 0.1], h: [0.82, 0.11, 1.03], r: 0.07, uv: [(k - 1) * 1.0, 0, 1, 1 / 1.64], on: 1 }));
+        return fill(A, A); };
+      const COVERS = (pal) => { const P = TB.palette.map(lin); const A = [0, 1, 2, 3, 4].map((k) => el({ c: [(k - 2) * 1.3, 0.56, 0.1], h: [0.55, 0.55, 0.55], r: 0.55,
+        uv: [(k - 2) * 0.55, -0.6 + 0.3 * (k % 3), pal ? 0 : 1, 0.75], col: pal ? [...P[k], 0.12] : [...CHROME, 0.85], on: 1 })); return fill(A, A); };
+      const RESIZE = (ax, az) => { const sc = Math.min(1.5 / ax, 2 / az) * 0.98; const A = [el({ c: [0, 0.11, 0.1], h: [ax, 0.11, az], r: 0.07, uv: [0, 0, 1, sc], on: 1 })]; return fill(A, A); };
+      const QRS = () => { const A = [el({ c: [0, 0.07, 0.1], h: [1.3, 0.07, 1.3], r: 0.06, uv: [0, 0, 0, 1], col: [...INK, 0.6], on: 1 })]; return fill(A, A); };
+      // the mark, in the official file's own units (32 x 32, 0.12 a unit): the paper tile in the centre slot, nine tiles on it
+      const INKL = lin("#181512");
+      const MARK = () => { const s = 0.12, A = [];
+        for (let k = 0; k < 9; k++) { const col = k % 3, row = Math.floor(k / 3);
+          A.push(el({ c: [([9.5, 16, 22.5][col] - 16) * s, 0.2, ([10, 17, 24][row] - 16) * s], h: [2.5 * s, 0.1, 3 * s], r: s, flat: 1, uv: [col - 1, (row - 1) * TH, 0, 1],
+            col: k === 8 ? [...TERRA, 0.1] : [...INKL, 0.1], on: 1 })); }
+        A.push(A[4]); A[4] = el({ c: [0, 0.13, 0], h: [16 * s, 0.13, 16 * s], r: 6 * s, uv: [0, 0, 0, 1], col: [...PAPER, 0.05], on: 1, flat: 1 });
+        return fill(A, A); };
+
+      // ---------------- the camera, matching the shader's lookAt and focal length
+      const FOCAL = 1.8;
+      const sub = (a, b) => a.map((v, i) => v - b[i]), dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+      const norm = (a) => { const l = Math.hypot(...a); return a.map((v) => v / l); };
+      const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+      let CAM = { p: [0, 4, 6], t: [0, 0, 0], up: [0, 1, 0] };
+      function project(p) {
+        const fw = norm(sub(CAM.t, CAM.p)), rt = norm(cross(fw, CAM.up)), up = cross(rt, fw), d = sub(p, CAM.p), z = dot(d, fw);
+        return [W / 2 + (dot(d, rt) / z) * FOCAL * H, H / 2 - (dot(d, up) / z) * FOCAL * H];
+      }
+      const SHOTS = {
+        pour: { p: [0, 3.0, 7.0], t: [0, 0.9, 0] },
+        cut: { p: [0, 9.6, 6.2], t: [0, 0, 0.2] },
+        post: { p: [0, 11.0, 7.0], t: [0, 0.4, 0.0] },
+        tools: { p: [0, 6.0, 6.4], t: [0, 0.2, 0.3] },
+        device: { p: [0, 10.5, 7.4], t: [0, 0, 0.4] },
+        title: { p: [0, 21.016, 1.1733], t: [0, 0.28, 1.1733] },   // 93.75 px a unit at the tiles' tops: the official mark's size
+      };
+      const camMix = (A, B, u) => ({ p: A.p.map((v, i) => lerp(v, B.p[i], u)), t: A.t.map((v, i) => lerp(v, B.t[i], u)) });
+
+      // ---------------- the scene at time t: elements, blend radius, camera, extras
+      function scene(t) {
+        const S = { els: GRID(0, 0), k: 0.22, rip: [0, 0, 0, 0], capA: [0, 0, 0, 0.3], capB: [0, 0, 0, 0], qr: [0, 0.1, 1.3, 0], seam: 0, seamA: [0, 0, 0, 0], floorO: 1 };
+        // I · the pour: a drop falls into a chrome pool, rings run out, the photo surfaces
+        if (t < T.cut[0]) {
+          const im = eIO(r(t, TB.surface[0], TB.surface[1]));
+          S.els = ONE(im);
+          const f = r(t, TB.fall[0], TB.fall[1]);
+          if (t < TB.fall[1] + 0.6) { const y = lerp(3.4, 0.18, eQuadIn(f)), sr = 0.3 * (1 - eOut(r(t, TB.fall[1], TB.fall[1] + 0.6)));
+            S.els[9] = el({ c: [0.15, y, 0.25], h: [sr, sr * (1 + 0.5 * (f < 1 ? eQuadIn(f) : 0)), sr], r: sr, uv: [0.15, 0.25, 0, 1], on: t >= TB.fall[0] - 0.4 ? 1 : 0 }); }
+          if (t > TB.fall[1]) S.rip = [0.15, 0.25, t - TB.fall[1], 0.075];
+          S.k = 0.3;
+          S.cam = camMix(SHOTS.pour, SHOTS.cut, eIO(r(t, TB.surface[0] + 1.0, T.cut[0] + 0.8)));
+        }
+        // II · the cut: lines draw on, then each seam stretches into a neck and snaps on its beat
+        else if (t < T.post[0]) {
+          const g = TB.seams.map((s) => 0.18 * eQuadIn(r(t, s.snap - BEAT, s.snap)) + 0.26 * eExpo(r(t, s.snap, s.snap + 0.5)));
+          const sp = TB.seams.map((x) => t >= x.snap - BEAT);
+          const groups = (a, b) => { const G = [[0, 0]]; [a, b].forEach((on, j) => { if (on) G.push([j + 1, j + 1]); else G[G.length - 1][1] = j + 1; }); return G; };
+          S.els = [];
+          const CG = groups(sp[0], sp[1]), RG = groups(sp[2], sp[3]);
+          for (const [r0, r1] of RG) for (const [c0, c1] of CG) S.els.push(Object.assign(slab(c0, c1, r0, r1, [g[0], g[1]], [g[2], g[3]]), { cr: [c0, c1, r0, r1] }));
+          // the slabs either side of a seam that just snapped jiggle like liquid
+          TB.seams.forEach((x, j) => { const a = t - x.snap; if (a < 0) return;
+            const w = 1 + 0.22 * Math.sin(a * 30) * Math.exp(-a * 6);
+            S.els.forEach((e) => { const [c0, c1, r0, r1] = e.cr, lo = x.axis === "x" ? c0 : r0, hi = x.axis === "x" ? c1 : r1;
+              if (hi === x.i - 1 || lo === x.i) { e.h[1] *= w; e.c[1] = e.h[1]; } }); });
+          while (S.els.length < N) S.els.push(el());
+          S.k = 0.2;
+          S.seam = eIO(r(t, TB.draw[0], TB.draw[1]));
+          S.seamA = TB.seams.map((s) => 1 - r(t, s.snap - 0.1, s.snap + 0.1));
+          S.cam = camMix(SHOTS.cut, SHOTS.post, eIO(r(t, T.post[0] - 0.8, T.post[0] + 0.4)));
+        }
+        // III · posted: the tiles lift, then drop into the profile one by one in posting order, then melt seamless
+        else if (t < T.tools[0]) {
+          const lift = eOut(r(t, T.post[0], T.post[0] + 0.5)), mu = eIO(r(t, TB.melt[0], TB.melt[1]));
+          S.els = [];
+          for (let k = 0; k < 9; k++) {
+            const col = k % 3, row = Math.floor(k / 3), j = TB.order.findIndex(([c, rr]) => c === col && rr === row), tp = TB.posts[j];
+            const from = tile(k, [0.44, 0.44], [0.44, 0.44]), hov = tile(k, [0.62, 0.62], [0.62, 0.62]), slot = tile(k, [0.06 * (1 - mu), 0.06 * (1 - mu)], [0.06 * (1 - mu), 0.06 * (1 - mu)]);
+            hov.c[1] = 1.3 + 0.12 * Math.sin(t * 3 + k);
+            let e = mixEl(from, hov, lift);
+            const fu = r(t, tp - 0.3, tp);
+            if (fu > 0) { e = mixEl(hov, slot, eQuadIn(fu)); e.c[1] = lerp(hov.c[1], slot.c[1], eQuadIn(fu)); }
+            const a = t - tp; if (a > 0) { e = slot; const sq = 1 - 0.35 * Math.exp(-a * 7) * Math.cos(a * 26); e.h[1] = 0.11 * sq; e.c[1] = e.h[1]; }
+            if (mu > 0) e = mixEl(e, ONE()[k], mu);
+            S.els.push(e);
+          }
+          while (S.els.length < N) S.els.push(el());
+          S.k = lerp(0.12, 0.3, mu);
+          S.cam = camMix(SHOTS.post, SHOTS.tools, eIO(r(t, T.tools[0] - 0.6, T.tools[0] + 0.6)));
+        }
+        // IV · twelve tools: the liquid takes the shape of five of them, on the beat
+        else if (t < T.device[0]) {
+          const tl_ = TB.tools, Rz = TB.resize;
+          const cfg = (i, tt) => {
+            if (i === 0) return CAROUSEL(); if (i === 1) return COVERS(false); if (i === 2) return COVERS(true);
+            if (i === 3) { const a = [[1.25, 1.25], [1.25, 1.5625], [0.95, 1.69]]; let s = a[0];
+              for (let j = 1; j < 3; j++) { const u = eExpoIO(r(tt, Rz[j] - 0.3, Rz[j])); s = [lerp(s[0], a[j][0], u), lerp(s[1], a[j][1], u)]; } return RESIZE(s[0], s[1]); }
+            if (i === 4) return QRS(); return GRID(0.06);
+          };
+          let i = 0; for (let j = 0; j < tl_.length; j++) if (t >= tl_[j].t) i = j;
+          const prev = i === 0 ? ONE() : cfg(i - 1, t), u = eIO(r(t, tl_[i].t, tl_[i].t + 0.5));
+          S.els = mixAll(prev, cfg(i, t), u);
+          S.k = 0.24 + 0.3 * Math.sin(Math.PI * u);
+          if (i === 4) S.qr = [0, 0.1, 1.3, eOut(r(t, tl_[4].t + 0.3, tl_[4].t + 1.0)) * (1 - r(t, tl_[5].t, tl_[5].t + 0.25))];
+          if (i === 5) { S.qr[3] = 0; }
+          S.cam = camMix(SHOTS.tools, SHOTS.device, eIO(r(t, T.device[0] - 0.6, T.device[0] + 0.6)));
+        }
+        // V · on your device: an upload pulls a drop to the window's edge; it springs back
+        else if (t < T.title) {
+          S.els = mixAll(GRID(0.06), ONE(), eIO(r(t, T.device[0], T.device[0] + 0.5)));
+          S.els[11] = el({ c: [0, 0.11, 0], uv: [0, 0, 0, 1], col: [...CHROME, 0.95] });   // the pulled drop: bare chrome against the picture
+          S.k = 0.26;
+          const a = [0.9, 0.2, -1.2], b = [1.75, 1.1, -2.15];
+          const pu = eIO(r(t, TB.pull[0], TB.pull[1])), dt = t - TB.snap;
+          const amt = t < TB.snap ? pu : Math.exp(-dt * 5.5) * Math.cos(dt * 17);
+          S.capA = [...a, 0.32]; S.capB = [...a.map((v, i) => lerp(v, b[i], Math.max(-0.12, amt))), t > TB.pull[0] - 0.05 && (t < TB.snap || dt < 1.4) ? 1 : 0];
+          S.cam = SHOTS.device;
+        }
+        // VI · title: the liquid gathers into the mark's nine tiles, seen from straight above
+        else {
+          const g = eExpoIO(r(t, TB.gather[0], TB.gather[1]));
+          S.els = mixAll(ONE(1 - g), MARK(), g);
+          S.k = lerp(0.26, 0.05, g);
+          S.cam = camMix(SHOTS.device, SHOTS.title, eExpoIO(r(t, T.title, TB.gather[1] + 0.2)));
+        }
+        S.up = [0, 0, -1];   // the floor's far edge is screen-up in every shot, so the top-down title never rolls
+        return S;
+      }
+
+      // ---------------- WebGL2
+      let gl, prog, U = {}, img;
+      function initGL() {
+        const canvas = $("#gl");
+        gl = canvas.getContext("webgl2", { antialias: false, alpha: false, depth: false, stencil: false, preserveDrawingBuffer: true });
+        const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+        prog = gl.createProgram();
+        gl.attachShader(prog, sh(gl.VERTEX_SHADER, "#version 300 es\nin vec2 p; void main(){ gl_Position = vec4(p, 0.0, 1.0); }"));
+        gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS));
+        gl.linkProgram(prog); if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+        gl.useProgram(prog);
+        const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+        const loc = gl.getAttribLocation(prog, "p"); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+        for (const n of ["uRes", "uCamP", "uCamT", "uUp", "uFocal", "uE", "uH", "uU", "uC", "uK", "uRip", "uCapA", "uCapB", "uQR", "uSeam", "uSeamA", "uFloorO", "uImg"]) U[n] = gl.getUniformLocation(prog, n);
+        const tex = gl.createTexture(); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+        gl.generateMipmap(gl.TEXTURE_2D);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.uniform1i(U.uImg, 0); gl.uniform2f(U.uRes, W, H); gl.uniform1f(U.uFocal, FOCAL);
+        gl.viewport(0, 0, W, H);
+      }
+      function drawGL(S) {
+        const f = (k) => new Float32Array(S.els.flatMap(k));
+        gl.uniform4fv(U.uE, f((e) => [...e.c, e.r])); gl.uniform4fv(U.uH, f((e) => [...e.h, e.on && Math.min(...e.h) > 0.004 ? 1 + e.flat : 0]));
+        gl.uniform4fv(U.uU, f((e) => e.uv)); gl.uniform4fv(U.uC, f((e) => e.col));
+        gl.uniform3fv(U.uCamP, CAM.p); gl.uniform3fv(U.uCamT, CAM.t); gl.uniform3fv(U.uUp, CAM.up);
+        gl.uniform1f(U.uK, S.k); gl.uniform4fv(U.uRip, S.rip); gl.uniform4fv(U.uCapA, S.capA); gl.uniform4fv(U.uCapB, S.capB);
+        gl.uniform4fv(U.uQR, S.qr); gl.uniform1f(U.uSeam, S.seam); gl.uniform4fv(U.uSeamA, S.seamA); gl.uniform1f(U.uFloorO, S.floorO);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+      }
+
+      // ---------------- paint(t)
+      const nums = []; for (let j = 0; j < 9; j++) { const d = document.createElement("div"); d.className = "num" + (j === 0 ? " first" : ""); d.textContent = j + 1; $("#nums").appendChild(d); nums.push(d); }
+      const STATIONS = [[0.5, 4.6], [5.4, 10.5], [11.2, 15.9], [16.4, 22.8], [23.4, 26.6]];
+      const HUD = [[0, "grid maker · your image"], [T.cut[0], "grid maker · cut 3 × 3"], [T.post[0], "grid maker · posting order"], [T.tools[0], "carousel · covers · palette · resize · qr"],
+        [T.device[0], "in your browser"], [T.title, "ai.joaoqueiros.com/gridstudio"]];
+      const URL_TEXT = "ai.joaoqueiros.com/gridstudio";
+      function paint(t) {
+        const S = scene(t);
+        CAM = { p: S.cam.p, t: S.cam.t, up: S.up };
+        if (gl) drawGL(S);
+        // the posting numbers ride the tiles
+        nums.forEach((d, j) => { const [c, rr] = TB.order[j], e = S.els[rr * 3 + c];
+          const on = t >= TB.numbers[0] + j * 0.12 && t < TB.posts[j] + 0.35 && t < T.tools[0];
+          const [x, y] = project([e.c[0], e.c[1] + e.h[1], e.c[2]]);
+          d.style.opacity = on ? (r(t, TB.numbers[0] + j * 0.12, TB.numbers[0] + j * 0.12 + 0.2) * (1 - r(t, TB.posts[j] + 0.1, TB.posts[j] + 0.35))).toFixed(3) : 0;
+          d.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`; });
+        // the tool chip
+        let ti = 0; TB.tools.forEach((x, j) => { if (t >= x.t) ti = j; });
+        $("#tool").textContent = TB.tools[ti].name;
+        $("#tool").style.opacity = t >= T.tools[0] && t < T.device[0] - 0.1 ? Math.min(1, (t - TB.tools[ti].t) / 0.15) : 0;
+        // the browser window and the upload that never leaves
+        const wo = r(t, TB.tray[0], TB.tray[1]) * (1 - r(t, T.title, T.title + 0.4));
+        if (wo > 0) {
+          const P = [[-1.85, 0, -2.35], [1.85, 0, -2.35], [-1.85, 0, 2.35], [1.85, 0, 2.35], [-1.85, 0.3, -2.35], [1.85, 0.3, -2.35]].map(project);
+          const x0 = Math.min(...P.map((p) => p[0])) - 40, x1 = Math.max(...P.map((p) => p[0])) + 40, y0 = Math.min(...P.map((p) => p[1])) - 90, y1 = Math.max(...P.map((p) => p[1])) + 30;
+          Object.assign($("#win").style, { left: x0 + "px", top: y0 + "px", width: x1 - x0 + "px", height: y1 - y0 + "px", opacity: wo });
+          const [ux, uy] = project([1.75, 1.1, -2.15]);
+          $("#upl").style.left = cl(ux + 40, 40, W - 220) + "px"; $("#upl").style.top = cl(uy - 70, 110, H - 120) + "px";
+          $("#upl").style.opacity = r(t, TB.pull[0] - 0.4, TB.pull[0]) * (1 - r(t, T.title, T.title + 0.3));
+          $("#upl").className = t >= TB.snap ? "x" : "";
+        } else { $("#win").style.opacity = 0; $("#upl").style.opacity = 0; }
+        TB.labels.forEach((lt, j) => { const u = r(t, lt, lt + 0.3); const e = $("#no-" + j);
+          e.style.opacity = (u * (1 - r(t, T.title, T.title + 0.3))).toFixed(3); e.style.transform = `translateX(${(30 * (1 - eOut(u))).toFixed(1)}px)`; });
+        // HUD and stations
+        let st = HUD[0][1]; for (const [a, s] of HUD) if (t >= a) st = s;
+        $("#hud-st").textContent = st;
+        const hudO = r(t, 0.3, 0.7) * (1 - r(t, T.title, T.title + 0.3));
+        $("#hud-l").style.opacity = hudO; $("#hud-r").style.opacity = hudO;
+        STATIONS.forEach(([t0, t1], k) => {
+          const e = $("#st-" + k), a = r(t, t0, t0 + 0.35), b = r(t, t1, t1 + 0.25), on = t >= t0 && t < t1 + 0.25;
+          e.style.opacity = on ? 1 - b : 0;
+          e.style.clipPath = `inset(0 ${(100 * (1 - eExpo(a))).toFixed(1)}% 0 0)`;
+          e.style.transform = `translateY(${(30 * eIn(b)).toFixed(1)}px)`;
+        });
+        // title: the mark resolves flat over the liquid tiles, then the name, the line, the URL
+        $("#title").style.opacity = t >= T.title ? 1 : 0;
+        const mo = r(t, TB.mark, TB.mark + 0.5);
+        $("#t-mark").style.opacity = mo;
+        const nu = r(t, TB.line, TB.line + 0.5); $("#t-name").style.opacity = nu; $("#t-name").style.transform = `translateY(${(20 * (1 - eOut(nu))).toFixed(1)}px)`;
+        $("#t-line").style.opacity = r(t, TB.line + 0.5, TB.line + 1.0);
+        $("#t-url").textContent = typed(URL_TEXT, r(t, TB.line + 1.0, TB.line + 1.8));
+      }
+
+      const tl = gsap.timeline({ paused: true });
+      const clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+
+      async function build() {
+        img = new Image(); img.src = "assets/img/demo-banner.jpg";
+        await Promise.all([img.decode(), document.fonts.load('400 40px "Instrument Serif"'), document.fonts.load('italic 400 40px "Instrument Serif"'),
+          document.fonts.load('600 20px "Archivo"'), document.fonts.load('500 20px "JBM"')]);
+        initGL();
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = window.__hf.buildReady || {};
+      window.__hf.buildReady["seamless"] = build();
+    </script>
+  </body>
+</html>

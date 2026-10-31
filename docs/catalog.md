@@ -106,6 +106,22 @@ Made for: Imagined Worlds · Stills. Stack: Three.js, TSL, GSAP, Python (score).
 
 ## Products and systems
 
+### R30 · Ninefold
+
+A showreel cut for a grid maker drawn by one fragment shader: one glass tile bursts into an endless field by domain repetition, every tile refracts the photo into colour, a wave rolls out on every beat, ten hard cuts turn the field into ten tools, a kaleidoscope folds it into one tile, and nine tiles lock into the logo.
+
+Made for: Grid Studio · free Instagram tools in the browser. Stack: WebGL2, GLSL, GSAP, Python (table, score).
+
+[Recipe and poster](../recipes/r30-ninefold/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r30-ninefold-v1)
+
+### R29 · Seamless
+
+A film for a grid maker drawn by one fragment shader: a chrome drop falls into a pool with a photo inside it, seams snap on the beat into nine liquid tiles, the tiles fall into a profile and melt back into one picture, the liquid turns into each tool, and it gathers into the logo at the official file's size.
+
+Made for: Grid Studio · free Instagram tools in the browser. Stack: WebGL2, GLSL, GSAP, Python (table, score).
+
+[Recipe and poster](../recipes/r29-seamless/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r29-seamless-v1)
+
 ### R28 · Real Folders
 
 A film for a screenshot manager, drawn entirely in SVG: a capture overlay whose selection is a live mask, a loupe over a pixel grid, a flood of captures on the beat, a camera that tilts into an isometric city of folders as every card is filed, a search that lifts the words out of every card, an email snapped into solid pixels, and a gradient backdrop for the client.
