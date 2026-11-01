@@ -1,0 +1,388 @@
+{
+ "fps": 30,
+ "bpm": 100,
+ "beat": 0.6,
+ "poses": 12,
+ "dur": 33.6,
+ "T": {
+  "listing": [
+   0.0,
+   4.2
+  ],
+  "split": [
+   4.2,
+   9.0
+  ],
+  "pins": [
+   9.0,
+   13.8
+  ],
+  "boards": [
+   13.8,
+   18.6
+  ],
+  "schedule": [
+   18.6,
+   24.0
+  ],
+  "video": [
+   24.0,
+   28.2
+  ],
+  "title": 28.2,
+  "end": 33.6
+ },
+ "E": {
+  "listIn": [
+   0.3,
+   1.2
+  ],
+  "line0": 1.8,
+  "lift": 4.2,
+  "fan": [
+   4.5,
+   5.4
+  ],
+  "line1": 5.4,
+  "snips": [
+   6.3,
+   7.2
+  ],
+  "scissorsIn": 5.7,
+  "filmPark": [
+   7.8,
+   8.4
+  ],
+  "listOut": [
+   7.8,
+   8.4
+  ],
+  "align": [
+   8.4,
+   9.0
+  ],
+  "dots": 9.0,
+  "cuts": [
+   [
+    9.24,
+    9.78
+   ],
+   [
+    9.84,
+    10.38
+   ],
+   [
+    10.44,
+    10.98
+   ],
+   [
+    11.04,
+    11.58
+   ]
+  ],
+  "tags": [
+   11.76,
+   12.06,
+   12.36,
+   12.66
+  ],
+  "line2": 12.36,
+  "tagsIn": [
+   13.8,
+   14.1
+  ],
+  "hover": [
+   13.8,
+   14.4
+  ],
+  "bookIn": [
+   14.1,
+   14.7
+  ],
+  "open": [
+   15.0,
+   15.9
+  ],
+  "pinOn": [
+   16.2,
+   16.65,
+   17.1,
+   17.55
+  ],
+  "line3": 17.7,
+  "bookOut": [
+   18.6,
+   19.2
+  ],
+  "days": [
+   18.9,
+   19.08,
+   19.26,
+   19.44,
+   19.62
+  ],
+  "drops": [
+   20.4,
+   21.0,
+   21.6,
+   22.2
+  ],
+  "line4": 22.5,
+  "schedOut": [
+   24.0,
+   24.48
+  ],
+  "filmIn": [
+   24.0,
+   24.6
+  ],
+  "fold": [
+   24.9,
+   25.5
+  ],
+  "grow": [
+   25.5,
+   25.8
+  ],
+  "cover": 26.1,
+  "folderIn": [
+   26.28,
+   26.7
+  ],
+  "file": [
+   27.0,
+   27.6
+  ],
+  "line5": 26.4,
+  "line6": 28.2,
+  "sweep": [
+   30.0,
+   30.6
+  ],
+  "logo": 30.6,
+  "name": 31.2,
+  "url": 31.8
+ },
+ "listing": {
+  "title": "Kayak Hoodie Graphic Pullover for Outdoor Lovers",
+  "tags": [
+   "kayak hoodie",
+   "lake life hoodie",
+   "gift for kayaker",
+   "outdoor hoodie",
+   "kayak gifts"
+  ]
+ },
+ "boards": [
+  "Kayak and Paddle Gear",
+  "Kayak Life & Outdoor Gifts"
+ ],
+ "gallery": [
+  "photo0",
+  "photo1",
+  "size",
+  "photo2",
+  "colour",
+  "photo3",
+  "film"
+ ],
+ "media": {
+  "photos": [
+   "photo0",
+   "photo1",
+   "photo2",
+   "photo3"
+  ],
+  "charts": [
+   "size",
+   "colour"
+  ],
+  "cover": "cover",
+  "frames": 73
+ },
+ "pins": [
+  {
+   "photo": 0,
+   "title": "Kayak Graphic for Outdoor Lovers Sweater for Kayaker",
+   "alt": "Kayak Graphic for Outdoor Lovers graphic on crewneck sweater, mockup product photo",
+   "board": 0
+  },
+  {
+   "photo": 1,
+   "title": "Kayak Graphic for Outdoor Lovers Sweater for Outdoor Enthusiast",
+   "alt": "Kayak Graphic for Outdoor Lovers graphic on crewneck sweater, mockup product photo",
+   "board": 0
+  },
+  {
+   "photo": 2,
+   "title": "Kayak Graphic Hoodie for Kayakers",
+   "alt": "A man near calm water wears a bright royal-blue hoodie and matching knit beanie.",
+   "board": 1
+  },
+  {
+   "photo": 3,
+   "title": "Kayak Graphic Hoodie for Kayakers",
+   "alt": "Woman wearing a burgundy pullover hoodie with a white \u201cKAYAK\u201d graphic and paddle shapes.",
+   "board": 1
+  }
+ ],
+ "slots": [
+  {
+   "pin": 0,
+   "day": 0,
+   "time": "09:40"
+  },
+  {
+   "pin": 2,
+   "day": 1,
+   "time": "19:15"
+  },
+  {
+   "pin": 1,
+   "day": 2,
+   "time": "13:05"
+  },
+  {
+   "pin": 3,
+   "day": 3,
+   "time": "20:30"
+  }
+ ],
+ "lines": [
+  {
+   "words": [
+    "Etsy",
+    "media",
+    "in,"
+   ],
+   "accent": -1,
+   "t": 1.8,
+   "out": 3.96,
+   "at": [
+    150,
+    150
+   ]
+  },
+  {
+   "words": [
+    "Not",
+    "every",
+    "image",
+    "is",
+    "a",
+    "pin."
+   ],
+   "accent": 5,
+   "t": 5.4,
+   "out": 8.64,
+   "at": [
+    150,
+    150
+   ]
+  },
+  {
+   "words": [
+    "A",
+    "unique",
+    "pin",
+    "for",
+    "every",
+    "image."
+   ],
+   "accent": 1,
+   "t": 12.36,
+   "out": 13.56,
+   "at": [
+    150,
+    130
+   ]
+  },
+  {
+   "words": [
+    "Matched",
+    "to",
+    "its",
+    "board."
+   ],
+   "accent": 3,
+   "t": 17.7,
+   "out": 18.36,
+   "at": [
+    150,
+    130
+   ]
+  },
+  {
+   "words": [
+    "Scheduled,",
+    "never",
+    "bunched."
+   ],
+   "accent": 2,
+   "t": 22.5,
+   "out": 23.76,
+   "at": [
+    150,
+    130
+   ]
+  },
+  {
+   "words": [
+    "Video",
+    "pins",
+    "stay",
+    "manual,",
+    "by",
+    "design."
+   ],
+   "accent": 3,
+   "t": 26.4,
+   "out": 27.96,
+   "at": [
+    150,
+    130
+   ]
+  },
+  {
+   "words": [
+    "Pinterest",
+    "queue",
+    "out."
+   ],
+   "accent": 2,
+   "t": 28.2,
+   "out": 30.12,
+   "at": [
+    0,
+    170
+   ],
+   "big": true
+  }
+ ],
+ "hud": [
+  [
+   0,
+   "01 import"
+  ],
+  [
+   4.2,
+   "02 filter"
+  ],
+  [
+   9.0,
+   "03 pins"
+  ],
+  [
+   13.8,
+   "04 boards"
+  ],
+  [
+   18.6,
+   "05 schedule"
+  ],
+  [
+   24.0,
+   "06 video queue"
+  ]
+ ]
+}

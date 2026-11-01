@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <!--
+      R32 · Pinned. 33.6 s at 100 bpm, paper cut-out stop motion (season 4, film 1). For Etsy to Pinterest, João's
+      pipeline that turns Etsy listings into Pinterest-ready image and video pins. The pipeline as a craft table: a
+      listing slides in, its gallery fans out, scissors cut out the charts that are not pins, each photo is cut to a 2:3
+      pin and a tag unfolds with its own title and alt text, two boards pop up out of a spread and the pins are pushed
+      on, a week of strips takes the pins with gaps between them, and the video folds into 9:16, gets a cover and is
+      filed in the manual folder. Then the table is swept and the JQ AI SYSTEMS logo lands.
+      Technique: one Canvas 2D. Every piece is a cut path whose edge is torn by noise along its normals and filled with
+      a paper stock generated from noise (fibres, mottling, speckle); a tabletop light gives each piece a shadow that
+      grows with its height. Time is snapped to 12 poses a second (shot on twos), and every pose nudges each piece and
+      re-cuts its edge a little, like stop motion. paint(t) draws every frame from one baked table (assets/table.js,
+      from bake/table.py); score/compose.py reads it too.
+    -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/table.js"></script>
+    <style>
+      @font-face { font-family: "Archivo"; src: url("assets/fonts/Archivo.ttf") format("truetype"); font-weight: 100 900; }
+      @font-face { font-family: "Instrument Serif"; src: url("assets/fonts/InstrumentSerif-Regular.ttf") format("truetype"); font-weight: 400; font-style: normal; }
+      @font-face { font-family: "Instrument Serif"; src: url("assets/fonts/InstrumentSerif-Italic.ttf") format("truetype"); font-weight: 400; font-style: italic; }
+      @font-face { font-family: "JBM"; src: url("assets/fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 100 800; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #2c4a3a; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #2c4a3a; color: #221f1d; }
+      #ct-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #cv { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #ct-ui { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      .hud { position: absolute; top: 40px; font: 600 17px "JBM", monospace; letter-spacing: 0.2em; white-space: nowrap; color: #f2e9d8; text-transform: uppercase; text-shadow: 0 2px 8px rgba(0,0,0,0.6); }
+      #hud-l { left: 64px; }
+      #hud-l span { color: #7fd8cb; }
+      #hud-r { right: 64px; letter-spacing: 0.12em; text-transform: none; color: #7fd8cb; }
+      #title { position: absolute; inset: 0; opacity: 0; }
+      #t-logo { position: absolute; left: 590px; top: 352px; width: 740px; height: 154px; }
+      #t-name { position: absolute; left: 0; right: 0; top: 560px; text-align: center; font: 700 50px "Archivo", sans-serif; color: #f2e9d8; white-space: nowrap; opacity: 0; }
+      #t-line { position: absolute; left: 0; right: 0; top: 632px; text-align: center; font: italic 400 38px "Instrument Serif", serif; color: #cbbfab; white-space: nowrap; opacity: 0; }
+      #t-url { position: absolute; left: 0; right: 0; top: 708px; height: 40px; text-align: center; font: 500 30px "JBM", monospace; color: #3cc4b4; white-space: nowrap; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="33.6" data-width="1920" data-height="1080">
+      <div id="ct-stage" class="clip" data-start="0" data-duration="33.6" data-track-index="0">
+        <canvas id="cv" width="1920" height="1080" data-layout-allow-overflow></canvas>
+      </div>
+      <div id="ct-ui" class="clip" data-start="0" data-duration="33.6" data-track-index="1">
+        <div class="hud" id="hud-l" data-layout-allow-occlusion>JQ AI SYSTEMS <span>· etsy to pinterest</span></div>
+        <div class="hud" id="hud-r" data-layout-allow-occlusion><span id="hud-st">01 import</span></div>
+        <div id="title" data-layout-allow-occlusion>
+          <img id="t-logo" src="assets/brand/jqai-logo.png" alt="JQ AI SYSTEMS">
+          <div id="t-name">Etsy to Pinterest</div>
+          <div id="t-line">Etsy media in, Pinterest queue out</div>
+          <div id="t-url"></div>
+        </div>
+      </div>
+      <audio id="score" src="assets/bgm/score.wav" data-start="0" data-duration="33.6" data-track-index="7" data-volume="0.8"></audio>
+    </div>
+
+    <script>
+      const TB = window.TABLE, T = TB.T, E = TB.E, DUR = TB.dur, BEAT = TB.beat, PZ = TB.poses;
+      const W = 1920, H = 1080;
+      const URL_TEXT = "ai.joaoqueiros.com/systems/etsy-to-pinterest";
+      const $ = (s) => document.querySelector(s);
+      const cl = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+      const r = (t, a, b) => cl((t - a) / (b - a));
+      const lerp = (a, b, u) => a + (b - a) * u;
+      const eOut = (u) => 1 - Math.pow(1 - u, 3), eIn = (u) => u * u * u, eIO = (u) => (u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2);
+      const eBack = (u) => { const c = 1.6, c3 = c + 1; return 1 + c3 * Math.pow(u - 1, 3) + c * Math.pow(u - 1, 2); };
+      function hash(n) { const s = Math.sin(n * 12.9898 + 78.233) * 43758.5453; return s - Math.floor(s); }
+      function vnoise(x, seed) { const i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f); return lerp(hash(i + seed * 57.31), hash(i + 1 + seed * 57.31), u) * 2 - 1; }
+      function prng(a) { return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+
+      let ctx, POSE = 0, DEPTH = 0, PARA = true;
+      const CAM = { x: 960, y: 540, z: 1 };
+
+      // ---------------------------------------------------------------- paper stocks, made once from noise
+      const STOCK = { kraft: "#c09769", cream: "#f2e9d8", white: "#f8f5ef", news: "#e8e2d4", ink: "#221f1d", teal: "#16a194", green: "#3f6c4c", greenD: "#2e523a",
+        terra: "#c65f3d", mustard: "#dcab4a", manila: "#e4c88f", manilaD: "#d3b278", sky: "#a7cde0", sand: "#dcc49b", wood: "#8c6642", woodD: "#755233",
+        water: "#3a7da5", steel: "#bfc3c6", cork: "#b98a5a", sun: "#f1b54b", grey: "#8f897f", blue: "#2b85c5", mat: "#2c4a3a", pencil: "#e3b23a", lead: "#3a3633" };
+      const PAT = {};
+      function makeStocks() {
+        Object.entries(STOCK).forEach(([k, base], si) => {
+          const c = document.createElement("canvas"); c.width = c.height = 512;
+          const g = c.getContext("2d"), R = prng(1000 + si * 7919);
+          g.fillStyle = base; g.fillRect(0, 0, 512, 512);
+          const dk = k === "ink" ? 0.04 : 0.03, lt = k === "ink" ? 0.012 : 0.04;
+          const wrapDraw = (fn) => { for (const ox of [-512, 0, 512]) for (const oy of [-512, 0, 512]) fn(ox, oy); };
+          for (let i = 0; i < 110; i++) {
+            const x = R() * 512, y = R() * 512, rad = 20 + R() * 80, d = R() < 0.5;
+            wrapDraw((ox, oy) => { const gr = g.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, rad);
+              gr.addColorStop(0, d ? `rgba(0,0,0,${dk})` : `rgba(255,255,255,${lt})`); gr.addColorStop(1, "rgba(0,0,0,0)");
+              g.fillStyle = gr; g.fillRect(x + ox - rad, y + oy - rad, rad * 2, rad * 2); });
+          }
+          g.lineWidth = 0.8;
+          for (let i = 0; i < 1500; i++) {
+            const x = R() * 512, y = R() * 512, a = R() * Math.PI, l = 4 + R() * 16, dark = R() < 0.55, al = (dark ? 0.07 : 0.11) * R();
+            g.strokeStyle = dark ? `rgba(0,0,0,${al})` : `rgba(255,255,255,${al})`;
+            wrapDraw((ox, oy) => { if (Math.abs(ox) + Math.abs(oy) && (x > 24 && x < 488 && y > 24 && y < 488)) return;
+              g.beginPath(); g.moveTo(x + ox, y + oy); g.quadraticCurveTo(x + ox + Math.cos(a + 0.7) * l * 0.5, y + oy + Math.sin(a + 0.7) * l * 0.5, x + ox + Math.cos(a) * l, y + oy + Math.sin(a) * l); g.stroke(); });
+          }
+          for (let i = 0; i < 700; i++) { g.fillStyle = `rgba(0,0,0,${0.1 * R()})`; g.fillRect(R() * 512, R() * 512, 1.2, 1.2); }
+          PAT[k] = ctx.createPattern(c, "repeat");
+        });
+      }
+      let GRAIN, LIGHT;
+      function makePost() {
+        GRAIN = document.createElement("canvas"); GRAIN.width = GRAIN.height = 256;
+        const g = GRAIN.getContext("2d"), im = g.createImageData(256, 256), R = prng(77);
+        for (let i = 0; i < 256 * 256; i++) { const v = 100 + R() * 56; im.data[i * 4] = im.data[i * 4 + 1] = im.data[i * 4 + 2] = v; im.data[i * 4 + 3] = 255; }
+        g.putImageData(im, 0, 0);
+        LIGHT = document.createElement("canvas"); LIGHT.width = W; LIGHT.height = H;
+        const l = LIGHT.getContext("2d");
+        let gr = l.createRadialGradient(760, 300, 80, 900, 520, 1250);
+        gr.addColorStop(0, "rgba(255, 238, 205, 0.16)"); gr.addColorStop(0.55, "rgba(255, 238, 205, 0)"); gr.addColorStop(1, "rgba(6, 10, 8, 0.5)");
+        l.fillStyle = gr; l.fillRect(0, 0, W, H);
+      }
+
+      // ---------------------------------------------------------------- cut paper
+      const SH = new Map();
+      function resample(poly, step) {
+        const pts = [];
+        for (let i = 0; i < poly.length; i++) {
+          const [x0, y0] = poly[i], [x1, y1] = poly[(i + 1) % poly.length];
+          const n = Math.max(1, Math.round(Math.hypot(x1 - x0, y1 - y0) / step));
+          for (let k = 0; k < n; k++) pts.push([x0 + ((x1 - x0) * k) / n, y0 + ((y1 - y0) * k) / n]);
+        }
+        return pts;
+      }
+      function shape(key, make, step) {
+        let s = SH.get(key);
+        if (s) return s;
+        const pts = resample(make(), step), n = pts.length, nrm = [];
+        for (let i = 0; i < n; i++) { const a = pts[(i - 1 + n) % n], b = pts[(i + 1) % n]; const nx = b[1] - a[1], ny = -(b[0] - a[0]), l = Math.hypot(nx, ny) || 1; nrm.push([nx / l, ny / l]); }
+        s = { pts, nrm }; SH.set(key, s); return s;
+      }
+      const RECT = (w, h) => () => [[-w / 2, -h / 2], [w / 2, -h / 2], [w / 2, h / 2], [-w / 2, h / 2]];
+      const CIRC = (rx, ry = rx, n = 36) => () => Array.from({ length: n }, (_, i) => [rx * Math.cos((i / n) * 2 * Math.PI), ry * Math.sin((i / n) * 2 * Math.PI)]);
+      function fillStock(path, stock, seed) {
+        const p = PAT[stock];
+        p.setTransform(new DOMMatrix().translate(hash(seed) * 512, hash(seed + 1.3) * 512));
+        ctx.fillStyle = p; ctx.fill(path);
+      }
+      // one piece of paper: a torn outline, a stock, a shadow from its height, and whatever is printed or glued on it
+      function piece(P) {
+        const S = shape(P.key, P.make, P.step || 12), n = S.pts.length, tear = P.tear ?? 1.3, seed = P.seed ?? 1;
+        const path = new Path2D();
+        for (let i = 0; i < n; i++) {
+          const p = S.pts[i], q = S.nrm[i];
+          const d = tear * vnoise(i * 0.55, seed) + 0.55 * (hash(i * 3.17 + seed * 11.3 + POSE * 0.731) - 0.5);
+          const x = p[0] + q[0] * d, y = p[1] + q[1] * d;
+          i ? path.lineTo(x, y) : path.moveTo(x, y);
+        }
+        path.closePath();
+        const jx = (hash(seed * 7.7 + POSE * 1.37) - 0.5) * 1.0, jy = (hash(seed * 3.3 + POSE * 2.11) - 0.5) * 1.0, jr = (hash(seed * 5.1 + POSE * 0.77) - 0.5) * 0.004;
+        ctx.save();
+        const h = P.h ?? 0.6, top = DEPTH === 0 && PARA;
+        const px = top ? (P.x - CAM.x) * h * 0.01 : 0, py = top ? (P.y - CAM.y) * h * 0.01 : 0, ps = top ? 1 + h * 0.008 : 1;
+        ctx.translate(P.x + jx + px, P.y + jy + py); ctx.rotate((P.rot || 0) + jr);
+        const s = (P.s ?? 1) * ps; ctx.scale(s * (P.sx ?? 1), s * (P.sy ?? 1));
+        if (P.alpha !== undefined) ctx.globalAlpha *= P.alpha;
+        const z = (PARA ? CAM.z : 1) * (P.zs ?? 1);
+        if (h > 0) {
+          ctx.shadowColor = `rgba(6, 12, 8, ${(0.5 - 0.05 * Math.min(h, 4)).toFixed(3)})`;
+          ctx.shadowBlur = (2 + h * 9) * z; ctx.shadowOffsetX = (1.5 + h * 6) * z; ctx.shadowOffsetY = (2 + h * 8) * z;
+        }
+        fillStock(path, P.stock, seed);
+        ctx.shadowColor = "transparent";
+        if (P.content) { ctx.save(); ctx.clip(path); DEPTH++; P.content(); DEPTH--; ctx.restore(); }
+        ctx.lineWidth = 1.5 / Math.max(0.2, s); ctx.strokeStyle = P.edge || "rgba(255, 248, 236, 0.34)"; ctx.stroke(path);
+        ctx.restore();
+      }
+      function txt(s, x, y, font, col, align = "center") { ctx.font = font; ctx.fillStyle = col; ctx.textAlign = align; ctx.textBaseline = "middle"; ctx.fillText(s, x, y); }
+      function fillRectStock(stock, x, y, w, h, seed = 3) { const p = new Path2D(); p.rect(x, y, w, h); fillStock(p, stock, seed); }
+
+      // ---------------------------------------------------------------- the listing's own media, as prints
+      // photos and charts are 2:3; a print is a square sheet with the photo on the left and a paper margin the scissors trim
+      const IMG = {}, FRAMES = [];
+      const MEDIA_OF = (kind) => typeof kind === "number" ? "photo" + kind : kind;
+      function drawImg(im, x, y, w, h, fy = 0.5) {
+        // cover crop of an image into a box, fy picks where the crop sits vertically
+        if (!im) { ctx.fillStyle = "#cfc6b4"; ctx.fillRect(x, y, w, h); return; }
+        const ir = im.naturalWidth / im.naturalHeight, br = w / h;
+        let sw = im.naturalWidth, sh = im.naturalHeight, sx = 0, sy = 0;
+        if (ir > br) { sw = sh * br; sx = (im.naturalWidth - sw) / 2; } else { sh = sw / br; sy = (im.naturalHeight - sh) * fy; }
+        ctx.drawImage(im, sx, sy, sw, sh, x, y, w, h);
+      }
+      function photoContent(kind, seed, dx = 0) {
+        const name = MEDIA_OF(kind), n = ["photo0", "photo1", "size", "photo2", "colour", "photo3"].indexOf(name) + 1;
+        return () => {
+          ctx.save(); ctx.translate(dx, 0); ctx.beginPath(); ctx.rect(-155, -155, 310, 310); ctx.clip();
+          drawImg(IMG[name], -155, -150, 200, 300);
+          // the margin: the print's own notes and a registration mark
+          ctx.save(); ctx.translate(100, 0); ctx.rotate(-Math.PI / 2);
+          txt("KAYAK · IMG 0" + n, 0, -18, '700 15px "JBM"', "#221f1d"); txt("1000 × 1500", 0, 6, '500 13px "JBM"', "#8a7f70");
+          ctx.restore();
+          ctx.strokeStyle = "rgba(34, 31, 29, 0.6)"; ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.arc(100, -120, 9, 0, 7); ctx.moveTo(86, -120); ctx.lineTo(114, -120); ctx.moveTo(100, -134); ctx.lineTo(100, -106); ctx.stroke();
+          ctx.restore();
+        };
+      }
+      // a square crop of a photo, for the listing's hero image
+      function heroContent(name) { return () => drawImg(IMG[name], -155, -155, 310, 310, 0.12); }
+      const frameAt = (i) => FRAMES[((i % FRAMES.length) + FRAMES.length) % FRAMES.length];
+
+      // ---------------------------------------------------------------- the film: three frames on an ink strip
+      function filmFrame(k, seed) {
+        return () => {
+          fillRectStock("ink", -95, -100, 190, 200, seed);
+          for (let i = 0; i < 5; i++) for (const y of [-86, 86]) { ctx.fillStyle = "#2c4a3a"; ctx.fillRect(-80 + i * 36, y - 6, 18, 12); }
+          ctx.save(); ctx.beginPath(); ctx.rect(-80, -70, 160, 140); ctx.clip();
+          drawImg(frameAt([6, 36, 66][k]), -80, -70, 160, 140, 0.3);
+          ctx.restore();
+        };
+      }
+      function drawFilm(x, y, rot, s, fold, h, seed = 600) {
+        // the outer frames fold in behind the middle one
+        const c = Math.cos(rot), sn = Math.sin(rot), u = fold;
+        [0, 2, 1].forEach((k) => {
+          const off = k === 1 ? 0 : (k === 0 ? -1 : 1) * (95 + 95 * (1 - u)), sx = k === 1 ? 1 : Math.max(0.02, 1 - u);
+          if (k !== 1 && u >= 0.999) return;
+          piece({ key: "frame", make: RECT(190, 200), x: x + off * c * s, y: y + off * sn * s, rot, s, sx, h: h + (k === 1 ? 0.2 : 0), stock: "ink", seed: seed + k * 13, tear: 0.8, step: 14, content: filmFrame(k, seed + k * 13), edge: "rgba(255,248,236,0.18)" });
+        });
+      }
+
+      // ---------------------------------------------------------------- scissors, cut from card: two steel blades and two handles
+      const BLADE = () => [[-8, -8], [146, -4], [168, 0], [146, 6], [-8, 9]];
+      function scissors(x, y, rot, open, s = 1) {
+        for (const sg of [1, -1]) {
+          const a = rot + sg * open * 0.5;
+          piece({ key: "handle", make: CIRC(34, 22, 26), x: x - Math.cos(a) * 74 * s, y: y - Math.sin(a) * 74 * s, rot: a, s, h: 2.6, stock: "terra", seed: 40 + sg, tear: 0.6, step: 8 });
+          piece({ key: "blade", make: BLADE, x, y, rot: a, s, h: 2.8, stock: "steel", seed: 44 + sg, tear: 0.3, step: 10 });
+        }
+        piece({ key: "rivet", make: CIRC(7, 7, 12), x, y, s, h: 2.9, stock: "ink", seed: 48, tear: 0.2, step: 4 });
+      }
+      function pushpin(x, y, h) {
+        piece({ key: "pp", make: CIRC(14, 14, 18), x, y, h, stock: "terra", seed: 70 + x * 0.01, tear: 0.4, step: 5,
+          content: () => { ctx.fillStyle = "rgba(255, 240, 220, 0.75)"; ctx.beginPath(); ctx.arc(-4, -5, 4.5, 0, 7); ctx.fill(); } });
+      }
+
+      // ---------------------------------------------------------------- type: every word on its own strip of paper
+      const WC = new Map();
+      function wordW(text, font) { const k = font + "|" + text; if (!WC.has(k)) { ctx.font = font; WC.set(k, ctx.measureText(text).width); } return WC.get(k); }
+      function wrapText(text, font, maxW) {
+        ctx.font = font; const out = []; let cur = "";
+        for (const w of text.split(" ")) { const t = cur ? cur + " " + w : w; if (ctx.measureText(t).width > maxW && cur) { out.push(cur); cur = w; } else cur = t; }
+        if (cur) out.push(cur); return out;
+      }
+      function layLines() {
+        TB.lines.forEach((L, i) => {
+          const big = !!L.big, fs = big ? 128 : 74, fa = big ? 152 : 90;
+          const words = L.words.map((w, k) => {
+            const acc = k === L.accent, font = acc ? `italic 400 ${fa}px "Instrument Serif"` : `800 ${fs}px "Archivo"`;
+            return { text: w, font, acc, w: wordW(w, font) + (big ? 46 : 32), h: fs * 1.24 };
+          });
+          const gap = big ? 18 : 12, total = words.reduce((s, w) => s + w.w, 0) + gap * (words.length - 1);
+          let x = L.at[0] === 0 ? 960 - total / 2 : L.at[0];
+          L.lay = words.map((w, k) => {
+            const sd = 300 + i * 20 + k, ink = !w.acc && k % 2 === 1;
+            const o = { ...w, key: `w${i}_${k}`, x: x + w.w / 2, y: L.at[1] + (hash(sd) - 0.5) * 14, rot: (hash(sd * 1.7) - 0.5) * 0.07, seed: sd,
+              stock: w.acc ? "teal" : ink ? "ink" : "news", col: w.acc || ink ? "#f6efe2" : "#221f1d", dy: w.acc ? fs * 0.02 : fs * 0.05 };
+            x += w.w + gap; return o;
+          });
+        });
+      }
+      function drawLine(L, t) {
+        if (t < L.t || t > L.out + 1.4) return;
+        const n = L.lay.length;
+        L.lay.forEach((w, k) => {
+          const ti = L.t + k * 0.16, to = L.out + (n - 1 - k) * 0.08;
+          if (t < ti) return;
+          const a = eOut(r(t, ti, ti + 0.25)), b = eIn(r(t, to, to + 0.4));
+          if (b >= 1) return;
+          piece({ key: w.key, make: RECT(w.w, w.h), x: w.x + 40 * b, y: w.y - 22 * (1 - a) - 320 * b, rot: w.rot + (k % 2 ? 0.5 : -0.5) * b, s: lerp(1.14, 1, a) + 0.08 * b,
+            h: lerp(3.6, 0.45, a) + 3.5 * b, stock: w.stock, seed: w.seed, tear: 1.6, step: 14, content: () => txt(w.text, 0, w.dy, w.font, w.col) });
+        });
+      }
+
+      // ---------------------------------------------------------------- layout
+      const LIST = { w: 980, h: 560 };
+      const thumbAt = (g) => [6 + g * 66, 196];
+      const fanAt = (k) => { const d = k - 3; return { x: 960 + d * 236, y: 690 + 14 * d * d, rot: d * 0.06 }; };
+      const rowAt = (j) => ({ x: 960 + (j - 1.5) * 365, y: 470 });
+      const PHOTO_G = [0, 1, 3, 5];                 // where each photo sits in the gallery
+      const BOOK = { y: 650, base: 800 }, BOARDX = [660, 1260];
+      const DAYX = (d) => 960 + (d - 2) * 268, DAYY = 620, DAYS = ["MON", "TUE", "WED", "THU", "FRI"];
+      const timeY = (s) => { const [hh, mm] = s.split(":").map(Number); return DAYY - 205 + ((hh + mm / 60 - 8) / 14) * 440; };
+      const FOLD = { x: 1300, y: 600 };
+      let TITLE_LINES = [], PIN_TXT = [], ALT_TXT = [];
+
+      function listingAt(t) {
+        const a = eBack(r(t, E.listIn[0], E.listIn[1])), lift = eIO(r(t, E.lift, E.fan[0] + 0.3)), out = eIn(r(t, E.listOut[0], E.listOut[1]));
+        return { x: lerp(2600, 960, a) + lerp(0, 490, lift) + 400 * out, y: lerp(560, 390, lift) - 860 * out, s: lerp(1, 0.55, lift), rot: lerp(0.03, -0.02, a) + 0.03 * lift, h: 0.6 + 1.6 * lift + 2 * out };
+      }
+      function drawListing(t) {
+        if (t < E.listIn[0] || t > E.listOut[1] + 0.05) return;
+        const L = listingAt(t), fanned = t >= E.fan[0];
+        piece({ key: "listing", make: RECT(LIST.w, LIST.h), x: L.x, y: L.y, rot: L.rot, s: L.s, h: L.h, stock: "cream", seed: 101, tear: 1.6, step: 14, zs: L.s, content: () => {
+          piece({ key: "lphoto", make: RECT(330, 330), x: -250, y: 0, s: 1.25, h: 0.3, stock: "white", seed: 102, tear: 0.8, step: 12, content: heroContent("photo0") });
+          TITLE_LINES.forEach((ln, i) => txt(ln, 10, -212 + i * 48, 'italic 400 46px "Instrument Serif"', "#221f1d", "left"));
+          txt("listing · Etsy API or CSV export", 12, -212 + TITLE_LINES.length * 48 + 4, '500 17px "JBM"', "#7a2f17", "left");
+          let x = 10, row = 0;
+          TB.listing.tags.forEach((tg, i) => { const w = wordW(tg, '600 16px "JBM"') + 20;
+            if (x + w > 475) { x = 10; row++; }
+            piece({ key: "tag_" + tg, make: RECT(w, 32), x: x + w / 2, y: -212 + TITLE_LINES.length * 48 + 52 + row * 40, h: 0.15, stock: "teal", seed: 110 + i, tear: 0.6, step: 8, content: () => txt(tg, 0, 1, '600 16px "JBM"', "#f6efe2") });
+            x += w + 7; });
+          txt("gallery", 12, 150, '500 18px "JBM"', "#7a2f17", "left");
+          if (!fanned) TB.gallery.forEach((g, k) => { const [tx, ty] = thumbAt(k);
+            piece({ key: "thumb", make: RECT(56, 56), x: tx + 28, y: ty, h: 0.12, stock: g === "film" ? "ink" : "white", seed: 120 + k, tear: 0.5, step: 6,
+              content: () => drawImg(g === "film" ? frameAt(36) : IMG[g], -25, -25, 50, 50, 0.15) }); });
+        } });
+      }
+
+      // where each gallery item is at time t (photos and charts are 330 px pieces scaled)
+      function itemAt(k, t) {
+        const L = listingAt(Math.min(t, E.fan[1])), [tx, ty] = thumbAt(k);
+        const c = Math.cos(L.rot), sn = Math.sin(L.rot), lx = (tx + 28) * L.s, ly = ty * L.s;
+        const from = { x: L.x + lx * c - ly * sn, y: L.y + lx * sn + ly * c, rot: L.rot, s: (56 / 330) * L.s };
+        const F = fanAt(k), u = eBack(r(t, E.fan[0] + k * 0.05, E.fan[1] + k * 0.05));
+        let p = { x: lerp(from.x, F.x, u), y: lerp(from.y, F.y, u), rot: lerp(from.rot, F.rot, u), s: lerp(from.s, 220 / 330, u), h: 0.5 + 2.5 * Math.sin(Math.PI * cl(u)) };
+        const j = PHOTO_G.indexOf(k);
+        if (j >= 0) { const R = rowAt(j), a = eIO(r(t, E.align[0] + j * 0.06, E.align[1])); p = { x: lerp(p.x, R.x, a), y: lerp(p.y, R.y, a), rot: lerp(p.rot, 0, a), s: lerp(p.s, 1, a), h: p.h + 1.6 * Math.sin(Math.PI * a) }; }
+        return p;
+      }
+
+      // ---------------------------------------------------------------- II · the fan, the charts cut out, the video peeled away
+      function drawGallery(t) {
+        if (t < E.fan[0] || t > T.pins[0] + 0.01) return;
+        TB.gallery.forEach((g, k) => {
+          if (g === "film") return;
+          const p = itemAt(k, t);
+          if (g === "size" || g === "colour") {
+            const sn = g === "size" ? E.snips[0] : E.snips[1];
+            if (t < sn) piece({ key: "ph", make: RECT(330, 330), x: p.x, y: p.y, rot: p.rot, s: p.s, h: p.h, stock: "white", seed: 200 + k, tear: 1.0, step: 12, content: photoContent(g, 210 + k) });
+            else {
+              const u = r(t, sn, sn + 0.75), e = eIn(u);
+              if (u >= 1) return;
+              for (const side of [-1, 1]) {
+                const c = Math.cos(p.rot), s = Math.sin(p.rot), off = side * 82.5 * p.s + side * 30 * eOut(cl(u * 3));
+                piece({ key: "half", make: RECT(165, 330), x: p.x + off * c + side * 900 * e, y: p.y + off * s - 700 * e + 40 * eOut(cl(u * 3)), rot: p.rot + side * 1.2 * e + side * 0.12 * eOut(cl(u * 3)), s: p.s, h: p.h + 3 * eOut(u),
+                  stock: "white", seed: 230 + k + side, tear: 1.0, step: 12, content: photoContent(g, 210 + k, -side * 82.5) });
+              }
+            }
+            return;
+          }
+          if (t >= T.pins[0]) return;
+          piece({ key: "ph", make: RECT(330, 330), x: p.x, y: p.y, rot: p.rot, s: p.s, h: p.h, stock: "white", seed: 200 + k, tear: 1.0, step: 12, content: photoContent(PHOTO_G.indexOf(k), 210 + k) });
+        });
+      }
+      // the film: fanned with the gallery, parked at the corner, then the star of the video scene
+      function filmAt(t) {
+        const k = 6;
+        if (t < E.filmPark[0]) { const p = itemAt(k, t); return { x: p.x, y: p.y, rot: p.rot, s: p.s * 330 / 400, h: p.h, fold: 0 }; }
+        const F = fanAt(k), a = eIO(r(t, E.filmPark[0], E.filmPark[1]));
+        let p = { x: lerp(F.x, 1655, a), y: lerp(F.y, 962, a), rot: lerp(F.rot, -0.1, a), s: lerp(220 / 400, 0.6, a), h: 0.5 + 2 * Math.sin(Math.PI * a), fold: 0 };
+        const b = eIO(r(t, E.filmIn[0], E.filmIn[1]));
+        p = { x: lerp(p.x, 760, b), y: lerp(p.y, 560, b), rot: lerp(p.rot, 0, b), s: lerp(p.s, 1, b), h: p.h + 2.4 * Math.sin(Math.PI * b), fold: eIO(r(t, E.fold[0], E.fold[1])) };
+        return p;
+      }
+
+      // ---------------------------------------------------------------- III · pins: the dotted line, the cut, the tag
+      function cutU(j, t) { return r(t, E.cuts[j][0], E.cuts[j][1]); }
+      function pinAt(j, t) {
+        // the pin's centre is a sixth of the photo left of the photo's centre
+        const R = rowAt(j); let p = { x: R.x - 55, y: R.y, s: 1, rot: 0, h: 0.5 };
+        const a = eIO(r(t, E.hover[0] + j * 0.07, E.hover[1] + j * 0.07)), H = { x: 960 + (j - 1.5) * 196, y: 210, s: 0.5 };
+        p = { x: lerp(p.x, H.x, a), y: lerp(p.y, H.y, a), s: lerp(1, H.s, a), rot: 0.04 * Math.sin(j * 2.1) * a, h: 0.5 + 2.6 * a };
+        const pt = TB.pins[j], bi = pt.board, slot = TB.pins.filter((q, i) => q.board === bi && i < j).length;
+        const S = { x: BOARDX[bi] + (slot - 0.5) * 150, y: 682 }, b = eIO(r(t, E.pinOn[j] - 0.5, E.pinOn[j]));
+        p = { x: lerp(p.x, S.x, b), y: lerp(p.y, S.y, b) - 140 * Math.sin(Math.PI * b), s: p.s * (1 + 0.25 * Math.sin(Math.PI * b)), rot: lerp(p.rot, (slot ? 0.03 : -0.04), b) + 0.3 * Math.sin(Math.PI * b) * (bi ? 1 : -1), h: lerp(p.h, 0.4, b) + 2.4 * Math.sin(Math.PI * b) };
+        p.y += bookDy(t);
+        return p;
+      }
+      function pinPiece(j, p, extra = {}) {
+        const kind = TB.pins[j].photo;
+        piece({ key: "pin", make: RECT(220, 330), x: p.x, y: p.y, rot: p.rot, s: p.s, h: p.h, stock: "white", seed: 400 + j, tear: 0.9, step: 12, content: photoContent(kind, 210 + PHOTO_G[j], 55), ...extra });
+      }
+      function drawPins(t) {
+        if (t < T.pins[0] || t > E.bookOut[1] + 0.05) return;
+        for (let j = 0; j < 4; j++) {
+          const R = rowAt(j), u = cutU(j, t);
+          if (u < 1) {
+            // the photo, still square, with its dotted line drawing on
+            const dl = r(t, E.dots + j * 0.08, E.dots + j * 0.08 + 0.4);
+            piece({ key: "ph", make: RECT(330, 330), x: R.x, y: R.y, h: 0.5, stock: "white", seed: 200 + PHOTO_G[j], tear: 1.0, step: 12, content: () => {
+              photoContent(j, 210 + PHOTO_G[j])();
+              ctx.save(); ctx.setLineDash([12, 9]); ctx.lineWidth = 3; ctx.strokeStyle = "rgba(34, 31, 29, 0.85)";
+              ctx.beginPath(); ctx.moveTo(55, -165); ctx.lineTo(55, -165 + 330 * dl); ctx.stroke(); ctx.restore();
+              if (u > 0) { ctx.strokeStyle = "rgba(255, 252, 244, 0.95)"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(55, -165); ctx.lineTo(55, -165 + 330 * u); ctx.stroke(); }
+            } });
+            continue;
+          }
+          // the scrap is swept away, the pin stays
+          const v = r(t, E.cuts[j][1], E.cuts[j][1] + 0.6);
+          if (v < 1) piece({ key: "scrap", make: RECT(110, 330), x: R.x + 110 + 520 * eIn(v) + 30 * eOut(cl(v * 4)), y: R.y + 480 * eIn(v), rot: 0.9 * eIn(v) + 0.06 * eOut(cl(v * 4)), h: 0.5 + 3 * eOut(v),
+            stock: "white", seed: 450 + j, tear: 0.9, step: 12, content: photoContent(j, 210 + PHOTO_G[j], -110) });
+          // the tag hangs under the pin and unfolds
+          const tu = eOut(r(t, E.tags[j], E.tags[j] + 0.4)) * (1 - eIO(r(t, E.tagsIn[0] + j * 0.06, E.tagsIn[1]))) ;
+          if (tu > 0.02) {
+            const tx = R.x - 55, ty = 652;
+            ctx.save(); ctx.strokeStyle = "rgba(242, 233, 216, 0.95)"; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(tx, 628); ctx.lineTo(tx, ty + 10); ctx.stroke(); ctx.restore();
+            piece({ key: "seotag", make: RECT(240, 150), x: tx, y: ty + 75 * tu, sy: Math.max(0.03, tu), h: 0.5, stock: "manila", seed: 470 + j, tear: 0.8, step: 10, content: () => {
+              PIN_TXT[j].forEach((ln, i) => txt(ln, -106, -52 + i * 20, '700 16px "Archivo"', "#221f1d", "left"));
+              ALT_TXT[j].forEach((ln, i) => txt(ln, -106, 22 + i * 17, '500 12px "JBM"', "#6b3a1e", "left"));
+            } });
+          }
+          const p = pinAt(j, t);
+          if (t >= E.pinOn[j] && t > E.bookOut[0] + 1.2) continue;
+          pinPiece(j, p);
+          if (t >= E.pinOn[j] - 0.02) { const k = eOut(r(t, E.pinOn[j] - 0.02, E.pinOn[j] + 0.14)); pushpin(p.x, p.y - 64, lerp(3, 0.6, k)); }
+        }
+      }
+
+      // ---------------------------------------------------------------- IV · boards: a spread opens and two boards pop up
+      function bookDy(t) { return 900 * eIn(r(t, E.bookOut[0], E.bookOut[1])); }
+      function drawBook(t) {
+        if (t < E.bookIn[0] || t > E.bookOut[1] + 0.05) return;
+        const y = lerp(1500, BOOK.y, eOut(r(t, E.bookIn[0], E.bookIn[1]))) + bookDy(t), ou = eIO(r(t, E.open[0], E.open[1])), sx = lerp(-1, 1, ou);
+        piece({ key: "coverR", make: RECT(650, 530), x: 1285, y, h: 0.8, stock: "teal", seed: 501, tear: 1.2, step: 14 });
+        piece({ key: "page", make: RECT(612, 494), x: 1278, y, h: 0.2, stock: "cream", seed: 502, tear: 1.0, step: 14, content: () => { ctx.fillStyle = "rgba(60, 35, 15, 0.12)"; ctx.fillRect(-306, -247, 34, 494); } });
+        // the left cover turns over the gutter: its outside is teal, its inside carries the left page
+        piece({ key: "coverL", make: RECT(650, 530), x: 960 - 325 * sx, y, sx: Math.max(0.02, Math.abs(sx)), h: 0.8 + 3 * Math.sin(Math.PI * ou), stock: "teal", seed: 503, tear: 1.2, step: 14,
+          content: sx > 0 ? () => { fillRectStock("cream", -306, -247, 612, 494, 504); ctx.fillStyle = "rgba(60, 35, 15, 0.12)"; ctx.fillRect(272, -247, 34, 494); } : null });
+        // the boards stand up as the spread opens (pop-up: the visible height is the board's sine)
+        [0, 1].forEach((b) => {
+          const t0 = lerp(E.open[0], E.open[1], b ? 0.55 : 0.82), ph = eBack(r(t, t0, t0 + 0.45)), sy = Math.sin(Math.min(ph, 1) * Math.PI / 2) * (ph > 1 ? ph : 1);
+          if (sy < 0.02) return;
+          const base = BOOK.base - (BOOK.y - y) * 0;
+          const yb = base + (y - BOOK.y);
+          piece({ key: "board", make: RECT(420, 290), x: BOARDX[b], y: yb - 145 * sy, sy, h: 0.3 + 1.6 * sy, stock: "cork", seed: 520 + b, tear: 1.1, step: 12, content: () => {
+            piece({ key: "bhead", make: RECT(420, 50), x: 0, y: -120, h: 0.15, stock: "cream", seed: 530 + b, tear: 0.8, step: 12, content: () => txt(TB.boards[b], 0, 2, `800 ${Math.min(27, Math.floor(27 * 392 / wordW(TB.boards[b], '800 27px "Archivo"')))}px "Archivo"`, "#221f1d") });
+          } });
+        });
+      }
+
+      // ---------------------------------------------------------------- V · schedule: a week of strips, pins dropped with gaps
+      function drawSchedule(t) {
+        if (t < E.days[0] || t > E.schedOut[1] + 0.05) return;
+        const out = (k) => eIn(r(t, E.schedOut[0] + k * 0.05, E.schedOut[0] + k * 0.05 + 0.55));
+        DAYS.forEach((d, k) => {
+          const a = eBack(r(t, E.days[k], E.days[k] + 0.4)), x = DAYX(k) - 2300 * out(k), y = lerp(-500, DAYY, a);
+          if (a <= 0) return;
+          piece({ key: "day", make: RECT(240, 560), x, y, rot: (hash(k * 9.1) - 0.5) * 0.03, h: 0.5 + 2 * (1 - a), stock: "cream", seed: 600 + k, tear: 1.2, step: 14, content: () => {
+            ctx.strokeStyle = "rgba(34, 31, 29, 0.22)"; ctx.lineWidth = 2;
+            for (let hh = 9; hh <= 21; hh += 3) { const yy = timeY(`${hh}:00`) - DAYY; ctx.beginPath(); ctx.moveTo(-100, yy); ctx.lineTo(110, yy); ctx.stroke(); txt(`${hh}:00`, -108, yy - 12, '500 13px "JBM"', "#8a7f70", "left"); }
+            piece({ key: "dayhead", make: RECT(240, 56), x: 0, y: -252, h: 0.15, stock: "ink", seed: 610 + k, tear: 0.8, step: 10, content: () => txt(d, 0, 2, '800 26px "Archivo"', "#f6efe2") });
+          } });
+        });
+        TB.slots.forEach((sl, i) => {
+          const tt = E.drops[i]; if (t < tt - 0.3) return;
+          const a = eOut(r(t, tt - 0.3, tt)), x = DAYX(sl.day) - 40 - 2300 * out(sl.day), y = timeY(sl.time);
+          pinPiece(sl.pin, { x, y: y - 260 * (1 - a), s: lerp(0.5, 0.36, a), rot: (hash(i * 4.4) - 0.5) * 0.08, h: lerp(4, 0.4, a) }, { seed: 700 + i });
+          const b = eOut(r(t, tt + 0.1, tt + 0.3));
+          if (b > 0) piece({ key: "time_" + i, make: RECT(78, 34), x: x + 92, y: y - 30, s: lerp(1.2, 1, b), h: lerp(2.5, 0.3, b), stock: "news", seed: 720 + i, tear: 0.7, step: 8, content: () => txt(sl.time, 0, 1, '700 18px "JBM"', "#221f1d") });
+        });
+        // the worker's clock: a paper hand that steps round between checks
+        const ca = eBack(r(t, E.days[4] + 0.2, E.days[4] + 0.55));
+        if (ca > 0) {
+          const cx = 1745 - 2300 * out(5), cy = 168;
+          piece({ key: "clock", make: CIRC(64, 64, 40), x: cx, y: cy, s: ca, h: 0.6, stock: "cream", seed: 760, tear: 0.8, step: 8, content: () => {
+            for (let i = 0; i < 12; i++) { const a = (i / 12) * Math.PI * 2; ctx.fillStyle = i % 3 ? "rgba(34,31,29,0.45)" : "#221f1d"; ctx.fillRect(Math.cos(a) * 50 - 2, Math.sin(a) * 50 - 2, 4, 4); }
+            const lap = ((t - E.days[4]) / (BEAT * 4)) % 1, a = -Math.PI / 2 + lap * Math.PI * 2;
+            if (lap < 0.12) { ctx.fillStyle = "#16a194"; ctx.beginPath(); ctx.arc(0, -50, 8, 0, 7); ctx.fill(); }
+            piece({ key: "hand", make: RECT(46, 6), x: Math.cos(a) * 21, y: Math.sin(a) * 21, rot: a, h: 0.25, stock: "terra", seed: 761, tear: 0.2, step: 6 });
+            piece({ key: "hub", make: CIRC(7, 7, 10), x: 0, y: 0, h: 0.3, stock: "ink", seed: 762, tear: 0.2, step: 4 });
+          } });
+        }
+      }
+
+      // ---------------------------------------------------------------- VI · video: fold to 9:16, a cover, the manual folder
+      function drawVideo(t) {
+        if (t < E.fan[0]) return;
+        const F = filmAt(t), grow = eIO(r(t, E.grow[0], E.grow[1]));
+        const fileU = eIO(r(t, E.file[0], E.file[1])), centre = eIO(r(t, T.title, T.title + 0.8));
+        const fx = lerp(FOLD.x, 960, centre), fy = FOLD.y;
+        const fin = eBack(r(t, E.folderIn[0], E.folderIn[1]));
+        // the folder's back and tab
+        if (fin > 0) {
+          const x = lerp(2500, fx, fin);
+          piece({ key: "ftab", make: RECT(250, 54), x: x - 160, y: fy - 232, h: 0.5, stock: "manila", seed: 801, tear: 1, step: 10, content: () => txt("ready_manual", 0, 2, '700 21px "JBM"', "#221f1d") });
+          piece({ key: "fback", make: RECT(600, 430), x, y: fy, h: 0.6, stock: "manila", seed: 802, tear: 1.2, step: 14 });
+        }
+        if (grow <= 0) { drawFilm(F.x, F.y, F.rot, F.s, F.fold, F.h); }
+        else {
+          // the middle frame grows into a 9:16 card with the clip playing in it, a frame per pose
+          let x = F.x, y = F.y;
+          x = lerp(x, fx, fileU); y = lerp(y, fy - 40, fileU) + 70 * eIn(r(t, E.file[0] + 0.5, E.file[1]));
+          const sx = lerp(190 / 270, 1, grow), sy = lerp(200 / 480, 1, grow), h = 0.6 + 2.2 * Math.sin(Math.PI * fileU);
+          piece({ key: "nine", make: RECT(270, 480), x, y, sx, sy, h, stock: "ink", seed: 820, tear: 0.9, step: 14, content: () => {
+            ctx.save(); ctx.beginPath(); ctx.rect(-118, -222, 236, 444); ctx.clip();
+            drawImg(frameAt(POSE - Math.round(E.grow[0] * 12)), -118, -222, 236, 444);
+            ctx.restore();
+            piece({ key: "916", make: RECT(64, 30), x: 92, y: -206, h: 0.12, stock: "news", seed: 825, tear: 0.6, step: 8, content: () => txt("9:16", 0, 1, '700 16px "JBM"', "#221f1d") });
+          } });
+          // the cover card
+          const ca = eBack(r(t, E.cover, E.cover + 0.35));
+          if (ca > 0) {
+            const cx = lerp(-200, x - 150, ca) , cy = lerp(1000, y + 150, ca);
+            piece({ key: "cover", make: RECT(220, 330), x: cx, y: cy, s: 0.6, rot: -0.08, h: 0.5 + 1.4 * Math.sin(Math.PI * fileU) + (1 - ca) * 2, stock: "white", seed: 840, tear: 0.9, step: 12, content: () => drawImg(IMG.cover, -100, -150, 200, 300) });
+            piece({ key: "covlab", make: RECT(90, 32), x: cx - 4, y: cy + 118, rot: -0.05, h: 0.4, stock: "news", seed: 841, tear: 0.6, step: 8, content: () => txt("cover", 0, 1, '700 17px "JBM"', "#221f1d") });
+          }
+        }
+        // the folder's front panel goes over whatever is filed
+        if (fin > 0) {
+          const x = lerp(2500, fx, fin);
+          piece({ key: "ffront", make: RECT(600, 300), x, y: fy + 70, h: 0.5, stock: "manilaD", seed: 803, tear: 1.2, step: 14 });
+        }
+      }
+
+      // ---------------------------------------------------------------- the scissors' path through the film
+      function scissorsAt(t) {
+        const P = [];
+        const k2 = itemAt(2, E.snips[0]), k4 = itemAt(4, E.snips[1]);
+        P.push([E.scissorsIn, 2350, 420, Math.PI / 2, 0.5]);
+        P.push([E.snips[0] - 0.3, k2.x, k2.y - 30, Math.PI / 2, 0.75]);
+        P.push([E.snips[0], k2.x, k2.y - 30, Math.PI / 2, 0.04]);
+        P.push([E.snips[0] + 0.3, k2.x + 60, k2.y - 120, Math.PI / 2 + 0.1, 0.35]);
+        P.push([E.snips[1] - 0.3, k4.x, k4.y - 30, Math.PI / 2, 0.75]);
+        P.push([E.snips[1], k4.x, k4.y - 30, Math.PI / 2, 0.04]);
+        P.push([E.snips[1] + 0.6, 1760, 250, Math.PI / 2 + 0.35, 0.3]);
+        for (let j = 0; j < 4; j++) { const R = rowAt(j); P.push([E.cuts[j][0], R.x + 55, R.y - 315, Math.PI / 2, 0.5]); P.push([E.cuts[j][1], R.x + 55, R.y + 15, Math.PI / 2, -1]); }
+        P.push([E.cuts[3][1] + 0.7, 2400, 260, Math.PI / 2 + 0.4, 0.3]);
+        if (t < P[0][0] || t > P[P.length - 1][0]) return null;
+        let i = 0; while (i < P.length - 2 && t > P[i + 1][0]) i++;
+        const A = P[i], B = P[i + 1], u = r(t, A[0], B[0]);
+        // during a cut the scissors run straight down the line, chomping on every pose
+        if (B[4] === -1) return { x: A[1], y: lerp(A[2], B[2], u), rot: A[3], open: 0.12 + 0.42 * Math.abs(Math.sin(u * Math.PI * 4)) };
+        const e = eIO(u), oA = A[4] === -1 ? 0.3 : A[4];
+        return { x: lerp(A[1], B[1], e), y: lerp(A[2], B[2], e), rot: lerp(A[3], B[3], e), open: lerp(oA, B[4], B[4] < 0.1 ? eIn(u) : e) };
+      }
+
+      // ---------------------------------------------------------------- the frame
+      function drawTable() {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        const p = PAT.kraft; p.setTransform(new DOMMatrix().scale(1.5)); ctx.fillStyle = p; ctx.fillRect(0, 0, W, H);
+        ctx.setTransform(CAM.z, 0, 0, CAM.z, W / 2 - CAM.x * CAM.z, H / 2 - CAM.y * CAM.z);
+        // a self-healing cutting mat: a fine grid, a heavier line every five squares, the angle guides and the numbers
+        piece({ key: "mat", make: RECT(2600, 1640), x: 960, y: 540, h: 0, stock: "mat", seed: 1, tear: 2, step: 40, edge: "rgba(0,0,0,0)", content: () => {
+          ctx.lineWidth = 1.2;
+          for (let i = -26; i <= 26; i++) { ctx.strokeStyle = i % 5 ? "rgba(214, 236, 222, 0.08)" : "rgba(214, 236, 222, 0.2)"; ctx.beginPath(); ctx.moveTo(i * 50, -820); ctx.lineTo(i * 50, 820); ctx.stroke(); }
+          for (let i = -16; i <= 16; i++) { ctx.strokeStyle = i % 5 ? "rgba(214, 236, 222, 0.08)" : "rgba(214, 236, 222, 0.2)"; ctx.beginPath(); ctx.moveTo(-1300, i * 50); ctx.lineTo(1300, i * 50); ctx.stroke(); }
+          ctx.strokeStyle = "rgba(214, 236, 222, 0.11)"; ctx.setLineDash([16, 10]);
+          for (const a of [Math.PI / 4, -Math.PI / 4, Math.PI / 3]) { ctx.beginPath(); ctx.moveTo(-1400 * Math.cos(a), -1400 * Math.sin(a)); ctx.lineTo(1400 * Math.cos(a), 1400 * Math.sin(a)); ctx.stroke(); }
+          ctx.setLineDash([]);
+          for (let i = -4; i <= 4; i++) { txt(String(i + 5), i * 250 + 8, -428, '500 15px "JBM"', "rgba(214, 236, 222, 0.42)", "left"); txt(String(i + 5), -948, i * 250 - 8, '500 15px "JBM"', "rgba(214, 236, 222, 0.42)", "left"); }
+        } });
+        // what lives on a craft table
+        const pa = -0.32, pc = Math.cos(pa), psn = Math.sin(pa);
+        piece({ key: "pbody", make: RECT(380, 26), x: 230, y: 990, rot: pa, h: 1.1, stock: "pencil", seed: 51, tear: 0.4, step: 12, content: () => { ctx.fillStyle = "rgba(0,0,0,0.12)"; ctx.fillRect(-190, 4, 380, 9); } });
+        piece({ key: "ptip", make: () => [[0, -13], [52, 0], [0, 13]], x: 230 + 190 * pc, y: 990 + 190 * psn, rot: pa, h: 1.1, stock: "cream", seed: 52, tear: 0.4, step: 8,
+          content: () => { ctx.fillStyle = "#3a3633"; ctx.beginPath(); ctx.moveTo(36, -4); ctx.lineTo(54, 0); ctx.lineTo(36, 4); ctx.fill(); } });
+        piece({ key: "pferr", make: RECT(22, 28), x: 230 - 201 * pc, y: 990 - 201 * psn, rot: pa, h: 1.1, stock: "steel", seed: 53, tear: 0.3, step: 6 });
+        piece({ key: "perase", make: RECT(30, 26), x: 230 - 226 * pc, y: 990 - 226 * psn, rot: pa, h: 1.1, stock: "terra", seed: 54, tear: 0.4, step: 6 });
+        piece({ key: "tape", make: CIRC(74, 74, 40), x: 118, y: 560, h: 1.5, stock: "terra", seed: 55, tear: 0.6, step: 10, content: () => {
+          ctx.strokeStyle = "rgba(255, 240, 225, 0.35)"; ctx.lineWidth = 2; for (const rr of [52, 60, 66]) { ctx.beginPath(); ctx.arc(0, 0, rr, 0, 7); ctx.stroke(); }
+          ctx.fillStyle = "#2c4a3a"; ctx.beginPath(); ctx.arc(0, 0, 44, 0, 7); ctx.fill(); ctx.fillStyle = "rgba(0,0,0,0.25)"; ctx.beginPath(); ctx.arc(4, 5, 44, 0, 7); ctx.fill(); } });
+        piece({ key: "spoolT", make: RECT(84, 120), x: 1838, y: 560, h: 1.4, stock: "blue", seed: 56, tear: 0.4, step: 8, content: () => {
+          ctx.strokeStyle = "rgba(255,255,255,0.18)"; ctx.lineWidth = 1.5; for (let i = -56; i < 60; i += 6) { ctx.beginPath(); ctx.moveTo(-42, i); ctx.lineTo(42, i + 3); ctx.stroke(); } } });
+        for (const dy of [-68, 68]) piece({ key: "spoolE", make: RECT(112, 18), x: 1838, y: 560 + dy, h: 1.5, stock: "wood", seed: 57 + dy, tear: 0.4, step: 8 });
+        [[330, 905, "teal"], [1590, 215, "cream"], [70, 830, "terra"], [1860, 330, "mustard"], [1180, 1030, "cream"], [690, 1036, "teal"], [1880, 780, "news"], [420, 150, "mustard"]].forEach(([x, y, st], i) =>
+          piece({ key: "scrap" + (i % 3), make: [() => [[-22, -14], [26, -6], [-6, 18]], RECT(54, 14), () => [[-18, -18], [20, -10], [14, 16], [-16, 12]]][i % 3], x, y, rot: hash(i * 7.3) * 6, h: 0.15, stock: st, seed: 60 + i, tear: 0.5, step: 6 }));
+      }
+      // the camera: stepped like a stop-motion rig, a nudge per pose; close in on the cuts, follow the scissors, push into the clip
+      function camAt(t) {
+        const k2 = itemAt(2, E.snips[0]), k4 = itemAt(4, E.snips[1]);
+        const K = [[0, 1080, 560, 1.16], [E.listIn[1] + 0.3, 960, 560, 1.05], [E.fan[0], 960, 540, 1.0],
+          [E.snips[0] - 0.45, 960, 560, 1.0], [E.snips[0] - 0.1, k2.x + 60, k2.y - 40, 1.24], [E.snips[0] + 0.4, k2.x + 60, k2.y - 40, 1.24],
+          [E.snips[1] - 0.1, k4.x - 60, k4.y - 40, 1.24], [E.snips[1] + 0.4, k4.x - 60, k4.y - 40, 1.22], [E.align[0], 960, 540, 1.0],
+          [E.cuts[0][0] - 0.1, rowAt(0).x + 160, 500, 1.16], [E.cuts[3][1], rowAt(3).x - 100, 500, 1.16], [E.tags[3] + 0.5, 960, 560, 1.04],
+          [E.hover[1], 960, 520, 1.0], [E.open[1], 960, 600, 1.08], [E.pinOn[3] + 0.4, 960, 620, 1.1], [E.bookOut[0], 960, 560, 1.0],
+          [E.drops[0], 900, 560, 1.02], [E.schedOut[0], 1040, 540, 1.06], [E.filmIn[1], 800, 560, 1.06], [E.grow[1] + 0.3, 780, 560, 1.22],
+          [E.file[0], 900, 560, 1.12], [E.file[1] + 0.3, 1200, 580, 1.08], [T.title + 0.8, 960, 540, 1.0], [DUR, 960, 540, 1.0]];
+        let i = 0; while (i < K.length - 2 && t > K[i + 1][0]) i++;
+        const A = K[i], B = K[i + 1], u = eIO(r(t, A[0], B[0]));
+        return { x: lerp(A[1], B[1], u), y: lerp(A[2], B[2], u), z: lerp(A[3], B[3], u) };
+      }
+      function post(t) {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        // the table light; once the black sheet has covered the set it only grazes it
+        ctx.globalAlpha = 1 - 0.7 * r(t, E.sweep[0], E.sweep[1]); ctx.drawImage(LIGHT, 0, 0); ctx.globalAlpha = 1;
+        // stop-motion exposure flicker, a touch per pose
+        const f = (hash(POSE * 1.713) - 0.5) * 0.05;
+        ctx.fillStyle = f > 0 ? `rgba(255, 244, 228, ${f.toFixed(3)})` : `rgba(20, 10, 4, ${(-f).toFixed(3)})`; ctx.fillRect(0, 0, W, H);
+        ctx.save(); ctx.globalCompositeOperation = "overlay"; ctx.globalAlpha = 0.16;
+        const ox = Math.floor(hash(POSE * 3.1) * 256), oy = Math.floor(hash(POSE * 5.3) * 256);
+        for (let x = -ox; x < W; x += 512) for (let y = -oy; y < H; y += 512) ctx.drawImage(GRAIN, x, y, 512, 512);
+        ctx.restore();
+      }
+      function sweep(t) {
+        const u = r(t, E.sweep[0], E.sweep[1]);
+        if (u <= 0) return false;
+        const x = lerp(-1300, 960, eOut(u));
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        piece({ key: "sheet", make: RECT(2500, 1500), x, y: 540, rot: lerp(0.06, 0, eOut(u)), h: 2 * (1 - u) + 0.6, stock: "ink", seed: 900, tear: 7, step: 26, edge: "rgba(255,248,236,0.12)" });
+        return u >= 1;
+      }
+
+      function paint(t) {
+        const ts = Math.floor(t * PZ + 1e-4) / PZ;   // shot on twos: every frame shows the pose of its twelfth of a second
+        POSE = Math.round(ts * PZ);
+        const covered = ts >= E.sweep[1];
+        Object.assign(CAM, camAt(ts));
+        if (!covered) {
+          PARA = true;
+          drawTable();
+          drawBook(ts); drawSchedule(ts); drawGallery(ts); drawListing(ts); drawPins(ts); drawVideo(ts);
+          const sc = scissorsAt(ts); if (sc) scissors(sc.x, sc.y, sc.rot, sc.open, 1);
+          // the type sits on a sheet of glass over the set, so the camera does not move it
+          ctx.setTransform(1, 0, 0, 1, 0, 0); PARA = false;
+          TB.lines.forEach((L) => drawLine(L, ts));
+        }
+        PARA = false;
+        sweep(ts);
+        post(ts);
+        // the end card: the logo, flat, lands on the black sheet
+        const lo = r(ts, E.logo, E.logo + 0.25);
+        $("#title").style.opacity = lo > 0 ? 1 : 0;
+        $("#t-logo").style.opacity = lo.toFixed(3); $("#t-logo").style.transform = `scale(${lerp(1.06, 1, eOut(lo)).toFixed(4)})`;
+        $("#t-name").style.opacity = r(ts, E.name, E.name + 0.25).toFixed(3);
+        $("#t-line").style.opacity = r(ts, E.name + 0.4, E.name + 0.7).toFixed(3);
+        $("#t-url").textContent = URL_TEXT.slice(0, Math.round(URL_TEXT.length * r(t, E.url, E.url + 1.1)));
+        let st = TB.hud[0][1]; for (const [a, s] of TB.hud) if (ts >= a) st = s;
+        $("#hud-st").textContent = st;
+        const ho = (1 - r(ts, E.sweep[0], E.sweep[0] + 0.4)).toFixed(3);
+        $("#hud-l").style.opacity = ho; $("#hud-r").style.opacity = ho;
+      }
+
+      const tl = gsap.timeline({ paused: true });
+      const clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+
+      async function build() {
+        await Promise.all([document.fonts.load('800 40px "Archivo"'), document.fonts.load('700 40px "Archivo"'), document.fonts.load('italic 400 40px "Instrument Serif"'),
+          document.fonts.load('500 20px "JBM"'), document.fonts.load('700 20px "JBM"'), $("#t-logo").decode()]);
+        const load = (src) => new Promise((res) => { const im = new Image(); im.onload = () => im.decode().then(() => res(im), () => res(im)); im.onerror = () => res(null); im.src = src; });
+        const M = TB.media, names = [...M.photos, ...M.charts, M.cover];
+        (await Promise.all(names.map((n) => load(`assets/img/${n}.jpg`)))).forEach((im, i) => (IMG[names[i]] = im));
+        FRAMES.push(...(await Promise.all(Array.from({ length: M.frames }, (_, i) => load(`assets/img/frames/f${String(i).padStart(3, "0")}.jpg`)))));
+        ctx = $("#cv").getContext("2d");
+        makeStocks(); makePost(); layLines();
+        TITLE_LINES = wrapText(TB.listing.title, 'italic 400 46px "Instrument Serif"', 450);
+        PIN_TXT = TB.pins.map((p) => wrapText(p.title, '700 16px "Archivo"', 214).slice(0, 3));
+        ALT_TXT = TB.pins.map((p) => { const L = wrapText("alt: " + p.alt, '500 12px "JBM"', 214); return L.length > 2 ? [L[0], L[1].replace(/\s*\S*$/, "") + "…"] : L; });
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = window.__hf.buildReady || {};
+      window.__hf.buildReady["pinned"] = build();
+    </script>
+  </body>
+</html>

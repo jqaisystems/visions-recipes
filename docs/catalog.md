@@ -106,6 +106,14 @@ Made for: Imagined Worlds · Stills. Stack: Three.js, TSL, GSAP, Python (score).
 
 ## Products and systems
 
+### R32 · Pinned
+
+A film for a listing-to-pins pipeline made as paper cut-out stop motion on a craft table: a real listing's photos fanned out as prints, the charts snipped out, each photo trimmed into a pin with its own tag, pins pushed onto pop-up boards, dropped into a week of paper strips, and the video folded to 9:16 and filed by hand.
+
+Made for: Etsy to Pinterest · listings into image and video pins. Stack: Canvas 2D, GSAP, Python (table, score).
+
+[Recipe and poster](../recipes/r32-pinned/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r32-pinned-v1)
+
 ### R31 · True North
 
 A showreel cut for a prompt library drawn by one shader around real images: a raymarched compass needle inside a glass globe tiled with stills that whips and brakes on the beat, an endless Droste zoom of stills nested in compass rings, a time-smeared tunnel of stills, three clips in rings, and the logo.
