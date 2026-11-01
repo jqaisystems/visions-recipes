@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <!--
+      R33 · Planner. 33.3 s at 108 bpm, paper cut-out stop motion (season 4, film 2). For the Social Media Content
+      Calendar, João's system that plans a month of posts from one brand brief. A month of social media built as a
+      paper planner on a desk: a brief slides in and its fields pull out as tabs, a volvelle clicks four times and a
+      banner unrolls for each weekly theme, an accordion of card unfolds into thirty days whose flaps lift in a wave,
+      rubber stamps throw out a repeated hook, a repeated CTA and a third post of one format, the month folds into a
+      printer and a tractor-feed CSV scrolls out, a pencil ticks the review down the margin, the strip tears off and
+      flies away as a paper plane. Then the desk is swept and the JQ AI SYSTEMS logo lands.
+      The brief and the month are a sample for JQ VISIONS, illustrative, not the system's own output.
+      Technique: the R32 engine on one Canvas 2D. Every piece is a cut path whose edge is torn by noise along its
+      normals and filled with a paper stock generated from noise; a tabletop light gives each piece a shadow that grows
+      with its height; time is snapped to 12 poses a second and every pose re-cuts each edge a little. paint(t) draws
+      every frame from one baked table (assets/table.js, from bake/table.py); score/compose.py reads it too.
+    -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/table.js"></script>
+    <style>
+      @font-face { font-family: "Archivo"; src: url("assets/fonts/Archivo.ttf") format("truetype"); font-weight: 100 900; }
+      @font-face { font-family: "Instrument Serif"; src: url("assets/fonts/InstrumentSerif-Regular.ttf") format("truetype"); font-weight: 400; font-style: normal; }
+      @font-face { font-family: "Instrument Serif"; src: url("assets/fonts/InstrumentSerif-Italic.ttf") format("truetype"); font-weight: 400; font-style: italic; }
+      @font-face { font-family: "JBM"; src: url("assets/fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 100 800; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #24324d; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #24324d; color: #221f1d; }
+      #ct-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #cv { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #ct-ui { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      .hud { position: absolute; top: 40px; font: 600 17px "JBM", monospace; letter-spacing: 0.2em; white-space: nowrap; color: #f2e9d8; text-transform: uppercase; text-shadow: 0 2px 8px rgba(0,0,0,0.6); }
+      #hud-l { left: 64px; }
+      #hud-l span { color: #f4a98f; }
+      #hud-r { right: 64px; letter-spacing: 0.12em; text-transform: none; color: #f4a98f; }
+      #title { position: absolute; inset: 0; opacity: 0; }
+      #t-logo { position: absolute; left: 590px; top: 352px; width: 740px; height: 154px; }
+      #t-name { position: absolute; left: 0; right: 0; top: 560px; text-align: center; font: 700 50px "Archivo", sans-serif; color: #f2e9d8; white-space: nowrap; opacity: 0; }
+      #t-line { position: absolute; left: 0; right: 0; top: 632px; text-align: center; font: italic 400 38px "Instrument Serif", serif; color: #cbbfab; white-space: nowrap; opacity: 0; }
+      #t-url { position: absolute; left: 0; right: 0; top: 708px; height: 40px; text-align: center; font: 500 30px "JBM", monospace; color: #ec8a6e; white-space: nowrap; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="33.3333" data-width="1920" data-height="1080">
+      <div id="ct-stage" class="clip" data-start="0" data-duration="33.3333" data-track-index="0">
+        <canvas id="cv" width="1920" height="1080" data-layout-allow-overflow></canvas>
+      </div>
+      <div id="ct-ui" class="clip" data-start="0" data-duration="33.3333" data-track-index="1">
+        <div class="hud" id="hud-l" data-layout-allow-occlusion>JQ AI SYSTEMS <span>· content calendar</span></div>
+        <div class="hud" id="hud-r" data-layout-allow-occlusion><span id="hud-st">01 brand brief</span></div>
+        <div id="title" data-layout-allow-occlusion>
+          <img id="t-logo" src="assets/brand/jqai-logo.png" alt="JQ AI SYSTEMS">
+          <div id="t-name">Social Media Content Calendar</div>
+          <div id="t-line">One brief in, a month of posts out</div>
+          <div id="t-url"></div>
+        </div>
+      </div>
+      <audio id="score" src="assets/bgm/score.wav" data-start="0" data-duration="33.3333" data-track-index="7" data-volume="0.8"></audio>
+    </div>
+
+    <script>
+      const TB = window.TABLE, T = TB.T, E = TB.E, DUR = TB.dur, BEAT = TB.beat, PZ = TB.poses;
+      const W = 1920, H = 1080;
+      const URL_TEXT = "ai.joaoqueiros.com/systems/content-calendar";
+      const $ = (s) => document.querySelector(s);
+      const cl = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+      const r = (t, a, b) => cl((t - a) / (b - a));
+      const lerp = (a, b, u) => a + (b - a) * u;
+      const eOut = (u) => 1 - Math.pow(1 - u, 3), eIn = (u) => u * u * u, eIO = (u) => (u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2);
+      const eBack = (u) => { const c = 1.6, c3 = c + 1; return 1 + c3 * Math.pow(u - 1, 3) + c * Math.pow(u - 1, 2); };
+      function hash(n) { const s = Math.sin(n * 12.9898 + 78.233) * 43758.5453; return s - Math.floor(s); }
+      function vnoise(x, seed) { const i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f); return lerp(hash(i + seed * 57.31), hash(i + 1 + seed * 57.31), u) * 2 - 1; }
+      function prng(a) { return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+
+      let ctx, POSE = 0, DEPTH = 0, PARA = true;
+      const CAM = { x: 960, y: 540, z: 1 };
+
+      // ---------------------------------------------------------------- paper stocks, made once from noise
+      const STOCK = { birch: "#dcc5a0", birchD: "#c9ad84", felt: "#24324d", leather: "#7c4f35", cream: "#f2e9d8", white: "#f8f5ef", news: "#e8e2d4", ink: "#221f1d",
+        navy: "#2a3b5c", navyD: "#1d2a42", coral: "#e07a5f", coralD: "#b85a42", mustard: "#dcab4a", sage: "#9db38f", lilac: "#b8a5cc", manila: "#e4c88f",
+        steel: "#bfc3c6", brass: "#c9a54f", wood: "#9a7049", woodD: "#7a5535", pencil: "#e3b23a", lead: "#3a3633", bar: "#e3e8d6" };
+      const PLAT = { Instagram: "mustard", LinkedIn: "sage", Pinterest: "lilac" };
+      const PAT = {};
+      function makeStocks() {
+        Object.entries(STOCK).forEach(([k, base], si) => {
+          const c = document.createElement("canvas"); c.width = c.height = 512;
+          const g = c.getContext("2d"), R = prng(2000 + si * 7919);
+          g.fillStyle = base; g.fillRect(0, 0, 512, 512);
+          const dark = k === "ink" || k === "felt" || k === "navyD", dk = dark ? 0.05 : 0.03, lt = dark ? 0.02 : 0.04;
+          const wrapDraw = (fn) => { for (const ox of [-512, 0, 512]) for (const oy of [-512, 0, 512]) fn(ox, oy); };
+          for (let i = 0; i < 110; i++) {
+            const x = R() * 512, y = R() * 512, rad = 20 + R() * 80, d = R() < 0.5;
+            wrapDraw((ox, oy) => { const gr = g.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, rad);
+              gr.addColorStop(0, d ? `rgba(0,0,0,${dk})` : `rgba(255,255,255,${lt})`); gr.addColorStop(1, "rgba(0,0,0,0)");
+              g.fillStyle = gr; g.fillRect(x + ox - rad, y + oy - rad, rad * 2, rad * 2); });
+          }
+          // felt is all fibre; birch has a grain running one way
+          const fibres = k === "felt" ? 4200 : 1500;
+          g.lineWidth = 0.8;
+          for (let i = 0; i < fibres; i++) {
+            const x = R() * 512, y = R() * 512, a = k.startsWith("birch") ? (R() - 0.5) * 0.15 : R() * Math.PI, l = k.startsWith("birch") ? 30 + R() * 90 : 4 + R() * 16;
+            const dk2 = R() < 0.55, al = (dk2 ? 0.07 : 0.11) * R();
+            g.strokeStyle = dk2 ? `rgba(0,0,0,${al})` : `rgba(255,255,255,${al})`;
+            wrapDraw((ox, oy) => { if (Math.abs(ox) + Math.abs(oy) && (x > 120 && x < 392 && y > 24 && y < 488)) return;
+              g.beginPath(); g.moveTo(x + ox, y + oy); g.quadraticCurveTo(x + ox + Math.cos(a + 0.7) * l * 0.5, y + oy + Math.sin(a + 0.7) * l * 0.5, x + ox + Math.cos(a) * l, y + oy + Math.sin(a) * l); g.stroke(); });
+          }
+          for (let i = 0; i < 700; i++) { g.fillStyle = `rgba(0,0,0,${0.1 * R()})`; g.fillRect(R() * 512, R() * 512, 1.2, 1.2); }
+          PAT[k] = ctx.createPattern(c, "repeat");
+        });
+      }
+      let GRAIN, LIGHT;
+      function makePost() {
+        GRAIN = document.createElement("canvas"); GRAIN.width = GRAIN.height = 256;
+        const g = GRAIN.getContext("2d"), im = g.createImageData(256, 256), R = prng(78);
+        for (let i = 0; i < 256 * 256; i++) { const v = 100 + R() * 56; im.data[i * 4] = im.data[i * 4 + 1] = im.data[i * 4 + 2] = v; im.data[i * 4 + 3] = 255; }
+        g.putImageData(im, 0, 0);
+        LIGHT = document.createElement("canvas"); LIGHT.width = W; LIGHT.height = H;
+        const l = LIGHT.getContext("2d");
+        const gr = l.createRadialGradient(1120, 260, 80, 980, 520, 1250);
+        gr.addColorStop(0, "rgba(255, 240, 214, 0.17)"); gr.addColorStop(0.55, "rgba(255, 240, 214, 0)"); gr.addColorStop(1, "rgba(6, 8, 16, 0.5)");
+        l.fillStyle = gr; l.fillRect(0, 0, W, H);
+      }
+
+      // ---------------------------------------------------------------- cut paper
+      const SH = new Map();
+      function resample(poly, step) {
+        const pts = [];
+        for (let i = 0; i < poly.length; i++) {
+          const [x0, y0] = poly[i], [x1, y1] = poly[(i + 1) % poly.length];
+          const n = Math.max(1, Math.round(Math.hypot(x1 - x0, y1 - y0) / step));
+          for (let k = 0; k < n; k++) pts.push([x0 + ((x1 - x0) * k) / n, y0 + ((y1 - y0) * k) / n]);
+        }
+        return pts;
+      }
+      function shape(key, make, step) {
+        let s = SH.get(key);
+        if (s) return s;
+        const pts = resample(make(), step), n = pts.length, nrm = [];
+        for (let i = 0; i < n; i++) { const a = pts[(i - 1 + n) % n], b = pts[(i + 1) % n]; const nx = b[1] - a[1], ny = -(b[0] - a[0]), l = Math.hypot(nx, ny) || 1; nrm.push([nx / l, ny / l]); }
+        s = { pts, nrm }; SH.set(key, s); return s;
+      }
+      const RECT = (w, h) => () => [[-w / 2, -h / 2], [w / 2, -h / 2], [w / 2, h / 2], [-w / 2, h / 2]];
+      const CIRC = (rx, ry = rx, n = 36) => () => Array.from({ length: n }, (_, i) => [rx * Math.cos((i / n) * 2 * Math.PI), ry * Math.sin((i / n) * 2 * Math.PI)]);
+      function fillStock(path, stock, seed) {
+        const p = PAT[stock];
+        p.setTransform(new DOMMatrix().translate(hash(seed) * 512, hash(seed + 1.3) * 512));
+        ctx.fillStyle = p; ctx.fill(path);
+      }
+      // one piece of paper: a torn outline, a stock, a shadow from its height, and whatever is printed or glued on it
+      function piece(P) {
+        const S = shape(P.key, P.make, P.step || 12), n = S.pts.length, tear = P.tear ?? 1.3, seed = P.seed ?? 1;
+        const path = new Path2D();
+        for (let i = 0; i < n; i++) {
+          const p = S.pts[i], q = S.nrm[i];
+          const d = tear * vnoise(i * 0.55, seed) + 0.55 * (hash(i * 3.17 + seed * 11.3 + POSE * 0.731) - 0.5);
+          const x = p[0] + q[0] * d, y = p[1] + q[1] * d;
+          i ? path.lineTo(x, y) : path.moveTo(x, y);
+        }
+        path.closePath();
+        const jx = (hash(seed * 7.7 + POSE * 1.37) - 0.5) * 1.0, jy = (hash(seed * 3.3 + POSE * 2.11) - 0.5) * 1.0, jr = (hash(seed * 5.1 + POSE * 0.77) - 0.5) * 0.004;
+        ctx.save();
+        const h = P.h ?? 0.6, top = DEPTH === 0 && PARA;
+        const px = top ? (P.x - CAM.x) * h * 0.01 : 0, py = top ? (P.y - CAM.y) * h * 0.01 : 0, ps = top ? 1 + h * 0.008 : 1;
+        ctx.translate(P.x + jx + px, P.y + jy + py); ctx.rotate((P.rot || 0) + jr);
+        const s = (P.s ?? 1) * ps; ctx.scale(s * (P.sx ?? 1), s * (P.sy ?? 1));
+        if (P.alpha !== undefined) ctx.globalAlpha *= P.alpha;
+        const z = (PARA ? CAM.z : 1) * (P.zs ?? 1);
+        if (h > 0) {
+          ctx.shadowColor = `rgba(6, 8, 18, ${(0.5 - 0.05 * Math.min(h, 4)).toFixed(3)})`;
+          ctx.shadowBlur = (2 + h * 9) * z; ctx.shadowOffsetX = (1.5 + h * 6) * z; ctx.shadowOffsetY = (2 + h * 8) * z;
+        }
+        fillStock(path, P.stock, seed);
+        ctx.shadowColor = "transparent";
+        if (P.content) { ctx.save(); ctx.clip(path); DEPTH++; P.content(); DEPTH--; ctx.restore(); }
+        ctx.lineWidth = 1.5 / Math.max(0.2, s); ctx.strokeStyle = P.edge || "rgba(255, 248, 236, 0.34)"; ctx.stroke(path);
+        ctx.restore();
+      }
+      function txt(s, x, y, font, col, align = "center") { ctx.font = font; ctx.fillStyle = col; ctx.textAlign = align; ctx.textBaseline = "middle"; ctx.fillText(s, x, y); }
+      function fillRectStock(stock, x, y, w, h, seed = 3) { const p = new Path2D(); p.rect(x, y, w, h); fillStock(p, stock, seed); }
+      // a pencil line drawn by hand: a few passes, each a little off, re-drawn per pose
+      function graphite(pts, col = "rgba(58, 54, 51, 0.8)", w = 2.2, seed = 1) {
+        ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = w; ctx.lineCap = "round"; ctx.lineJoin = "round";
+        for (let pass = 0; pass < 2; pass++) {
+          ctx.beginPath();
+          pts.forEach(([x, y], i) => { const dx = (hash(seed + i * 3.1 + pass * 7 + POSE * 0.37) - 0.5) * 1.6, dy = (hash(seed + i * 5.7 + pass * 3 + POSE * 0.53) - 0.5) * 1.6; i ? ctx.lineTo(x + dx, y + dy) : ctx.moveTo(x + dx, y + dy); });
+          ctx.globalAlpha = pass ? 0.45 : 1; ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      // ---------------------------------------------------------------- type: every word on its own strip of paper
+      const WC = new Map();
+      function wordW(text, font) { const k = font + "|" + text; if (!WC.has(k)) { ctx.font = font; WC.set(k, ctx.measureText(text).width); } return WC.get(k); }
+      function wrapText(text, font, maxW) {
+        ctx.font = font; const out = []; let cur = "";
+        for (const w of text.split(" ")) { const t = cur ? cur + " " + w : w; if (ctx.measureText(t).width > maxW && cur) { out.push(cur); cur = w; } else cur = t; }
+        if (cur) out.push(cur); return out;
+      }
+      function layLines() {
+        TB.lines.forEach((L, i) => {
+          const big = !!L.big, fs = big ? 128 : 74, fa = big ? 152 : 90;
+          const words = L.words.map((w, k) => {
+            const acc = k === L.accent, font = acc ? `italic 400 ${fa}px "Instrument Serif"` : `800 ${fs}px "Archivo"`;
+            return { text: w, font, acc, w: wordW(w, font) + (big ? 46 : 32), h: fs * 1.24 };
+          });
+          const gap = big ? 18 : 12, total = words.reduce((s, w) => s + w.w, 0) + gap * (words.length - 1);
+          let x = L.at[0] === 0 ? 960 - total / 2 : L.at[0];
+          L.lay = words.map((w, k) => {
+            const sd = 300 + i * 20 + k, ink = !w.acc && k % 2 === 1;
+            const o = { ...w, key: `w${i}_${k}`, x: x + w.w / 2, y: L.at[1] + (hash(sd) - 0.5) * 14, rot: (hash(sd * 1.7) - 0.5) * 0.07, seed: sd,
+              stock: w.acc ? "coral" : ink ? "ink" : "news", col: w.acc || ink ? "#f6efe2" : "#221f1d", dy: w.acc ? fs * 0.02 : fs * 0.05 };
+            x += w.w + gap; return o;
+          });
+        });
+      }
+      function drawLine(L, t) {
+        if (t < L.t || t > L.out + 1.4) return;
+        const n = L.lay.length;
+        L.lay.forEach((w, k) => {
+          const ti = L.t + k * 0.16, to = L.out + (n - 1 - k) * 0.08;
+          if (t < ti) return;
+          const a = eOut(r(t, ti, ti + 0.25)), b = eIn(r(t, to, to + 0.4));
+          if (b >= 1) return;
+          piece({ key: w.key, make: RECT(w.w, w.h), x: w.x + 40 * b, y: w.y - 22 * (1 - a) - 320 * b, rot: w.rot + (k % 2 ? 0.5 : -0.5) * b, s: lerp(1.14, 1, a) + 0.08 * b,
+            h: lerp(3.6, 0.45, a) + 3.5 * b, stock: w.stock, seed: w.seed, tear: 1.6, step: 14, content: () => txt(w.text, 0, w.dy, w.font, w.col) });
+        });
+      }
+
+      // ---------------------------------------------------------------- layout
+      const FORM = { x: 560, y: 600, w: 520, h: 560 };
+      const WHEEL = { x: 520, y: 620 };
+      const BAN = { x: 1250, w: 780, h: 118 }, BANY = (k) => 330 + k * 150;
+      const GX = (c) => 600 + c * 200, GY = (rw) => 330 + rw * 140, CARD = { w: 184, h: 124 };
+      const cellOf = (day) => ({ c: (day - 1) % 7, rw: Math.floor((day - 1) / 7) });
+      const LABX = 300, LABS = 0.42;
+      const PRN = { x: 960, y: 960, lip: 860 };
+      const STRIP = { w: 1040, H: 1500, rowH: 40, lmax: 1350, perf: 560 };
+      const DOW = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
+      const REJ = {}; TB.rejects.forEach((j, i) => (REJ[j.day] = { ...j, i, ts: E.stamps[i] }));
+      let TAB_W = [], HOOK_L = {}, BAN_W = [];
+
+      // ---------------------------------------------------------------- I · the brief: a form, its fields pulled out as tabs
+      function drawBrief(t) {
+        if (t > E.formOut[1] + 0.05) return;
+        const a = eBack(r(t, E.formIn[0], E.formIn[1])), o = eIn(r(t, E.formOut[0], E.formOut[1]));
+        const fx = lerp(-700, FORM.x, a) - 1500 * o, fy = FORM.y - 260 * o, rot = lerp(-0.05, -0.012, a) - 0.1 * o, h = 0.6 + 2.4 * o + 1.5 * (1 - a);
+        // the tabs pull out from under the form's right edge
+        TB.brief.forEach(([lab, val], k) => {
+          const u = eOut(r(t, E.tabs[k], E.tabs[k] + 0.32)); if (u <= 0) return;
+          const w = TAB_W[k], ry = -170 + k * 72, tx = FORM.w / 2 - 30 - w / 2 + (w - 10) * u;
+          const c = Math.cos(rot), sn = Math.sin(rot);
+          piece({ key: "tab" + k, make: RECT(w, 52), x: fx + tx * c - ry * sn, y: fy + tx * sn + ry * c, rot: rot + (hash(k * 4.1) - 0.5) * 0.02, h: h * 0.9, stock: k % 2 ? "news" : "cream", seed: 140 + k, tear: 0.8, step: 10,
+            content: () => { ctx.fillStyle = "#e07a5f"; ctx.fillRect(w / 2 - 14, -26, 14, 52); txt(val, -w / 2 + 40, 2, '700 24px "Archivo"', "#221f1d", "left"); } });
+        });
+        piece({ key: "form", make: RECT(FORM.w, FORM.h), x: fx, y: fy, rot, h, stock: "cream", seed: 131, tear: 1.6, step: 14, content: () => {
+          piece({ key: "fhead", make: RECT(FORM.w, 92), x: 0, y: -FORM.h / 2 + 46, h: 0.1, stock: "navy", seed: 132, tear: 0.8, step: 12, content: () => {
+            txt("brand brief", -FORM.w / 2 + 34, -12, 'italic 400 44px "Instrument Serif"', "#f2e9d8", "left");
+            txt("JQ VISIONS · sample brief", -FORM.w / 2 + 36, 26, '600 15px "JBM"', "#f4a98f", "left");
+          } });
+          TB.brief.forEach(([lab], k) => {
+            const ry = -170 + k * 72;
+            txt(lab, -FORM.w / 2 + 34, ry, '600 18px "JBM"', "#8a3e2a", "left");
+            ctx.fillStyle = "rgba(34, 31, 29, 0.55)"; ctx.fillRect(FORM.w / 2 - 34, ry - 26, 6, 52);   // the slot the tab runs through
+            ctx.strokeStyle = "rgba(34, 31, 29, 0.14)"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(-FORM.w / 2 + 30, ry + 36); ctx.lineTo(FORM.w / 2 - 30, ry + 36); ctx.stroke();
+          });
+        } });
+      }
+
+      // ---------------------------------------------------------------- II · a volvelle clicks four times, a banner unrolls per week
+      function wheelRot(t) { return Math.PI / 2 - (Math.PI / 2) * E.clicks.reduce((s, c) => s + eBack(r(t, c, c + 0.3)), 0); }
+      function drawWheel(t) {
+        if (t < E.wheelIn[0] || t > E.wheelOut[1] + 0.05) return;
+        const a = eBack(r(t, E.wheelIn[0], E.wheelIn[1])), o = eIn(r(t, E.wheelOut[0], E.wheelOut[1]));
+        const x = WHEEL.x - 1300 * o, y = lerp(1500, WHEEL.y, a), h = 0.6 + 2 * (1 - a) + 2 * o, rho = wheelRot(t);
+        piece({ key: "vbase", make: CIRC(282, 282, 64), x, y, h, stock: "navy", seed: 151, tear: 1.2, step: 10, content: () => {
+          for (let i = 0; i < 28; i++) { const q = (i / 28) * Math.PI * 2; ctx.fillStyle = i % 7 ? "rgba(242,233,216,0.3)" : "#f2e9d8"; ctx.save(); ctx.rotate(q); ctx.fillRect(250, -2, i % 7 ? 14 : 22, 4); ctx.restore(); }
+        } });
+        piece({ key: "vwheel", make: CIRC(236, 236, 60), x, y, rot: rho, h: h + 0.35, stock: "cream", seed: 152, tear: 1.0, step: 10, content: () => {
+          for (let k = 0; k < 4; k++) {
+            ctx.save(); ctx.rotate(k * Math.PI / 2);
+            ctx.fillStyle = k % 2 ? "rgba(220, 171, 74, 0.55)" : "rgba(224, 122, 95, 0.4)";
+            ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, 236, -Math.PI / 4, Math.PI / 4); ctx.closePath(); ctx.fill();
+            txt("WEEK", 150, -22, '700 18px "JBM"', "#221f1d"); txt(String(k + 1), 150, 18, '800 64px "Archivo"', "#221f1d");
+            ctx.restore();
+          }
+          ctx.strokeStyle = "rgba(34,31,29,0.35)"; ctx.lineWidth = 2;
+          for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(236 * Math.cos(Math.PI / 4 + k * Math.PI / 2), 236 * Math.sin(Math.PI / 4 + k * Math.PI / 2)); ctx.stroke(); }
+        } });
+        piece({ key: "vpoint", make: () => [[0, -26], [56, 0], [0, 26]], x: x + 238, y, h: h + 0.6, stock: "coral", seed: 153, tear: 0.5, step: 8 });
+        piece({ key: "vhub", make: CIRC(26, 26, 18), x, y, h: h + 0.7, stock: "brass", seed: 154, tear: 0.3, step: 5, content: () => { ctx.fillStyle = "rgba(60,40,10,0.5)"; ctx.fillRect(-3, -14, 6, 28); } });
+      }
+      // a weekly theme banner: where it is at time t, unrolled from the wheel, then sent to label its week of the month
+      function bannerAt(k, t) {
+        const c = E.clicks[k], u = eOut(r(t, c + 0.12, c + 0.6));
+        const m = eIO(r(t, E.toRows[0] + k * 0.1, E.toRows[1] + k * 0.1)), fo = eIn(r(t, E.foldUp[0] + k * 0.05, E.foldUp[0] + 0.6 + k * 0.05));
+        return { u, x: lerp(BAN.x, LABX, m) - 900 * fo, y: lerp(BANY(k), GY(k), m), s: lerp(1, LABS, m), h: 0.5 + 1.8 * Math.sin(Math.PI * m) + 2 * fo, rot: lerp((hash(k * 2.3) - 0.5) * 0.03, 0, m) };
+      }
+      function drawBanners(t) {
+        if (t < E.clicks[0] || t > E.foldUp[1] + 0.2) return;
+        TB.themes.forEach((th, k) => {
+          const B = bannerAt(k, t); if (B.u <= 0.01) return;
+          const left = B.x - (BAN.w / 2) * B.s;
+          piece({ key: "ban" + k, make: RECT(BAN.w, BAN.h), x: left + (BAN.w / 2) * B.s * B.u, y: B.y, rot: B.rot, s: B.s, sx: Math.max(0.02, B.u), h: B.h, stock: "news", seed: 160 + k, tear: 1.2, step: 12, content: () => {
+            ctx.fillStyle = "#e07a5f"; ctx.fillRect(-BAN.w / 2, -BAN.h / 2, 18, BAN.h);
+            txt("WEEK " + (k + 1), -BAN.w / 2 + 40, -32, '700 16px "JBM"', "#8a3e2a", "left");
+            txt(th.head, -BAN.w / 2 + 38, 2, 'italic 400 46px "Instrument Serif"', "#221f1d", "left");
+            txt(th.why, -BAN.w / 2 + 40, 38, '500 18px "JBM"', "#5b4f44", "left");
+          } });
+          // the roll at the moving end while it unrolls
+          if (B.u < 0.98) piece({ key: "roll", make: RECT(30, BAN.h + 8), x: left + BAN.w * B.s * B.u, y: B.y, s: B.s, h: B.h + 0.4, stock: "news", seed: 170 + k, tear: 0.6, step: 8,
+            content: () => { const g = ctx.createLinearGradient(-15, 0, 15, 0); g.addColorStop(0, "rgba(0,0,0,0.25)"); g.addColorStop(0.5, "rgba(255,255,255,0.15)"); g.addColorStop(1, "rgba(0,0,0,0.3)"); ctx.fillStyle = g; ctx.fillRect(-15, -70, 30, 140); } });
+        });
+      }
+
+      // ---------------------------------------------------------------- III · thirty days: post cards under flaps
+      function postFor(day, t) {
+        const p = TB.posts[day - 1], j = REJ[day];
+        return j && t < j.ts + 0.75 ? { ...p, ...j.draft, draftOf: j } : p;
+      }
+      function cardContent(p, t) {
+        return () => {
+          const hw = CARD.w / 2, hh = CARD.h / 2;
+          fillRectStock(PLAT[p.platform], -hw, -hh, CARD.w, 24, 900 + p.day);
+          txt(p.platform, -hw + 8, -hh + 12, '700 12px "JBM"', "#221f1d", "left");
+          txt(p.format, hw - 8, -hh + 12, '500 12px "JBM"', "#221f1d", "right");
+          const L = HOOK_L[p.hook];
+          L.forEach((ln, i) => txt(ln, -hw + 8, -hh + 40 + i * 18, '700 15px "Archivo"', "#221f1d", "left"));
+          txt(p.tag, -hw + 8, 18, '500 12px "JBM"', "#a14a33", "left");
+          txt("→ " + p.cta, -hw + 8, 40, '600 12px "JBM"', "#221f1d", "left");
+          // the suggested visual, sketched in pencil
+          ctx.strokeStyle = "rgba(58, 54, 51, 0.6)"; ctx.lineWidth = 1.2; ctx.strokeRect(46, 6, 38, 46);
+          graphite([[50, 40], [58, 26], [64, 34], [72, 18], [80, 44]], "rgba(58,54,51,0.55)", 1.2, p.day * 3);
+          // the variety check's mark on a draft, and its pencil ring on the post the draft repeats
+          const j = REJ[p.day];
+          if (j && p.draftOf && t >= j.ts) {
+            ctx.save(); ctx.translate(-8, -4); ctx.rotate(-0.16); ctx.globalAlpha = 0.86;
+            ctx.strokeStyle = "#c2452e"; ctx.lineWidth = 3; ctx.strokeRect(-78, -20, 156, 40);
+            txt(j.stamp, 0, 1, '800 19px "Archivo"', "#c2452e");
+            ctx.restore();
+          }
+          TB.rejects.forEach((q, i) => {
+            const ofs = [].concat(q.of), ts = E.stamps[i];
+            if (!ofs.includes(p.day) || t < ts - 0.15 || t > ts + 1.3) return;
+            const u = r(t, ts - 0.15, ts + 0.1), R = q.field === "hook" ? [-4, -hh + 49, 92, 22] : q.field === "cta" ? [-30, 40, 64, 12] : [hw - 34, -hh + 12, 32, 12];
+            const n = 18, pts = [];
+            for (let s = 0; s <= n * u; s++) { const a = -2 + (s / n) * Math.PI * 2.15; pts.push([R[0] + Math.cos(a) * R[2], R[1] + Math.sin(a) * R[3]]); }
+            if (pts.length > 1) graphite(pts, "rgba(194, 69, 46, 0.9)", 2.4, 40 + i);
+          });
+        };
+      }
+      function rowAt(rw, t) {
+        // the accordion: row 0 arrives folded, each row unfolds out of the one above; at export they fold back up
+        const u = rw === 0 ? eOut(r(t, E.toRows[0] + 0.2, E.rows[0] + 0.45)) : eOut(r(t, E.rows[rw], E.rows[rw] + 0.45));
+        let y = rw === 0 ? lerp(1500, GY(0), u) : lerp(GY(rw - 1), GY(rw), u), sy = rw === 0 ? 1 : lerp(0.08, 1, u), h = rw === 0 ? 0.4 + 2.5 * (1 - u) : 0.4 + 1.6 * Math.sin(Math.PI * u);
+        if (rw > 0) { const v = eIO(r(t, E.foldUp[0] + (4 - rw) * 0.22, E.foldUp[0] + (4 - rw) * 0.22 + 0.45)); y = lerp(y, GY(0), v); sy = lerp(sy, 0.08, v); h += 1.6 * Math.sin(Math.PI * v); }
+        return { y, sy, h, on: u > 0.01 && sy > 0.081 };
+      }
+      function monthGroup(t) {
+        // after folding up, the whole month slides up into the printer
+        const v = eIn(r(t, E.feedIn[0], E.feedIn[1]));
+        return { dx: -240 * v, dy: (PRN.y - 30 - GY(0)) * v, s: lerp(1, 0.78, v), gone: v >= 1 };
+      }
+      const CRUMPLE = (ts) => ({ c: [ts + 0.3, ts + 0.6], roll: [ts + 0.6, ts + 1.1], inn: [ts + 0.75, ts + 1.2] });
+      function drawMonth(t) {
+        if (t < E.toRows[0] || t > E.feedIn[1] + 0.05) return;
+        const G = monthGroup(t);
+        ctx.save(); ctx.translate(1200 + G.dx, GY(0) + G.dy); ctx.scale(G.s, G.s); ctx.translate(-1200, -GY(0));
+        for (let rw = 4; rw >= 0; rw--) {
+          const R = rowAt(rw, t); if (!R.on && rw) continue;
+          if (R.y > 1450) continue;
+          const cols = rw === 4 ? 2 : 7, sw = rw === 4 ? 430 : 1420, sx0 = rw === 4 ? GX(0) + 100 : 1200;
+          piece({ key: "row" + (rw === 4 ? "s" : ""), make: RECT(sw, 136), x: sx0, y: R.y, sy: R.sy, h: R.h, stock: "birchD", seed: 180 + rw, tear: 1.3, step: 14 });
+          for (let c = 0; c < cols; c++) {
+            const day = rw * 7 + c + 1, x = GX(c), p = postFor(day, t), j = REJ[day];
+            // a draft thrown out: crumpled into a ball and rolled off the desk; the new card slides in under the flap
+            if (j) {
+              const C = CRUMPLE(j.ts), cu = r(t, C.c[0], C.c[1]), ru = r(t, C.roll[0], C.roll[1]);
+              if (t >= C.c[0] && ru < 1) {
+                const dr = { ...TB.posts[day - 1], ...j.draft, draftOf: j };
+                if (cu < 0.55) piece({ key: "card", make: RECT(CARD.w, CARD.h), x, y: R.y, rot: 0.5 * cu, s: lerp(1, 0.55, cu / 0.55), h: 0.5 + 2 * cu, stock: "white", seed: 300 + day, tear: 1 + 10 * cu, step: 10, content: cardContent(dr, t) });
+                else piece({ key: "ball", make: CIRC(46, 40, 22), x: x + 1300 * eIn(ru), y: R.y + 220 * eIn(ru), rot: 1.4 + 9 * ru, s: lerp(1.15, 0.9, cu), h: 1.4 + 2 * ru, stock: "white", seed: 330 + day, tear: 7, step: 6,
+                  content: () => { graphite([[-30, -12], [-6, 6], [12, -18], [30, 10]], "rgba(0,0,0,0.25)", 2, day); graphite([[-24, 20], [4, -2], [26, 24]], "rgba(0,0,0,0.2)", 2, day + 9); ctx.fillStyle = "rgba(194,69,46,0.6)"; ctx.fillRect(-12, -6, 26, 8); } });
+              }
+              if (t >= C.c[0]) {
+                const iu = eOut(r(t, C.inn[0], C.inn[1])); if (iu <= 0) { drawFlap(day, x, R, t); continue; }
+                piece({ key: "card", make: RECT(CARD.w, CARD.h), x, y: R.y + 210 * (1 - iu), sy: R.sy, h: 0.35 + 2.4 * (1 - iu), stock: "white", seed: 360 + day, tear: 0.9, step: 10, content: cardContent(TB.posts[day - 1], t) });
+                drawFlap(day, x, R, t); continue;
+              }
+            }
+            piece({ key: "card", make: RECT(CARD.w, CARD.h), x, y: R.y, sy: R.sy, h: 0.35, stock: "white", seed: 300 + day, tear: 0.9, step: 10, content: cardContent(p, t) });
+            drawFlap(day, x, R, t);
+          }
+        }
+        ctx.restore();
+      }
+      function flapT(day) { const { c, rw } = cellOf(day); return E.flaps + (c + rw) * 0.12; }
+      function drawFlap(day, x, R, t) {
+        // hinged at the card's top edge: as it lifts it foreshortens until it stands up, a thin strip with a long shadow
+        const u = eIO(r(t, flapT(day), flapT(day) + 0.34)), sy = Math.max(0.07, Math.cos(u * Math.PI / 2)) * R.sy, top = R.y - (CARD.h / 2) * R.sy;
+        const { c } = cellOf(day);
+        piece({ key: "flap", make: RECT(CARD.w + 6, CARD.h + 6), x, y: top + ((CARD.h + 6) / 2) * sy, sy, h: 0.45 + 1.7 * Math.sin(u * Math.PI / 2), stock: u > 0.6 ? "navyD" : "navy", seed: 380 + day, tear: 1.0, step: 10,
+          content: u < 0.6 ? () => { txt(DOW[c], -74, -38, '700 14px "JBM"', "#f4a98f", "left"); txt(String(day), 0, 10, '800 52px "Archivo"', "#f2e9d8"); } : null });
+      }
+
+      // ---------------------------------------------------------------- IV · the variety check's stamps
+      function stampAt(i, t) {
+        const day = TB.rejects[i].day, { c, rw } = cellOf(day), x = GX(c) - 8, y = GY(rw) - 4, ts = E.stamps[i];
+        const K = [[ts - 0.45, x + 520, y - 380, 5.5, 1.3], [ts - 0.12, x, y, 4, 1.12], [ts, x, y, 0.45, 1], [ts + 0.2, x, y, 3.6, 1.1], [ts + 0.6, x + 560, y - 420, 5.5, 1.3]];
+        if (t < K[0][0] || t > K[4][0]) return null;
+        let k = 0; while (k < K.length - 2 && t > K[k + 1][0]) k++;
+        const A = K[k], B = K[k + 1], u = k === 1 ? eIn(r(t, A[0], B[0])) : eIO(r(t, A[0], B[0]));
+        return { x: lerp(A[1], B[1], u), y: lerp(A[2], B[2], u), h: lerp(A[3], B[3], u), s: lerp(A[4], B[4], u), rot: -0.16 + (k === 0 ? 0.3 * (1 - u) : 0), text: TB.rejects[i].stamp };
+      }
+      function drawStamps(t) {
+        for (let i = 0; i < 3; i++) {
+          const S = stampAt(i, t); if (!S) continue;
+          piece({ key: "sblock", make: RECT(176, 66), x: S.x, y: S.y, rot: S.rot, s: S.s, h: S.h, stock: "wood", seed: 400 + i, tear: 0.6, step: 8, content: () => {
+            piece({ key: "slabel", make: RECT(150, 34), x: 0, y: 0, h: 0.1, stock: "cream", seed: 410 + i, tear: 0.5, step: 8, content: () => txt(S.text, 0, 1, '800 15px "Archivo"', "#c2452e") });
+          } });
+          piece({ key: "sknob", make: CIRC(30, 30, 20), x: S.x + 10 * Math.sin(S.rot), y: S.y - 4, s: S.s, h: S.h + 0.8, stock: "woodD", seed: 420 + i, tear: 0.5, step: 6,
+            content: () => { ctx.fillStyle = "rgba(255, 230, 200, 0.25)"; ctx.beginPath(); ctx.arc(-8, -9, 10, 0, 7); ctx.fill(); } });
+        }
+      }
+
+      // ---------------------------------------------------------------- V · the printer and the tractor-feed CSV
+      function feedL(t) {
+        const u = r(t, E.feed[0], E.feed[1]), rows = TB.csv.length + 1;
+        // the strip moves a line at a time: each line advances quickly, then holds while it prints
+        const q = u * rows, k = Math.floor(q), f = q - k;
+        return cl((k + eOut(cl(f * 2.2))) / rows) * STRIP.lmax;
+      }
+      function rowsContent(cy, top, bot, t, tickY) {
+        // draws the strip's rows in its own coordinates (leading edge at +H/2), shifted so the piece's centre is cy
+        return () => {
+          ctx.translate(0, -cy);
+          const hw = STRIP.w / 2, n = TB.csv.length;
+          for (let i = 0; i <= n; i++) {
+            const y = -STRIP.H / 2 + 56 + i * STRIP.rowH;
+            if (y < top - 30 || y > bot + 30) continue;
+            if (i % 2 === 0) { ctx.fillStyle = "rgba(157, 179, 143, 0.28)"; ctx.fillRect(-hw + 46, y - STRIP.rowH / 2, STRIP.w - 92, STRIP.rowH); }
+            const s = i === 0 ? TB.csvHead : TB.csv[i - 1];
+            txt(s, -hw + 70, y + 1, i === 0 ? '800 15px "JBM"' : '500 15px "JBM"', i === 0 ? "#8a3e2a" : "#221f1d", "left");
+            if (i > 0 && tickY !== null && y < tickY) graphite([[-hw + 50, y], [-hw + 56, y + 7], [-hw + 66, y - 8]], "rgba(58,54,51,0.9)", 2.4, i * 7);
+          }
+          // sprocket holes down both margins and the perforation the strip tears at
+          ctx.fillStyle = "#1c2840";
+          for (let y = -STRIP.H / 2 + 20; y < STRIP.H / 2; y += STRIP.rowH) for (const x of [-hw + 22, hw - 22]) { if (y < top || y > bot) continue; ctx.beginPath(); ctx.arc(x, y, 7, 0, 7); ctx.fill(); }
+          ctx.save(); ctx.setLineDash([8, 7]); ctx.strokeStyle = "rgba(34,31,29,0.35)"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(-hw, STRIP.perf); ctx.lineTo(hw, STRIP.perf); ctx.stroke(); ctx.restore();
+        };
+      }
+      function pencilTipAt(t) {
+        if (t < E.ticks[0] - 0.5 || t > E.tear) return null;
+        const a = eOut(r(t, E.ticks[0] - 0.5, E.ticks[0])), u = r(t, E.ticks[0], E.ticks[1]), o = eIn(r(t, E.ticks[1], E.ticks[1] + 0.45));
+        return { x: lerp(1500, 960 - STRIP.w / 2 + 58, a) + 900 * o, y: lerp(-250, 130, a) + 690 * u + 300 * o, wig: Math.sin(u * 60) * 6 };
+      }
+      function drawStrip(t) {
+        if (t < E.feed[0] || t > E.fly[0] + 0.05) return;
+        const L = feedL(t), cyW = PRN.lip - L + STRIP.H / 2;   // the strip's centre, world
+        const tip = pencilTipAt(t), tickY = tip ? tip.y - cyW : (t > E.ticks[1] ? 9999 : null);
+        const torn = t >= E.tear, tu = eOut(r(t, E.tear, E.tear + 0.35));
+        // the paper only exists above the printer's lip; the rest is still inside it
+        const lipY = PRN.lip + 600 * eIn(r(t, E.plane[0], E.plane[1] + 0.4));
+        ctx.save(); ctx.beginPath(); ctx.rect(-3000, -3000, 8000, lipY + 3000); ctx.clip();
+        const pu = eIO(r(t, E.plane[0], E.plane[1]));
+        // the stub below the perforation stays in the printer
+        const sTop = STRIP.perf, sBot = STRIP.H / 2, sc = (sTop + sBot) / 2;
+        piece({ key: "stub", make: RECT(STRIP.w, sBot - sTop), x: 960, y: cyW + sc, h: 0.3, stock: "white", seed: 501, tear: 0.8, step: 14, content: rowsContent(sc, sTop, sBot, t, tickY) });
+        const lTop = -STRIP.H / 2, lBot = STRIP.perf, lc = (lTop + lBot) / 2;
+        piece({ key: "lower", make: RECT(STRIP.w, lBot - lTop), x: 960 + 30 * tu, y: cyW + lc - 50 * tu + lerp(0, 520 - (cyW + lc - 50), pu), rot: 0.025 * tu + 0.6 * pu, s: lerp(1, 0.18, pu), sx: lerp(1, 0.6, pu), h: 0.3 + 0.9 * tu + 3 * pu,
+          stock: "white", seed: 502, tear: 0.8 + 6 * pu, step: 14, content: rowsContent(lc, lTop, lBot, t, tickY) });
+        ctx.restore();
+        if (tip) pencil(tip.x + tip.wig * 0.3, tip.y, 2.25, 1.8);
+      }
+      function drawPrinter(t) {
+        if (t < E.printerIn[0] || t > E.fly[1]) return;
+        const a = eBack(r(t, E.printerIn[0], E.printerIn[1])), o = eIn(r(t, E.plane[0], E.plane[1] + 0.4)), y = lerp(1500, PRN.y, a) + 600 * o;
+        piece({ key: "prn", make: RECT(1180, 200), x: PRN.x, y, h: 1.1, stock: "navy", seed: 520, tear: 1.2, step: 14, content: () => {
+          txt("export.csv", -540, -30, '700 22px "JBM"', "#f2e9d8", "left");
+          txt("one row per post", -540, 2, '500 16px "JBM"', "#9fb1cc", "left");
+          const on = t > E.feed[0] && t < E.feed[1] && POSE % 2 === 0;
+          ctx.fillStyle = on ? "#f4c55e" : "#6d5a2c"; ctx.beginPath(); ctx.arc(520, -50, 10, 0, 7); ctx.fill();
+          ctx.fillStyle = "rgba(0,0,0,0.45)"; ctx.fillRect(-500, -84, 1000, 12);   // the slot the month goes into
+        } });
+        piece({ key: "lip", make: RECT(1120, 40), x: PRN.x, y: y + (PRN.lip - PRN.y) + 14, h: 1.2, stock: "navyD", seed: 521, tear: 0.8, step: 12 });
+      }
+      function pencil(tx, ty, rot, h) {
+        const c = Math.cos(rot), sn = Math.sin(rot), bx = tx - 216 * c, by = ty - 216 * sn;
+        piece({ key: "pbody", make: RECT(380, 26), x: bx, y: by, rot, h, stock: "pencil", seed: 51, tear: 0.4, step: 12, content: () => { ctx.fillStyle = "rgba(0,0,0,0.12)"; ctx.fillRect(-190, 4, 380, 9); } });
+        piece({ key: "ptip", make: () => [[0, -13], [52, 0], [0, 13]], x: bx + 190 * c, y: by + 190 * sn, rot, h, stock: "cream", seed: 52, tear: 0.4, step: 8,
+          content: () => { ctx.fillStyle = "#3a3633"; ctx.beginPath(); ctx.moveTo(36, -4); ctx.lineTo(54, 0); ctx.lineTo(36, 4); ctx.fill(); } });
+        piece({ key: "pferr", make: RECT(22, 28), x: bx - 201 * c, y: by - 201 * sn, rot, h, stock: "steel", seed: 53, tear: 0.3, step: 6 });
+        piece({ key: "perase", make: RECT(30, 26), x: bx - 226 * c, y: by - 226 * sn, rot, h, stock: "coral", seed: 54, tear: 0.4, step: 6 });
+      }
+      // ---------------------------------------------------------------- VII · the torn strip flies off as a paper plane
+      function drawPlane(t) {
+        if (t < E.fly[0] || t > E.fly[1]) return;
+        const u = r(t, E.fly[0], E.fly[1]), e = eIn(u);
+        const x = lerp(960, 2300, e), y = 520 - 340 * Math.sin(Math.PI * 0.6 * u) - 300 * e, rot = -0.35 - 0.5 * e + 0.12 * Math.sin(u * 9);
+        piece({ key: "plane", make: () => [[-80, -46], [110, 0], [-80, 46], [-48, 0]], x, y, rot, s: lerp(1.3, 1.8, e), h: 3.5 + 1.5 * e, stock: "white", seed: 540, tear: 0.6, step: 10,
+          content: () => { ctx.strokeStyle = "rgba(34,31,29,0.3)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-48, 0); ctx.lineTo(110, 0); ctx.stroke(); ctx.fillStyle = "rgba(157,179,143,0.35)"; ctx.fillRect(-60, 8, 120, 10); } });
+      }
+
+      // ---------------------------------------------------------------- the desk
+      function drawDesk() {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        const p = PAT.birch; p.setTransform(new DOMMatrix().scale(1.6)); ctx.fillStyle = p; ctx.fillRect(0, 0, W, H);
+        ctx.setTransform(CAM.z, 0, 0, CAM.z, W / 2 - CAM.x * CAM.z, H / 2 - CAM.y * CAM.z);
+        // a birch desk and a felt desk blotter with leather corners and a stitched edge
+        piece({ key: "desk", make: RECT(3200, 2400), x: 960, y: 560, h: 0, stock: "birch", seed: 2, tear: 2, step: 40, edge: "rgba(0,0,0,0)" });
+        piece({ key: "blotter", make: RECT(1760, 1040), x: 1000, y: 600, h: 0.25, stock: "felt", seed: 3, tear: 1.4, step: 20, content: () => {
+          ctx.save(); ctx.setLineDash([10, 8]); ctx.strokeStyle = "rgba(242, 233, 216, 0.22)"; ctx.lineWidth = 2; ctx.strokeRect(-850, -490, 1700, 980); ctx.restore();
+        } });
+        for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]])
+          piece({ key: "corner", make: () => [[0, 0], [190, 0], [0, 190]], x: 1000 + sx * 880, y: 600 + sy * 520, sx: -sx, sy: -sy, h: 0.4, stock: "leather", seed: 10 + sx + 3 * sy, tear: 0.8, step: 10 });
+        // a mug of pencils, a stamp pad and a stapler
+        piece({ key: "mug", make: CIRC(92, 92, 40), x: 1890, y: 120, h: 2.2, stock: "coral", seed: 21, tear: 0.6, step: 10, content: () => {
+          ctx.fillStyle = "rgba(0,0,0,0.35)"; ctx.beginPath(); ctx.arc(4, 4, 74, 0, 7); ctx.fill();
+          [["#e3b23a", -30, -20], ["#9db38f", 22, -30], ["#f2e9d8", -4, 26], ["#b8a5cc", 34, 18], ["#e3b23a", -38, 30]].forEach(([c, x, y]) => { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, 13, 0, 7); ctx.fill(); ctx.fillStyle = "#3a3633"; ctx.beginPath(); ctx.arc(x, y, 4, 0, 7); ctx.fill(); });
+        } });
+        piece({ key: "spad", make: RECT(240, 150), x: 70, y: 1010, rot: 0.12, h: 1.2, stock: "navyD", seed: 22, tear: 0.6, step: 10, content: () => { ctx.fillStyle = "#8e3a28"; ctx.fillRect(-100, -55, 200, 110); ctx.fillStyle = "rgba(255,255,255,0.06)"; ctx.fillRect(-100, -55, 200, 20); } });
+        piece({ key: "stapler", make: RECT(300, 70), x: 1840, y: 1040, rot: -0.2, h: 1.6, stock: "steel", seed: 23, tear: 0.4, step: 10, content: () => { fillRectStock("ink", -150, -22, 260, 44, 24); } });
+        [[160, 230, "mustard"], [1880, 520, "cream"], [120, 640, "coral"], [1700, 1060, "lilac"], [380, 1050, "sage"], [1890, 860, "news"]].forEach(([x, y, st], i) =>
+          piece({ key: "scrap" + (i % 3), make: [() => [[-22, -14], [26, -6], [-6, 18]], RECT(54, 14), () => [[-18, -18], [20, -10], [14, 16], [-16, 12]]][i % 3], x, y, rot: hash(i * 7.3) * 6, h: 0.15, stock: st, seed: 60 + i, tear: 0.5, step: 6 }));
+      }
+      // the camera: a slow crane over the spread, stepped like a stop-motion rig; it pushes in only on the check and the export
+      function camAt(t) {
+        const S = E.stamps;
+        const K = [[0, 760, 580, 1.36], [E.formIn[1] + 0.3, 770, 560, 1.26], [E.tabs[5] + 0.6, 830, 560, 1.2], [E.formOut[0], 830, 560, 1.2],
+          [E.wheelIn[1], 1000, 560, 0.98], [E.clicks[3] + 0.8, 1040, 560, 1.0], [E.toRows[0], 1000, 590, 0.95], [E.rows[4] + 0.6, 1010, 610, 0.88],
+          [E.flaps + 1.6, 1010, 610, 0.9], [T.variety[0], 1010, 610, 0.9], [S[0] - 0.4, 900, 400, 1.7], [S[0] + 1.2, 900, 400, 1.7],
+          [S[1] - 0.4, 1000, 560, 1.42], [S[2] + 1.25, 1000, 560, 1.42], [T.export[0], 1010, 610, 0.9], [E.feedIn[0], 960, 600, 1.0],
+          [E.feed[1], 960, 540, 1.03], [E.ticks[1], 940, 500, 1.08], [T.title, 960, 560, 1.0], [DUR, 960, 540, 1.0]];
+        let i = 0; while (i < K.length - 2 && t > K[i + 1][0]) i++;
+        const A = K[i], B = K[i + 1], u = eIO(r(t, A[0], B[0]));
+        return { x: lerp(A[1], B[1], u), y: lerp(A[2], B[2], u), z: lerp(A[3], B[3], u) };
+      }
+      function post(t) {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.globalAlpha = 1 - 0.7 * r(t, E.sweep[0], E.sweep[1]); ctx.drawImage(LIGHT, 0, 0); ctx.globalAlpha = 1;
+        const f = (hash(POSE * 1.713) - 0.5) * 0.05;
+        ctx.fillStyle = f > 0 ? `rgba(255, 244, 228, ${f.toFixed(3)})` : `rgba(20, 10, 4, ${(-f).toFixed(3)})`; ctx.fillRect(0, 0, W, H);
+        ctx.save(); ctx.globalCompositeOperation = "overlay"; ctx.globalAlpha = 0.16;
+        const ox = Math.floor(hash(POSE * 3.1) * 256), oy = Math.floor(hash(POSE * 5.3) * 256);
+        for (let x = -ox; x < W; x += 512) for (let y = -oy; y < H; y += 512) ctx.drawImage(GRAIN, x, y, 512, 512);
+        ctx.restore();
+      }
+      function sweep(t) {
+        const u = r(t, E.sweep[0], E.sweep[1]);
+        if (u <= 0) return false;
+        const x = lerp(-1300, 960, eOut(u));
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        piece({ key: "sheet", make: RECT(2500, 1500), x, y: 540, rot: lerp(0.06, 0, eOut(u)), h: 2 * (1 - u) + 0.6, stock: "ink", seed: 900, tear: 7, step: 26, edge: "rgba(255,248,236,0.12)" });
+        return u >= 1;
+      }
+
+      function paint(t) {
+        const ts = Math.floor(t * PZ + 1e-4) / PZ;   // shot on twos: every frame shows the pose of its twelfth of a second
+        POSE = Math.round(ts * PZ);
+        const covered = ts >= E.sweep[1];
+        Object.assign(CAM, camAt(ts));
+        if (!covered) {
+          PARA = true;
+          drawDesk();
+          drawBrief(ts); drawWheel(ts); drawStrip(ts); drawMonth(ts); drawPrinter(ts); drawBanners(ts); drawStamps(ts); drawPlane(ts);
+          ctx.setTransform(1, 0, 0, 1, 0, 0); PARA = false;
+          TB.lines.forEach((L) => drawLine(L, ts));
+        }
+        PARA = false;
+        sweep(ts);
+        post(ts);
+        const lo = r(ts, E.logo, E.logo + 0.25);
+        $("#title").style.opacity = lo > 0 ? 1 : 0;
+        $("#t-logo").style.opacity = lo.toFixed(3); $("#t-logo").style.transform = `scale(${lerp(1.06, 1, eOut(lo)).toFixed(4)})`;
+        $("#t-name").style.opacity = r(ts, E.name, E.name + 0.25).toFixed(3);
+        $("#t-line").style.opacity = r(ts, E.name + 0.4, E.name + 0.7).toFixed(3);
+        $("#t-url").textContent = URL_TEXT.slice(0, Math.round(URL_TEXT.length * r(t, E.url, E.url + 1.1)));
+        let st = TB.hud[0][1]; for (const [a, s] of TB.hud) if (ts >= a) st = s;
+        $("#hud-st").textContent = st;
+        const ho = (1 - r(ts, E.sweep[0], E.sweep[0] + 0.4)).toFixed(3);
+        $("#hud-l").style.opacity = ho; $("#hud-r").style.opacity = ho;
+      }
+
+      const tl = gsap.timeline({ paused: true });
+      const clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+
+      async function build() {
+        await Promise.all([document.fonts.load('800 40px "Archivo"'), document.fonts.load('700 40px "Archivo"'), document.fonts.load('italic 400 40px "Instrument Serif"'),
+          document.fonts.load('500 20px "JBM"'), document.fonts.load('700 20px "JBM"'), document.fonts.load('800 20px "JBM"'), $("#t-logo").decode()]);
+        ctx = $("#cv").getContext("2d");
+        makeStocks(); makePost(); layLines();
+        TAB_W = TB.brief.map(([, v]) => wordW(v, '700 24px "Archivo"') + 80);
+        const hooks = new Set([...TB.posts.map((p) => p.hook), ...TB.rejects.map((j) => j.draft.hook).filter(Boolean)]);
+        hooks.forEach((h) => (HOOK_L[h] = wrapText(h, '700 15px "Archivo"', 168).slice(0, 2)));
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = window.__hf.buildReady || {};
+      window.__hf.buildReady["planner"] = build();
+    </script>
+  </body>
+</html>

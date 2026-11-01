@@ -1,0 +1,658 @@
+{
+ "fps": 30,
+ "bpm": 108,
+ "beat": 0.5555555555555556,
+ "poses": 12,
+ "dur": 33.3333,
+ "T": {
+  "brief": [
+   0.0,
+   4.4444
+  ],
+  "themes": [
+   4.4444,
+   9.4444
+  ],
+  "month": [
+   9.4444,
+   15.5556
+  ],
+  "variety": [
+   15.5556,
+   21.1111
+  ],
+  "export": [
+   21.1111,
+   26.6667
+  ],
+  "review": [
+   26.6667,
+   28.8889
+  ],
+  "title": 28.8889,
+  "end": 33.3333
+ },
+ "E": {
+  "formIn": [
+   0.2778,
+   1.1111
+  ],
+  "tabs": [
+   1.3889,
+   1.6944,
+   2.0,
+   2.3056,
+   2.6111,
+   2.9167
+  ],
+  "line0": 1.6667,
+  "formOut": [
+   4.4444,
+   5.0
+  ],
+  "wheelIn": [
+   4.7222,
+   5.2778
+  ],
+  "clicks": [
+   5.5556,
+   6.3889,
+   7.2222,
+   8.0556
+  ],
+  "line1": 5.8333,
+  "wheelOut": [
+   9.1111,
+   9.5556
+  ],
+  "toRows": [
+   9.4444,
+   10.1111
+  ],
+  "rows": [
+   9.7222,
+   10.0278,
+   10.3333,
+   10.6389,
+   10.9444
+  ],
+  "flaps": 11.6667,
+  "line2": 12.7778,
+  "stamps": [
+   16.3333,
+   18.0,
+   19.6667
+  ],
+  "line3": 16.1111,
+  "foldUp": [
+   21.1111,
+   21.8889
+  ],
+  "printerIn": [
+   21.1111,
+   21.6667
+  ],
+  "feedIn": [
+   21.8889,
+   22.4444
+  ],
+  "feed": [
+   22.5556,
+   26.4444
+  ],
+  "line4": 23.3333,
+  "ticks": [
+   26.6667,
+   28.1111
+  ],
+  "tear": 28.3333,
+  "plane": [
+   28.8889,
+   29.3333
+  ],
+  "fly": [
+   29.3333,
+   30.3333
+  ],
+  "line5": 29.2222,
+  "sweep": [
+   30.5556,
+   31.1111
+  ],
+  "logo": 31.1111,
+  "name": 31.6667,
+  "url": 32.2222
+ },
+ "brief": [
+  [
+   "voice",
+   "curious, exact, warm"
+  ],
+  [
+   "audience",
+   "designers, founders, makers"
+  ],
+  [
+   "goal",
+   "launch the recipe library"
+  ],
+  [
+   "themes",
+   "films made in code"
+  ],
+  [
+   "highlight",
+   "free prompts and source"
+  ],
+  [
+   "frequency",
+   "Instagram 3 \u00b7 LinkedIn 2 \u00b7 Pinterest 2 a week"
+  ]
+ ],
+ "themes": [
+  {
+   "head": "Made in code.",
+   "why": "Lead with the craft, so the rest makes sense."
+  },
+  {
+   "head": "Open the recipe.",
+   "why": "Show that every film comes with its method."
+  },
+  {
+   "head": "Remix it.",
+   "why": "Turn the people watching into people making."
+  },
+  {
+   "head": "The whole library.",
+   "why": "Close the month on the launch itself."
+  }
+ ],
+ "posts": [
+  {
+   "day": 1,
+   "platform": "Instagram",
+   "format": "reel",
+   "hook": "Every frame here is code",
+   "tag": "#creativecoding",
+   "cta": "Watch the film",
+   "visual": "the paper desk",
+   "week": 0
+  },
+  {
+   "day": 2,
+   "platform": "LinkedIn",
+   "format": "article",
+   "hook": "Why I make films in code",
+   "tag": "#motiondesign",
+   "cta": "Read the post",
+   "visual": "desk from above",
+   "week": 0
+  },
+  {
+   "day": 3,
+   "platform": "Instagram",
+   "format": "carousel",
+   "hook": "No camera, no timeline app",
+   "tag": "#generativeart",
+   "cta": "Swipe through",
+   "visual": "four stills",
+   "week": 0
+  },
+  {
+   "day": 4,
+   "platform": "Pinterest",
+   "format": "pin",
+   "hook": "A film you can rebuild",
+   "tag": "#designinspo",
+   "cta": "Save the pin",
+   "visual": "poster frame",
+   "week": 0
+  },
+  {
+   "day": 5,
+   "platform": "Instagram",
+   "format": "still",
+   "hook": "One canvas, one clock",
+   "tag": "#javascript",
+   "cta": "Ask me how",
+   "visual": "canvas grid",
+   "week": 0
+  },
+  {
+   "day": 6,
+   "platform": "LinkedIn",
+   "format": "carousel",
+   "hook": "Five films, five techniques",
+   "tag": "#brandfilm",
+   "cta": "See all five",
+   "visual": "contact sheet",
+   "week": 0
+  },
+  {
+   "day": 7,
+   "platform": "Pinterest",
+   "format": "pin",
+   "hook": "Paper, drawn in code",
+   "tag": "#papercraft",
+   "cta": "Pin for later",
+   "visual": "torn edge",
+   "week": 0
+  },
+  {
+   "day": 8,
+   "platform": "Instagram",
+   "format": "reel",
+   "hook": "The prompt behind the film",
+   "tag": "#aiart",
+   "cta": "Copy the prompt",
+   "visual": "prompt card",
+   "week": 1
+  },
+  {
+   "day": 9,
+   "platform": "LinkedIn",
+   "format": "still",
+   "hook": "A recipe, not a secret",
+   "tag": "#opensource",
+   "cta": "Open the recipe",
+   "visual": "recipe page",
+   "week": 1
+  },
+  {
+   "day": 10,
+   "platform": "Instagram",
+   "format": "carousel",
+   "hook": "Prompt, template, source",
+   "tag": "#promptdesign",
+   "cta": "Swipe for all three",
+   "visual": "three cards",
+   "week": 1
+  },
+  {
+   "day": 11,
+   "platform": "Pinterest",
+   "format": "pin",
+   "hook": "Steal this film recipe",
+   "tag": "#motiongraphics",
+   "cta": "Save the recipe",
+   "visual": "ingredients",
+   "week": 1
+  },
+  {
+   "day": 12,
+   "platform": "Instagram",
+   "format": "still",
+   "hook": "MIT, first frame to last",
+   "tag": "#opensource",
+   "cta": "Grab the source",
+   "visual": "source folder",
+   "week": 1
+  },
+  {
+   "day": 13,
+   "platform": "LinkedIn",
+   "format": "article",
+   "hook": "What a remix template is",
+   "tag": "#ai",
+   "cta": "Read the breakdown",
+   "visual": "the template",
+   "week": 1
+  },
+  {
+   "day": 14,
+   "platform": "Pinterest",
+   "format": "pin",
+   "hook": "Recipe card: paper cut-out",
+   "tag": "#papercraft",
+   "cta": "Pin the card",
+   "visual": "recipe card",
+   "week": 1
+  },
+  {
+   "day": 15,
+   "platform": "Instagram",
+   "format": "reel",
+   "hook": "Your brand, my recipe",
+   "tag": "#creativecoding",
+   "cta": "Make your own",
+   "visual": "split screen",
+   "week": 2
+  },
+  {
+   "day": 16,
+   "platform": "LinkedIn",
+   "format": "carousel",
+   "hook": "Four remixes of one film",
+   "tag": "#brandfilm",
+   "cta": "Pick a remix",
+   "visual": "four frames",
+   "week": 2
+  },
+  {
+   "day": 17,
+   "platform": "Instagram",
+   "format": "carousel",
+   "hook": "Change three lines, new film",
+   "tag": "#motiondesign",
+   "cta": "Try it tonight",
+   "visual": "a code diff",
+   "week": 2
+  },
+  {
+   "day": 18,
+   "platform": "Pinterest",
+   "format": "pin",
+   "hook": "Remix ideas for makers",
+   "tag": "#diy",
+   "cta": "Save the ideas",
+   "visual": "idea list",
+   "week": 2
+  },
+  {
+   "day": 19,
+   "platform": "Instagram",
+   "format": "still",
+   "hook": "Swap the logo, keep the motion",
+   "tag": "#branding",
+   "cta": "Tag a designer",
+   "visual": "logo swap",
+   "week": 2
+  },
+  {
+   "day": 20,
+   "platform": "LinkedIn",
+   "format": "still",
+   "hook": "Remixing is the point",
+   "tag": "#opensource",
+   "cta": "Share a remix",
+   "visual": "two posters",
+   "week": 2
+  },
+  {
+   "day": 21,
+   "platform": "Pinterest",
+   "format": "pin",
+   "hook": "A week of remixes",
+   "tag": "#designinspo",
+   "cta": "Pin a favourite",
+   "visual": "mood board",
+   "week": 2
+  },
+  {
+   "day": 22,
+   "platform": "Instagram",
+   "format": "reel",
+   "hook": "Every recipe in one place",
+   "tag": "#creativecoding",
+   "cta": "Browse the library",
+   "visual": "library grid",
+   "week": 3
+  },
+  {
+   "day": 23,
+   "platform": "LinkedIn",
+   "format": "article",
+   "hook": "How the library is built",
+   "tag": "#motiondesign",
+   "cta": "Read the story",
+   "visual": "the shelf",
+   "week": 3
+  },
+  {
+   "day": 24,
+   "platform": "Instagram",
+   "format": "carousel",
+   "hook": "Four seasons of technique",
+   "tag": "#animation",
+   "cta": "Swipe the seasons",
+   "visual": "four styles",
+   "week": 3
+  },
+  {
+   "day": 25,
+   "platform": "Pinterest",
+   "format": "pin",
+   "hook": "Film recipes, sorted by style",
+   "tag": "#designinspo",
+   "cta": "Save the board",
+   "visual": "style index",
+   "week": 3
+  },
+  {
+   "day": 26,
+   "platform": "Instagram",
+   "format": "still",
+   "hook": "Start with any recipe",
+   "tag": "#generativeart",
+   "cta": "Pick one",
+   "visual": "index card",
+   "week": 3
+  },
+  {
+   "day": 27,
+   "platform": "LinkedIn",
+   "format": "carousel",
+   "hook": "From anime to paper",
+   "tag": "#brandfilm",
+   "cta": "See the range",
+   "visual": "style strip",
+   "week": 3
+  },
+  {
+   "day": 28,
+   "platform": "Pinterest",
+   "format": "pin",
+   "hook": "Free recipes for code films",
+   "tag": "#motiongraphics",
+   "cta": "Pin the library",
+   "visual": "poster wall",
+   "week": 3
+  },
+  {
+   "day": 29,
+   "platform": "Instagram",
+   "format": "reel",
+   "hook": "Your first code film",
+   "tag": "#creativecoding",
+   "cta": "Start here",
+   "visual": "first frame",
+   "week": 3
+  },
+  {
+   "day": 30,
+   "platform": "LinkedIn",
+   "format": "still",
+   "hook": "The library stays open",
+   "tag": "#opensource",
+   "cta": "Follow along",
+   "visual": "open door",
+   "week": 3
+  }
+ ],
+ "rejects": [
+  {
+   "day": 9,
+   "stamp": "REPEAT HOOK",
+   "of": 3,
+   "field": "hook",
+   "draft": {
+    "hook": "No camera, no timeline app"
+   }
+  },
+  {
+   "day": 17,
+   "stamp": "SAME CTA",
+   "of": 15,
+   "field": "cta",
+   "draft": {
+    "cta": "Make your own"
+   }
+  },
+  {
+   "day": 19,
+   "stamp": "SAME FORMAT",
+   "of": [
+    16,
+    17
+   ],
+   "field": "format",
+   "draft": {
+    "format": "carousel"
+   }
+  }
+ ],
+ "csvHead": "date,platform,format,caption,hashtags,cta,visual",
+ "csv": [
+  "01,Instagram,reel,\"Every frame here is code\",#creativecoding,Watch the film,the paper desk",
+  "02,LinkedIn,article,\"Why I make films in code\",#motiondesign,Read the post,desk from above",
+  "03,Instagram,carousel,\"No camera, no timeline app\",#generativeart,Swipe through,four stills",
+  "04,Pinterest,pin,\"A film you can rebuild\",#designinspo,Save the pin,poster frame",
+  "05,Instagram,still,\"One canvas, one clock\",#javascript,Ask me how,canvas grid",
+  "06,LinkedIn,carousel,\"Five films, five techniques\",#brandfilm,See all five,contact sheet",
+  "07,Pinterest,pin,\"Paper, drawn in code\",#papercraft,Pin for later,torn edge",
+  "08,Instagram,reel,\"The prompt behind the film\",#aiart,Copy the prompt,prompt card",
+  "09,LinkedIn,still,\"A recipe, not a secret\",#opensource,Open the recipe,recipe page",
+  "10,Instagram,carousel,\"Prompt, template, source\",#promptdesign,Swipe for all three,three cards",
+  "11,Pinterest,pin,\"Steal this film recipe\",#motiongraphics,Save the recipe,ingredients",
+  "12,Instagram,still,\"MIT, first frame to last\",#opensource,Grab the source,source folder",
+  "13,LinkedIn,article,\"What a remix template is\",#ai,Read the breakdown,the template",
+  "14,Pinterest,pin,\"Recipe card: paper cut-out\",#papercraft,Pin the card,recipe card",
+  "15,Instagram,reel,\"Your brand, my recipe\",#creativecoding,Make your own,split screen",
+  "16,LinkedIn,carousel,\"Four remixes of one film\",#brandfilm,Pick a remix,four frames",
+  "17,Instagram,carousel,\"Change three lines, new film\",#motiondesign,Try it tonight,a code diff",
+  "18,Pinterest,pin,\"Remix ideas for makers\",#diy,Save the ideas,idea list",
+  "19,Instagram,still,\"Swap the logo, keep the motion\",#branding,Tag a designer,logo swap",
+  "20,LinkedIn,still,\"Remixing is the point\",#opensource,Share a remix,two posters",
+  "21,Pinterest,pin,\"A week of remixes\",#designinspo,Pin a favourite,mood board",
+  "22,Instagram,reel,\"Every recipe in one place\",#creativecoding,Browse the library,library grid",
+  "23,LinkedIn,article,\"How the library is built\",#motiondesign,Read the story,the shelf",
+  "24,Instagram,carousel,\"Four seasons of technique\",#animation,Swipe the seasons,four styles",
+  "25,Pinterest,pin,\"Film recipes, sorted by style\",#designinspo,Save the board,style index",
+  "26,Instagram,still,\"Start with any recipe\",#generativeart,Pick one,index card",
+  "27,LinkedIn,carousel,\"From anime to paper\",#brandfilm,See the range,style strip",
+  "28,Pinterest,pin,\"Free recipes for code films\",#motiongraphics,Pin the library,poster wall",
+  "29,Instagram,reel,\"Your first code film\",#creativecoding,Start here,first frame",
+  "30,LinkedIn,still,\"The library stays open\",#opensource,Follow along,open door"
+ ],
+ "lines": [
+  {
+   "words": [
+    "One",
+    "brief",
+    "in,"
+   ],
+   "accent": 1,
+   "t": 1.6667,
+   "out": 4.1111,
+   "at": [
+    150,
+    130
+   ]
+  },
+  {
+   "words": [
+    "Four",
+    "weeks,",
+    "each",
+    "with",
+    "a",
+    "reason."
+   ],
+   "accent": 5,
+   "t": 5.8333,
+   "out": 9.0,
+   "at": [
+    150,
+    130
+   ]
+  },
+  {
+   "words": [
+    "Every",
+    "platform,",
+    "in",
+    "its",
+    "own",
+    "voice."
+   ],
+   "accent": 5,
+   "t": 12.7778,
+   "out": 15.2222,
+   "at": [
+    150,
+    130
+   ]
+  },
+  {
+   "words": [
+    "No",
+    "repeats."
+   ],
+   "accent": 1,
+   "t": 16.1111,
+   "out": 20.7778,
+   "at": [
+    150,
+    130
+   ]
+  },
+  {
+   "words": [
+    "One",
+    "row",
+    "per",
+    "post."
+   ],
+   "accent": 3,
+   "t": 23.3333,
+   "out": 26.4444,
+   "at": [
+    150,
+    130
+   ]
+  },
+  {
+   "words": [
+    "A",
+    "month",
+    "of",
+    "posts",
+    "out."
+   ],
+   "accent": 1,
+   "t": 29.2222,
+   "out": 30.5556,
+   "at": [
+    0,
+    170
+   ],
+   "big": true
+  }
+ ],
+ "hud": [
+  [
+   0,
+   "01 brand brief"
+  ],
+  [
+   4.4444,
+   "02 themes"
+  ],
+  [
+   9.4444,
+   "03 thirty days"
+  ],
+  [
+   15.5556,
+   "04 variety check"
+  ],
+  [
+   21.1111,
+   "05 csv export"
+  ],
+  [
+   26.6667,
+   "06 review"
+  ]
+ ]
+}

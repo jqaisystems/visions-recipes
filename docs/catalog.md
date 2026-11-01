@@ -106,6 +106,14 @@ Made for: Imagined Worlds · Stills. Stack: Three.js, TSL, GSAP, Python (score).
 
 ## Products and systems
 
+### R33 · Planner
+
+A film for a content planner made as paper cut-out stop motion on a desk: a brief whose fields pull out as tabs, a paper wheel that unrolls a banner for each weekly theme, a month of post cards under lift-the-flaps, rubber stamps that throw out repeats, and a printout that rises out of a printer a row at a time.
+
+Made for: Social Media Content Calendar · a month of posts from one brief. Stack: Canvas 2D, GSAP, Python (table, score).
+
+[Recipe and poster](../recipes/r33-planner/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r33-planner-v1)
+
 ### R32 · Pinned
 
 A film for a listing-to-pins pipeline made as paper cut-out stop motion on a craft table: a real listing's photos fanned out as prints, the charts snipped out, each photo trimmed into a pin with its own tag, pins pushed onto pop-up boards, dropped into a week of paper strips, and the video folded to 9:16 and filed by hand.
