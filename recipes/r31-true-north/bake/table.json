@@ -1,0 +1,383 @@
+{
+ "fps": 30,
+ "beat": 0.5172413793103449,
+ "bpm": 116,
+ "dur": 33.103,
+ "T": {
+  "open": [
+   0.0,
+   3.1034
+  ],
+  "globe": [
+   3.1034,
+   10.3448
+  ],
+  "droste": [
+   10.3448,
+   18.6207
+  ],
+  "tunnel": [
+   18.6207,
+   23.7931
+  ],
+  "motion": [
+   23.7931,
+   27.931
+  ],
+  "title": 27.931,
+  "end": 33.103
+ },
+ "stills": [
+  {
+   "id": "kaleidoscopic-journey-through-wormhole",
+   "title": "Through the Wormhole",
+   "prompt": "kaleidoscopic journey through wormhole paint",
+   "src": "assets/img/s00.jpg"
+  },
+  {
+   "id": "color-photo-pristine-white-background-focal",
+   "title": "Pure Form",
+   "prompt": "color photo of pristine white background the focal",
+   "src": "assets/img/s01.jpg"
+  },
+  {
+   "id": "beautiful-colorful-fantasy-beta-fish-black",
+   "title": "Fantasy Betta",
+   "prompt": "beautiful colorful fantasy beta fish on black",
+   "src": "assets/img/s02.jpg"
+  },
+  {
+   "id": "aurora-over-crystal-lake-borealis",
+   "title": "Aurora Over Crystal Lake",
+   "prompt": "aurora over crystal lake paint the aurora borealis",
+   "src": "assets/img/s03.jpg"
+  },
+  {
+   "id": "mystical-lantern-festival",
+   "title": "Lantern Festival",
+   "prompt": "mystical lantern festival illustrate festival where",
+   "src": "assets/img/s04.jpg"
+  },
+  {
+   "id": "voyage-through-time-space-grand-ancient",
+   "title": "Voyage Through Time",
+   "prompt": "voyage through time and space picture grand ancient",
+   "src": "assets/img/s05.jpg"
+  },
+  {
+   "id": "path-discovery-cutting-through",
+   "title": "Path of Discovery",
+   "prompt": "path of discovery imagine path cutting through",
+   "src": "assets/img/s06.jpg"
+  },
+  {
+   "id": "path-success-business-photo",
+   "title": "Ascension",
+   "prompt": "path to success business professional photo",
+   "src": "assets/img/s07.jpg"
+  },
+  {
+   "id": "fresh-raspberry-transparent-background",
+   "title": "Crimson Raspberry",
+   "prompt": "fresh raspberry with transparent background",
+   "src": "assets/img/s08.jpg"
+  },
+  {
+   "id": "colorful-mushroom-forest-filled",
+   "title": "Mushroom Forest",
+   "prompt": "colorful mushroom forest depict forest filled with",
+   "src": "assets/img/s09.jpg"
+  },
+  {
+   "id": "sailing-among-giant-floating-flowers",
+   "title": "Sea of Blooms",
+   "prompt": "sailing among giant floating flowers illustrate",
+   "src": "assets/img/s10.jpg"
+  },
+  {
+   "id": "space-explorers-uncharted-nebulae",
+   "title": "Uncharted Nebulae",
+   "prompt": "space explorers uncharted nebulae",
+   "src": "assets/img/s11.jpg"
+  },
+  {
+   "id": "radical-expressive-portrait-woman-her-face",
+   "title": "Radical Portrait",
+   "prompt": "radical and expressive portrait of woman her face",
+   "src": "assets/img/s12.jpg"
+  },
+  {
+   "id": "blue-car",
+   "title": "Neon Velocity",
+   "prompt": "blue car high resolution high quality striking image",
+   "src": "assets/img/s13.jpg"
+  },
+  {
+   "id": "banner-mojito-photo",
+   "title": "Mojito Splash",
+   "prompt": "banner of premium mojito banner professional photo",
+   "src": "assets/img/s14.jpg"
+  },
+  {
+   "id": "yacht-close-up-ocean-sunset",
+   "title": "Golden Hour",
+   "prompt": "yacht close up ocean sunset",
+   "src": "assets/img/s15.jpg"
+  },
+  {
+   "id": "magical-train-journey-traveling",
+   "title": "The Magical Express",
+   "prompt": "magical train journey paint magical train traveling",
+   "src": "assets/img/s16.jpg"
+  },
+  {
+   "id": "colorful-background-smiling-solar-woman-leaflet",
+   "title": "Solar Bloom",
+   "prompt": "colorful background smiling solar woman leaflet",
+   "src": "assets/img/s17.jpg"
+  },
+  {
+   "id": "colorful-zone-space-stars-planets",
+   "title": "Cosmic Zone",
+   "prompt": "colorful zone in space stars planets with space for",
+   "src": "assets/img/s18.jpg"
+  },
+  {
+   "id": "whimsical-submarine-adventure",
+   "title": "Submarine Adventure",
+   "prompt": "whimsical submarine adventure depict whimsical",
+   "src": "assets/img/s19.jpg"
+  }
+ ],
+ "prompt": "night beach, bioluminescent tide washing in, each wave glowing electric blue-white as the plankton light, dark sky above, wet dark sand reflecting the glow, long exposure night photography --ar 16:9 --style raw",
+ "promptMeta": "v6 Light Architecture \u00b7 Backgrounds \u00b7 Prompt 3",
+ "typing": [
+  0.2586,
+  2.3276
+ ],
+ "openLine": 1.2931,
+ "nlon": 16,
+ "nlat": 8,
+ "gmap": [
+  3,
+  10,
+  16,
+  -1,
+  18,
+  2,
+  12,
+  19,
+  -1,
+  19,
+  11,
+  16,
+  15,
+  5,
+  -1,
+  -1,
+  11,
+  -1,
+  -1,
+  7,
+  11,
+  1,
+  -1,
+  1,
+  -1,
+  13,
+  -1,
+  -1,
+  -1,
+  19,
+  -1,
+  0,
+  18,
+  7,
+  4,
+  13,
+  -1,
+  -1,
+  3,
+  11,
+  16,
+  -1,
+  17,
+  -1,
+  10,
+  -1,
+  -1,
+  18,
+  12,
+  11,
+  15,
+  -1,
+  2,
+  6,
+  0,
+  -1,
+  1,
+  6,
+  -1,
+  14,
+  -1,
+  -1,
+  15,
+  -1,
+  -1,
+  7,
+  -1,
+  10,
+  9,
+  -1,
+  5,
+  8,
+  -1,
+  -1,
+  16,
+  13,
+  18,
+  -1,
+  19,
+  14,
+  -1,
+  2,
+  -1,
+  16,
+  14,
+  0,
+  -1,
+  2,
+  1,
+  18,
+  11,
+  -1,
+  11,
+  3,
+  4,
+  3,
+  15,
+  -1,
+  12,
+  12,
+  10,
+  15,
+  -1,
+  10,
+  14,
+  3,
+  0,
+  -1,
+  8,
+  3,
+  11,
+  17,
+  -1,
+  16,
+  11,
+  -1,
+  11,
+  10,
+  11,
+  12,
+  5,
+  12,
+  -1,
+  4,
+  18,
+  -1,
+  18,
+  -1
+ ],
+ "build": [
+  3.3621,
+  4.6552
+ ],
+ "pull": [
+  3.1034,
+  4.6552
+ ],
+ "brakes": [
+  {
+   "t": 5.1724,
+   "lon": 3,
+   "layer": 10
+  },
+  {
+   "t": 6.7241,
+   "lon": 11,
+   "layer": 13
+  },
+  {
+   "t": 8.2759,
+   "lon": 6,
+   "layer": 5
+  }
+ ],
+ "dive": [
+  9.0517,
+  10.3448
+ ],
+ "droste": [
+  5,
+  1,
+  2,
+  3,
+  4,
+  0,
+  9,
+  6
+ ],
+ "drosteSteps": [
+  10.3448,
+  11.3793,
+  12.4138,
+  13.4483,
+  14.4828,
+  15.5172,
+  16.5517,
+  17.5862
+ ],
+ "tunnelLines": [
+  19.1379,
+  21.2069
+ ],
+ "clips": [
+  {
+   "id": "vibrant-kingfisher-bird-bursting-out-water",
+   "title": "The Dive",
+   "src": "assets/clips/the-dive.mp4",
+   "from": 1.0
+  },
+  {
+   "id": "close-up-human-eye-iris",
+   "title": "Iris",
+   "src": "assets/clips/iris.mp4",
+   "from": 0.5
+  },
+  {
+   "id": "dynamic-surfer-giant-abstract-wave",
+   "title": "Painted Swell",
+   "src": "assets/clips/painted-swell.mp4",
+   "from": 1.0
+  }
+ ],
+ "rings": [
+  24.0517,
+  24.3103,
+  24.569
+ ],
+ "motionLine": 24.8276,
+ "gather": [
+  27.931,
+  28.9655
+ ],
+ "mark": 28.9655,
+ "line": 30.0,
+ "cuts": [
+  3.1034,
+  10.3448,
+  18.6207,
+  23.7931,
+  28.9655
+ ]
+}

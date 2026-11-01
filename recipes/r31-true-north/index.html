@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <!--
+      R31 · True North. 33 s at 116 bpm, raymarched shader (season 3, film 3). For Atlas Studio, João's visual prompt
+      studio. Every image starts as a prompt: a compass needle spins up in its ring while a real Atlas prompt types out,
+      the camera pulls back to a glass globe tiled with João's own --stills, the globe whips round and brakes and the
+      needle points, the camera dives into one still, an endless zoom carries each still inside the compass ring of the
+      last, the zoom breaks into a tunnel of stills, three rings come alive as --motion clips, and every image collapses
+      into the official Atlas Studio lockup.
+      Technique: two WebGL2 passes on one canvas. Pass 1 draws, by section: the needle and ring as raymarched SDFs inside
+      an analytic glass sphere whose surface carries the stills by latitude and longitude (front tiles over the needle
+      over the back tiles); a Droste zoom in log scale, each level rotated and nested in the last one's ring, its next
+      still revealed by the needle's sweep; and a cylinder of stills flown through, time-smeared for motion blur. The
+      stills sit in one texture array. Pass 2 adds bloom from the mip chain, a chromatic kick on the beats, the motion
+      rings and the mark's light. paint(t) sets every uniform from one baked table (assets/table.js, from bake/table.py);
+      score/compose.py reads it too.
+    -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/table.js"></script>
+    <style>
+      @font-face { font-family: "Archivo"; src: url("assets/fonts/Archivo.ttf") format("truetype"); font-weight: 100 900; }
+      @font-face { font-family: "Instrument Serif"; src: url("assets/fonts/InstrumentSerif-Regular.ttf") format("truetype"); font-weight: 400; font-style: normal; }
+      @font-face { font-family: "Instrument Serif"; src: url("assets/fonts/InstrumentSerif-Italic.ttf") format("truetype"); font-weight: 400; font-style: italic; }
+      @font-face { font-family: "JBM"; src: url("assets/fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 100 800; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #0C1324; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #0C1324; color: #FBFCFF; }
+      #ct-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #gl { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #ct-ui { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      .hud { position: absolute; top: 44px; font: 500 17px "JBM", monospace; letter-spacing: 0.18em; white-space: nowrap; color: #9fb0cf; text-transform: uppercase; }
+      #hud-l { left: 64px; color: #FBFCFF; letter-spacing: 0.26em; }
+      #hud-l span { color: #6f9bff; }
+      #hud-r { right: 64px; text-transform: none; letter-spacing: 0.1em; }
+      #panel { position: absolute; left: 96px; width: 820px; bottom: 96px; padding: 24px 30px 26px; border-radius: 18px; background: rgba(9, 14, 28, 0.72);
+        border: 1.5px solid rgba(220, 228, 242, 0.22); opacity: 0; }
+      #p-meta { font: 500 16px "JBM", monospace; letter-spacing: 0.16em; text-transform: uppercase; color: #6f9bff; height: 22px; margin-bottom: 12px; white-space: nowrap; }
+      #p-text { font: 400 22px/1.55 "JBM", monospace; color: #FBFCFF; min-height: 136px; }
+      #p-text .k { color: #8090ad; }
+      #p-text i { display: inline-block; width: 13px; height: 28px; margin-bottom: -6px; background: #2B6FFF; }
+      .line { position: absolute; font: 400 92px/1.02 "Instrument Serif", serif; color: #FBFCFF; white-space: nowrap; opacity: 0; text-shadow: 0 6px 40px rgba(0, 0, 0, 0.7); }
+      .line em { color: #ff8f73; }
+      .line code { font: 500 0.78em "JBM", monospace; color: #6f9bff; letter-spacing: -0.02em; }
+      #l-open { left: 96px; top: 190px; }
+      .cline { left: 0; right: 0; text-align: center; top: 470px; font-size: 118px; text-shadow: 0 8px 60px rgba(0, 0, 0, 0.9), 0 0 24px rgba(0, 0, 0, 0.6); }
+      #l-motion { top: 120px; font-size: 96px; }
+      .url { position: absolute; left: 0; right: 0; height: 40px; text-align: center; font: 500 32px "JBM", monospace; color: #8fb3ff; white-space: nowrap; opacity: 0;
+        text-shadow: 0 2px 18px rgba(0, 0, 0, 0.95), 0 0 8px rgba(0, 0, 0, 0.8); }
+      #u-stills { top: 612px; }
+      #u-motion { top: 236px; }
+      .slam { position: absolute; left: 0; right: 0; top: 150px; text-align: center; font: 850 300px/1 "Archivo", sans-serif; letter-spacing: -0.05em; color: #FBFCFF;
+        white-space: nowrap; opacity: 0; text-shadow: 0 10px 80px rgba(0, 0, 0, 0.6); }
+      .slam span { color: #6f9bff; font: 700 250px "JBM", monospace; letter-spacing: -0.06em; margin-right: 0.04em; }
+      #tag { position: absolute; left: 0; top: 0; font: 600 20px "JBM", monospace; letter-spacing: 0.08em; color: #FBFCFF; white-space: nowrap; opacity: 0;
+        padding: 9px 14px; border-radius: 10px; background: rgba(9, 14, 28, 0.78); border: 1.5px solid rgba(111, 155, 255, 0.6); }
+      #tag span { color: #6f9bff; }
+      #cap { position: absolute; left: 96px; bottom: 84px; opacity: 0; text-shadow: 0 4px 30px rgba(0, 0, 0, 0.9); }
+      #cap b { display: block; font: 600 20px "JBM", monospace; color: #6f9bff; letter-spacing: 0.06em; margin-bottom: 8px; }
+      #cap span { display: block; font: 400 76px/1 "Instrument Serif", serif; color: #FBFCFF; white-space: nowrap; }
+      #cap p { font: 400 22px "JBM", monospace; color: #c3cde2; margin-top: 14px; white-space: nowrap; }
+      .vw { position: absolute; top: 330px; width: 440px; height: 440px; border-radius: 50%; overflow: hidden; opacity: 0; }
+      .vw video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+      #w0 { left: 200px; } #w1 { left: 740px; } #w2 { left: 1280px; }
+      .vt { position: absolute; top: 810px; width: 440px; text-align: center; font: 600 22px "JBM", monospace; letter-spacing: 0.06em; color: #dfe6f5; opacity: 0; white-space: nowrap; }
+      #vt0 { left: 200px; } #vt1 { left: 740px; } #vt2 { left: 1280px; }
+      #flash { position: absolute; inset: 0; background: #e6eeff; opacity: 0; }
+      #veil { position: absolute; inset: 0; background: #000; opacity: 1; }
+      #title { position: absolute; inset: 0; background: #FDFCFB; opacity: 1; clip-path: circle(0px at 501px 420px); }
+      #t-logo { position: absolute; left: 219px; top: 120px; width: 1440px; height: 614px; }
+      /* the lockup's own paper fades into the card at its edges, so the file's border never shows; the mark itself is untouched */
+      #t-logo { -webkit-mask-image: linear-gradient(to right, transparent 3%, #000 9%, #000 94%, transparent 99%), linear-gradient(to bottom, transparent 16%, #000 26%, #000 74%, transparent 84%);
+        -webkit-mask-composite: source-in; mask-image: linear-gradient(to right, transparent 3%, #000 9%, #000 94%, transparent 99%), linear-gradient(to bottom, transparent 16%, #000 26%, #000 74%, transparent 84%); mask-composite: intersect; }
+      #t-line { position: absolute; left: 0; right: 0; top: 622px; text-align: center; font: 500 36px "Archivo", sans-serif; color: #3a4256; white-space: nowrap; opacity: 0; }
+      #t-url { position: absolute; left: 0; right: 0; top: 688px; height: 40px; text-align: center; font: 500 32px "JBM", monospace; color: #2B6FFF; white-space: nowrap; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="33.103" data-width="1920" data-height="1080">
+      <div id="ct-stage" class="clip" data-start="0" data-duration="33.103" data-track-index="0">
+        <canvas id="gl" width="1920" height="1080" data-layout-allow-overflow></canvas>
+      </div>
+      <div id="ct-ui" class="clip" data-start="0" data-duration="33.103" data-track-index="1">
+        <div class="hud" id="hud-l" data-layout-allow-occlusion>ATLAS STUDIO <span>· true north</span></div>
+        <div class="hud" id="hud-r" data-layout-allow-occlusion><span id="hud-st">prompt</span></div>
+        <div class="line" id="l-open" data-layout-allow-occlusion>Every image<br>starts as a <em>prompt</em>.</div>
+        <div id="panel" data-layout-allow-occlusion><div id="p-meta"></div><div id="p-text"></div></div>
+        <div id="tag" data-layout-allow-occlusion></div>
+        <div class="slam" id="s-stills" data-layout-allow-occlusion data-layout-allow-overflow><span>--</span>stills</div>
+        <div id="cap" data-layout-allow-occlusion><b>--stills</b><span id="cap-t"></span><p id="cap-p"></p></div>
+        <div class="line cline" id="l-t0" data-layout-allow-occlusion>Prompts from <em>Atlas Studio</em>.</div>
+        <div class="line cline" id="l-t1" data-layout-allow-occlusion>Images on <code>--stills</code>.</div>
+        <div class="url" id="u-stills" data-layout-allow-occlusion></div>
+        <div class="vw" id="w0" data-layout-allow-occlusion><video class="clip" id="v0" src="assets/clips/the-dive.mp4" muted playsinline data-start="24.0517" data-duration="3.8793" data-media-start="0" data-track-index="2"></video></div>
+        <div class="vw" id="w1" data-layout-allow-occlusion><video class="clip" id="v1" src="assets/clips/iris.mp4" muted playsinline data-start="24.3103" data-duration="3.6207" data-media-start="0" data-track-index="3"></video></div>
+        <div class="vw" id="w2" data-layout-allow-occlusion><video class="clip" id="v2" src="assets/clips/painted-swell.mp4" muted playsinline data-start="24.569" data-duration="3.362" data-media-start="0" data-track-index="4"></video></div>
+        <div class="vt" id="vt0" data-layout-allow-occlusion>The Dive</div>
+        <div class="vt" id="vt1" data-layout-allow-occlusion>Iris</div>
+        <div class="vt" id="vt2" data-layout-allow-occlusion>Painted Swell</div>
+        <div class="line cline" id="l-motion" data-layout-allow-occlusion>Some became <code>--motion</code>.</div>
+        <div class="url" id="u-motion" data-layout-allow-occlusion></div>
+        <div id="title" data-layout-allow-occlusion>
+          <img id="t-logo" src="assets/brand/atlas-studio-logo-approved.png" alt="Atlas Studio">
+          <div id="t-line">Visual Prompt Studio</div>
+          <div id="t-url"></div>
+        </div>
+        <div id="flash" data-layout-allow-occlusion></div>
+        <div id="veil" data-layout-allow-occlusion></div>
+      </div>
+      <audio id="score" src="assets/bgm/score.wav" data-start="0" data-duration="33.103" data-track-index="7" data-volume="0.8"></audio>
+    </div>
+
+    <script>
+      // pass 1: the scene, linear HDR
+      const FS1 = `#version 300 es
+precision highp float;
+precision highp sampler2DArray;
+uniform sampler2DArray uImg;
+uniform vec2 uRes;
+uniform float uTime, uMode, uMix;
+// globe and needle
+uniform vec3 uCamP, uCamT;
+uniform float uFocal, uRot, uGlobe, uGlass, uNeedle, uBlade, uRingA, uCoral, uHi, uHiAmt;
+uniform int uMap[128];
+// droste
+uniform float uS, uWipe;
+uniform int uDro[8];
+// tunnel
+uniform float uTz, uTv, uRoll, uTwist, uTdim;
+out vec4 fragColor;
+
+const float PI = 3.14159265, TAU = 6.2831853;
+const float RR = 0.62;           // the compass ring's radius inside the unit globe
+int gMat;
+
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+mat2 rot2(float a) { float c = cos(a), s = sin(a); return mat2(c, s, -s, c); }
+vec3 still(int l, vec2 uv) { vec3 c = texture(uImg, vec3(clamp(uv, 0.0, 1.0), float(l))).rgb; return c * c * (0.3 + 0.7 * c); }
+
+float sdTri(vec2 p, vec2 p0, vec2 p1, vec2 p2) {
+  vec2 e0 = p1 - p0, e1 = p2 - p1, e2 = p0 - p2, v0 = p - p0, v1 = p - p1, v2 = p - p2;
+  vec2 q0 = v0 - e0 * clamp(dot(v0, e0) / dot(e0, e0), 0.0, 1.0);
+  vec2 q1 = v1 - e1 * clamp(dot(v1, e1) / dot(e1, e1), 0.0, 1.0);
+  vec2 q2 = v2 - e2 * clamp(dot(v2, e2) / dot(e2, e2), 0.0, 1.0);
+  float s = sign(e0.x * e2.y - e0.y * e2.x);
+  vec2 d = min(min(vec2(dot(q0, q0), s * (v0.x * e0.y - v0.y * e0.x)), vec2(dot(q1, q1), s * (v1.x * e1.y - v1.y * e1.x))), vec2(dot(q2, q2), s * (v2.x * e2.y - v2.y * e2.x)));
+  return -sqrt(d.x) * sign(d.y);
+}
+float ex(float d, float z, float h) { vec2 w = vec2(d, abs(z) - h); return min(max(w.x, w.y), 0.0) + length(max(w, 0.0)); }
+
+// ---------------- the needle, its hub and its ring, standing in the globe's middle
+float map(vec3 p) {
+  float d = 1e5; gMat = 0;
+  // the ring, drawn on from north, clockwise
+  float ang = fract(atan(p.x, p.y) / TAU + 1.0);
+  float ring = length(vec2(length(p.xy) - RR, p.z)) - 0.011;
+  ring = max(ring, (ang - uRingA) * RR * TAU);
+  if (ring < d) { d = ring; gMat = 5; }
+  for (int k = 0; k < 3; k++) {
+    vec2 c = k == 0 ? vec2(RR, 0.0) : (k == 1 ? vec2(-RR, 0.0) : vec2(0.0, -RR));
+    float s = length(p - vec3(c, 0.0)) - 0.03 * step(0.0, uRingA - (k == 0 ? 0.25 : (k == 1 ? 0.75 : 0.5)));
+    if (s < d) { d = s; gMat = 6; }
+  }
+  float co = length(p - vec3(0.0, RR, 0.0)) - 0.036 * smoothstep(0.0, 0.3, uCoral + uRingA * 0.0);
+  if (co < d) { d = co; gMat = 7; }
+  if (uBlade > 0.001) {
+    vec3 q = vec3(rot2(-uNeedle) * p.xy / uBlade, p.z / uBlade);
+    vec2 a = vec2(0.70710678), n = vec2(-a.y, a.x);
+    float bl = ex(sdTri(q.xy, -a * 0.06 + n * 0.115, -a * 0.06 - n * 0.115, a * 0.86), q.z - 0.004, 0.012) * uBlade;
+    if (bl < d) { d = bl; gMat = 1; }
+    float nv = ex(sdTri(q.xy, a * 0.06 + n * 0.125, a * 0.06 - n * 0.125, -a * 0.79), q.z + 0.004, 0.012) * uBlade;
+    if (nv < d) { d = nv; gMat = 2; }
+    float hub = ex(length(q.xy) - 0.115, q.z, 0.026) * uBlade;
+    if (hub < d) { d = hub; gMat = 3; }
+    float dot_ = ex(length(q.xy) - 0.066, q.z, 0.031) * uBlade;
+    if (dot_ < d) { d = dot_; gMat = 4; }
+  }
+  return d;
+}
+vec3 nrm(vec3 p) { vec2 e = vec2(0.0007, -0.0007); int m = gMat;
+  vec3 n = normalize(e.xyy * map(p + e.xyy) + e.yyx * map(p + e.yyx) + e.yxy * map(p + e.yxy) + e.xxx * map(p + e.xxx)); gMat = m; return n; }
+
+vec3 env(vec3 r) {
+  vec3 c = mix(vec3(0.003, 0.005, 0.012), vec3(0.02, 0.03, 0.065), clamp(r.y * 0.5 + 0.5, 0.0, 1.0));
+  c += vec3(1.0, 0.98, 0.95) * 3.2 * smoothstep(0.86, 0.95, dot(r, normalize(vec3(-0.55, 0.65, 0.55))));
+  c += vec3(0.17, 0.43, 1.0) * 2.6 * smoothstep(0.8, 0.93, dot(r, normalize(vec3(0.9, 0.1, 0.4))));
+  c += vec3(1.0, 0.41, 0.28) * 1.4 * smoothstep(0.9, 0.97, dot(r, normalize(vec3(-0.3, -0.5, 0.8))));
+  c += vec3(0.16, 0.2, 0.34) * smoothstep(0.6, 1.0, r.z) * (0.6 + 0.4 * r.y);   // a broad soft light behind the camera
+  return c;
+}
+vec3 shadeNeedle(vec3 p, vec3 rd, int m) {
+  vec3 n = nrm(p), r = reflect(rd, n), L = normalize(vec3(-0.4, 0.6, 0.7));
+  float df = max(dot(n, L), 0.0), sp = pow(max(dot(r, L), 0.0), 60.0);
+  float fr = 0.04 + 0.96 * pow(1.0 - clamp(dot(n, -rd), 0.0, 1.0), 5.0);
+  if (m == 1) return vec3(0.025, 0.16, 1.0) * (0.3 + 1.1 * df) + env(r) * (0.08 + fr) + sp * 2.0 + vec3(0.02, 0.1, 0.6) * 0.5;
+  if (m == 2) return vec3(0.02, 0.03, 0.07) * (0.4 + df) + env(r) * (0.3 + fr) + sp * 2.0;
+  if (m == 3) return vec3(0.92, 0.94, 1.0) * (0.25 + 0.9 * df) + env(r) * fr * 0.5 + sp;
+  if (m == 4) return vec3(0.006, 0.01, 0.03) + env(r) * (0.1 + fr) + sp * 1.5;
+  if (m == 5) return env(r) * vec3(0.75, 0.82, 1.0) * 0.9 + vec3(0.1, 0.14, 0.25) * df;
+  if (m == 6) return vec3(0.01, 0.015, 0.04) + env(r) * (0.15 + fr) + sp;
+  return vec3(1.0, 0.41, 0.28) * (0.3 + 7.0 * uCoral) + sp;
+}
+vec3 bgGlobe(vec2 uv) {
+  float g = exp(-dot(uv, uv) * 1.6);
+  return vec3(0.0015, 0.0025, 0.0065) + vec3(0.004, 0.011, 0.034) * g * (0.5 + 0.5 * uGlass);
+}
+
+// a tile of the globe, by the local direction n: rgb, coverage
+vec4 tile(vec3 n, float fw, out float lines, out float hi) {
+  float lon = atan(n.x, n.z), lat = asin(clamp(n.y, -1.0, 1.0));
+  float u = (lon + PI) / TAU * 16.0, v = (lat + PI / 3.0) / (PI / 12.0);
+  float i = floor(u), j = floor(v), fu = fract(u), fv = fract(v);
+  float cw = TAU / 16.0 * cos(lat), chh = PI / 12.0;
+  // the atlas lines: every meridian, every parallel, dashed like the mark's
+  float dm = min(fu, 1.0 - fu) * cw, dp = min(fract((lat) / (PI / 12.0)), 1.0 - fract((lat) / (PI / 12.0))) * chh;
+  lines = smoothstep(fw * 1.5, 0.0, dm) + smoothstep(fw * 1.5, 0.0, dp) * step(0.5, fract(lon * 18.0));
+  hi = 0.0;
+  if (j < 0.0 || j > 7.0) return vec4(0.0);
+  int id = int(j) * 16 + int(mod(i, 16.0));
+  int l = uMap[id];
+  if (l < 0) return vec4(0.0);
+  float isHi = float(id) == uHi ? uHiAmt : 0.0;
+  float a = clamp(uGlobe * 1.8 - hash(vec2(i, j)) * 0.8, 0.0, 1.0);
+  a = a * a * (3.0 - 2.0 * a);
+  vec2 lc = vec2((fu - 0.5) * cw, (fv - 0.5) * chh), hs = vec2(0.5 * cw - 0.012, 0.5 * chh - 0.012) * a;
+  vec2 dd = abs(lc) - hs;
+  float inside = smoothstep(fw, -fw, max(dd.x, dd.y));
+  vec2 uv = lc / max(hs * 2.0, 1e-4) + 0.5;
+  vec3 c = still(l, vec2(uv.x, 1.0 - uv.y));
+  hi = isHi * smoothstep(fw * 2.0, 0.0, abs(max(dd.x, dd.y))) ;
+  return vec4(c * (1.0 + 0.35 * isHi), inside);
+}
+
+vec3 globe(vec2 uv) {
+  vec3 fwd = normalize(uCamT - uCamP), rt = normalize(cross(fwd, vec3(0.0, 1.0, 0.0))), up = cross(rt, fwd);
+  vec3 rd = normalize(uv.x * rt + uv.y * up + uFocal * fwd), ro = uCamP;
+  vec3 col = bgGlobe(uv);
+  float b = dot(ro, rd), c = dot(ro, ro) - 1.0, h = b * b - c;
+  float fw = length(ro) / uRes.y / uFocal * 1.2;
+  if (h > 0.0) {
+    float sh = sqrt(h), t0 = -b - sh, t1 = -b + sh;
+    float ca = cos(uRot), sa = sin(uRot);
+    // behind: the back of the globe, seen from inside, dim
+    vec3 pb = ro + rd * t1, lb = vec3(pb.x * ca + pb.z * sa, pb.y, -pb.x * sa + pb.z * ca);
+    float lnb, hib; vec4 tb = tile(lb, fw, lnb, hib);
+    vec3 behind = mix(col, tb.rgb * 0.22, tb.a * 0.9) + vec3(0.2, 0.3, 0.6) * 0.12 * lnb * uGlass;
+    // the needle, inside
+    float t = max(t0, 0.0);
+    for (int i = 0; i < 90; i++) {
+      float d = map(ro + rd * t);
+      if (d < 0.0004 * t) { behind = shadeNeedle(ro + rd * t, rd, gMat); break; }
+      t += d;
+      if (t > t1) break;
+    }
+    // the front: a still on glass, or the glass alone
+    vec3 pf = ro + rd * t0, lf = vec3(pf.x * ca + pf.z * sa, pf.y, -pf.x * sa + pf.z * ca);
+    float lnf, hif; vec4 tf = tile(lf, fw, lnf, hif);
+    float fr = 0.04 + 0.96 * pow(1.0 - clamp(dot(pf, -rd), 0.0, 1.0), 5.0);
+    float limb = 0.6 + 0.4 * clamp(dot(pf, -rd), 0.0, 1.0);
+    float op = 0.86 + 0.14 * step(0.5, hif + uHiAmt * 0.0);
+    col = mix(behind, tf.rgb * limb, tf.a * op);
+    col += env(reflect(rd, pf)) * fr * 0.55 * uGlass + vec3(0.45, 0.6, 1.0) * 0.5 * lnf * uGlass * (1.0 - tf.a * 0.7);
+    col += vec3(1.0, 0.55, 0.35) * 2.5 * hif;
+  }
+  return col;
+}
+
+// ---------------- the tunnel: a cylinder of stills, flown through, time-smeared
+vec3 tunnel(vec2 p) {
+  vec3 rd = normalize(vec3(rot2(uRoll) * p, -1.05));
+  float rxy = length(rd.xy), t = 1.0 / max(rxy, 1e-4), depth = -rd.z * t;
+  float a = atan(rd.y, rd.x) + uTwist * depth;
+  float fw = depth / uRes.y * 2.2;
+  vec3 acc = vec3(0.0);
+  for (int k = 0; k < 8; k++) {
+    float z = uTz - depth + uTv * (float(k) / 7.0 - 0.5) / 150.0;
+    float u = a / TAU * 8.0, v = z / 1.18;
+    float i = floor(u), j = floor(v), fu = fract(u), fv = fract(v);
+    vec2 lc = vec2((fv - 0.5) * 1.18, (fu - 0.5) * 0.785), dd = abs(lc) - vec2(0.565, 0.37);
+    float inside = smoothstep(fw, -fw, max(dd.x, dd.y));
+    int l = int(mod(floor(hash(vec2(mod(i, 8.0), j)) * 20.0 + j * 7.0), 20.0));
+    vec3 c = still(l, vec2(lc.x / 1.13 + 0.5, lc.y / 0.74 + 0.5));
+    float ln = smoothstep(fw * 2.0 + 0.004, 0.0, abs(max(dd.x, dd.y) + 0.004)) * exp(-depth * 0.25);
+    acc += c * inside + vec3(0.3, 0.5, 1.0) * 0.25 * ln;
+  }
+  acc /= 8.0;
+  vec3 col = acc * exp(-depth * 0.16);
+  col += vec3(0.75, 0.85, 1.0) * 0.7 * exp(-rxy * 18.0) + vec3(0.17, 0.43, 1.0) * 0.05 * exp(-rxy * 5.0);
+  return col * uTdim;
+}
+
+// ---------------- droste: each still inside the compass ring of the last, zoomed for ever
+const float F = 4.0, R0 = 0.27, TH = 0.35;
+vec3 droste(vec2 p) {
+  float L0 = floor(uS), f = uS - L0;
+  vec2 q = rot2(TH * f) * p / pow(F, f);
+  int lvl = int(L0), k0 = int(L0);
+  bool empty = false; float emptyAng = 0.0;
+  for (int k = 0; k < 3; k++) {
+    if (length(q) >= R0 || lvl >= 8) break;
+    int nl = lvl + 1;
+    float w = nl <= k0 ? 1.0 : (nl == k0 + 1 ? (k0 == 0 ? uWipe : 1.0) : (nl == k0 + 2 ? uWipe : 0.0));
+    float ang = fract(atan(q.x, q.y) / TAU + 1.0);
+    if (ang > w) { empty = true; emptyAng = w; break; }
+    q = rot2(-TH) * q * F; lvl = nl;
+  }
+  float px = pow(F, float(lvl) - uS) / uRes.y;
+  float d = length(q);
+  vec3 col;
+  if (empty) {
+    // the ring not yet filled: dark glass, the atlas lines, and the needle sweeping it in
+    col = vec3(0.005, 0.009, 0.022) + vec3(0.25, 0.4, 0.9) * 0.25 * smoothstep(px * 1.5, 0.0, min(abs(q.x), abs(q.y)));
+    float ang = fract(atan(q.x, q.y) / TAU + 1.0);
+    float bd = abs(ang - emptyAng) * TAU * d;
+    col += vec3(0.3, 0.55, 1.0) * 3.0 * smoothstep(px * 3.0, 0.0, bd) * step(d, R0);
+    col += vec3(0.2, 0.4, 1.0) * 0.8 * exp(-bd / (px * 30.0)) * step(d, R0) * step(0.001, emptyAng);
+  } else if (lvl >= 8) {
+    col = tunnel(q);
+  } else {
+    int l = uDro[lvl];
+    vec2 uv = vec2(q.x / 1.7778 + 0.5, 0.5 - q.y / (2.0 * 0.5926));
+    vec2 out_ = max(abs(uv - 0.5) - 0.5, 0.0);
+    uv = 1.0 - abs(1.0 - mod(uv, 2.0));
+    col = still(l, uv) * exp(-length(out_) * 5.0);
+    // the ring this still is sitting in: a shadow just inside it
+    if (lvl > k0) col *= 1.0 - 0.6 * exp(-(R0 * F - d) / (px * 18.0)) * step(d, R0 * F);
+    // the next ring inside it: a shadow round it
+    if (lvl < 8) col *= 1.0 - 0.55 * exp(-(d - R0) / (px * 22.0)) * step(R0, d);
+  }
+  // the compass rings, on both sides of every boundary, with its four points
+  for (int s = 0; s < 2; s++) {
+    float R = s == 0 ? R0 : R0 * F;
+    if (s == 1 && lvl <= k0) continue;
+    if (s == 0 && lvl >= 8) continue;
+    float pr = R / R0;
+    col += vec3(0.85, 0.9, 1.0) * 1.6 * smoothstep(px * 1.6, 0.0, abs(d - R) - px * 0.6 * pr);
+    for (int c = 0; c < 4; c++) {
+      vec2 cp = c == 0 ? vec2(0.0, R) : (c == 1 ? vec2(R, 0.0) : (c == 2 ? vec2(0.0, -R) : vec2(-R, 0.0)));
+      float dd = length(q - cp) - (c == 0 ? 0.011 : 0.008) * pr;
+      vec3 cc = c == 0 ? vec3(1.0, 0.41, 0.28) * 4.0 : vec3(0.85, 0.9, 1.0) * 1.4;
+      col = mix(col, cc, smoothstep(px, -px, dd));
+    }
+  }
+  return col;
+}
+
+void main() {
+  vec2 uv = (gl_FragCoord.xy - 0.5 * uRes) / uRes.y;
+  vec3 col;
+  if (uMode < 0.5) col = globe(uv);
+  else if (uMode < 1.5) col = droste(uv);
+  else col = tunnel(uv);
+  fragColor = vec4(col, 1.0);
+}
+`;
+
+      // pass 2: bloom, a chromatic kick, the motion rings, the mark's light, the grade
+      const FS2 = `#version 300 es
+precision highp float;
+uniform sampler2D uTex;
+uniform vec2 uRes;
+uniform float uCA, uTime, uGlow, uGScale, uGSpin;
+uniform vec3 uRings;           // how far each motion ring has opened
+out vec4 fragColor;
+
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+mat2 rot2(float a) { float c = cos(a), s = sin(a); return mat2(c, s, -s, c); }
+float sdTri(vec2 p, vec2 p0, vec2 p1, vec2 p2) {
+  vec2 e0 = p1 - p0, e1 = p2 - p1, e2 = p0 - p2, v0 = p - p0, v1 = p - p1, v2 = p - p2;
+  vec2 q0 = v0 - e0 * clamp(dot(v0, e0) / dot(e0, e0), 0.0, 1.0);
+  vec2 q1 = v1 - e1 * clamp(dot(v1, e1) / dot(e1, e1), 0.0, 1.0);
+  vec2 q2 = v2 - e2 * clamp(dot(v2, e2) / dot(e2, e2), 0.0, 1.0);
+  float s = sign(e0.x * e2.y - e0.y * e2.x);
+  vec2 d = min(min(vec2(dot(q0, q0), s * (v0.x * e0.y - v0.y * e0.x)), vec2(dot(q1, q1), s * (v1.x * e1.y - v1.y * e1.x))), vec2(dot(q2, q2), s * (v2.x * e2.y - v2.y * e2.x)));
+  return -sqrt(d.x) * sign(d.y);
+}
+vec3 soft(vec3 c) { return mix(c, 0.8 + 0.2 * (1.0 - exp(-(c - 0.8) / 0.2)), step(0.8, c)); }
+
+void main() {
+  vec2 uv = gl_FragCoord.xy / uRes;
+  vec2 dir = (uv - 0.5) * uCA;
+  vec3 col = vec3(texture(uTex, uv + dir).r, texture(uTex, uv).g, texture(uTex, uv - dir).b);
+  col += max(textureLod(uTex, uv, 3.0).rgb - 0.85, 0.0) * 0.45 + max(textureLod(uTex, uv, 5.0).rgb - 0.7, 0.0) * 0.5 + max(textureLod(uTex, uv, 7.0).rgb - 1.0, 0.0) * 0.35;
+  col = soft(col);
+  vec2 sv = (gl_FragCoord.xy - 0.5 * uRes) / uRes.y;
+  col *= 1.0 - 0.28 * dot(sv, sv);
+  col = pow(max(col, 0.0), vec3(1.0 / 2.2));
+  vec2 P = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y);   // pixels, from the top left
+  // the motion rings: a compass ring round each clip, opening
+  for (int k = 0; k < 3; k++) {
+    float o = k == 0 ? uRings.x : (k == 1 ? uRings.y : uRings.z);
+    if (o < 0.001) continue;
+    vec2 c = vec2(420.0 + 540.0 * float(k), 550.0);
+    float R = 232.0 * o, d = length(P - c);
+    col += vec3(0.85, 0.9, 1.0) * smoothstep(1.6, 0.0, abs(d - R) - 0.8) * min(1.0, o * 2.0);
+    col += vec3(0.17, 0.43, 1.0) * 0.35 * exp(-abs(d - R) / 14.0) * min(1.0, o * 2.0);
+    for (int q = 0; q < 4; q++) {
+      vec2 cp = c + R * (q == 0 ? vec2(0.0, -1.0) : (q == 1 ? vec2(1.0, 0.0) : (q == 2 ? vec2(0.0, 1.0) : vec2(-1.0, 0.0))));
+      float dd = length(P - cp) - 7.0 * min(1.0, o * 1.5);
+      col = mix(col, q == 0 ? vec3(1.0, 0.41, 0.28) : vec3(0.85, 0.9, 1.0), smoothstep(1.0, -1.0, dd));
+    }
+  }
+  // the mark's needle and ring, as light, where the official lockup will land
+  if (uGlow > 0.001) {
+    vec2 m = (P - vec2(501.0, 420.0)) / 121.0;
+    m.y = -m.y;
+    vec2 mc = rot2(-uGSpin) * m / uGScale;
+    vec2 a = vec2(0.70710678), n = vec2(-a.y, a.x);
+    float blue = sdTri(mc, -a * 0.05 + n * 0.2, -a * 0.05 - n * 0.2, a * 1.38);
+    float navy = sdTri(mc, a * 0.05 + n * 0.21, a * 0.05 - n * 0.21, -a * 1.27);
+    float ringD = abs(length(m / uGScale) - 1.0);
+    float coral = length(m / uGScale - vec2(0.0, 1.0)) - 0.05;
+    float k = 1.0 / (121.0 * uGScale);
+    vec3 g = vec3(0.17, 0.43, 1.0) * 1.8 * exp(-max(blue, 0.0) / (k * 9.0)) + vec3(0.55, 0.62, 0.8) * 1.0 * exp(-max(navy, 0.0) / (k * 9.0))
+      + vec3(0.6, 0.7, 1.0) * 0.6 * exp(-ringD / (k * 5.0)) + vec3(1.0, 0.41, 0.28) * 2.4 * exp(-max(coral, 0.0) / (k * 7.0));
+    col += 1.0 - exp(-g * uGlow);
+  }
+  col += (hash(gl_FragCoord.xy + fract(uTime) * 91.0) - 0.5) / 150.0;
+  fragColor = vec4(col, 1.0);
+}
+`;
+    </script>
+
+    <script>
+      const TB = window.TABLE, T = TB.T, DUR = TB.dur, BEAT = TB.beat;
+      const W = 1920, H = 1080;
+      const $ = (s) => document.querySelector(s);
+      const cl = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x)), r = (t, a, b) => cl((t - a) / (b - a)), lerp = (a, b, u) => a + (b - a) * u;
+      const lv = (A, B, u) => A.map((v, i) => lerp(v, B[i], u));
+      const E = (n) => gsap.parseEase(n), eOut = E("power3.out"), eIO = E("power3.inOut"), eExpo = E("expo.out"), eExpoIO = E("expo.inOut"), eBack = E("back.out(1.6)"),
+        eSine = E("sine.inOut"), eIn = E("power3.in"), eP4 = E("power4.inOut");
+      const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+      const b = (x) => x * BEAT;
+
+      // ---------------- the camera, matching the shader's lookAt and focal length
+      const sub = (a, c) => a.map((v, i) => v - c[i]), dot = (a, c) => a[0] * c[0] + a[1] * c[1] + a[2] * c[2];
+      const norm = (a) => { const l = Math.hypot(...a); return a.map((v) => v / l); };
+      const cross = (a, c) => [a[1] * c[2] - a[2] * c[1], a[2] * c[0] - a[0] * c[2], a[0] * c[1] - a[1] * c[0]];
+      function project(C, P) {
+        const fw = norm(sub(C.t, C.p)), rt = norm(cross(fw, [0, 1, 0])), up = cross(rt, fw), d = sub(P, C.p);
+        const z = dot(d, fw); return [W / 2 + dot(d, rt) / z * C.f * H, H / 2 - dot(d, up) / z * C.f * H];
+      }
+      const EL = 7.5 * Math.PI / 180, GD = 3.9;
+      const OPENCAM = { p: [-0.6, 0.0, 3.0], t: [-0.6, 0.0, 0], f: 1.8 };
+      const GLOBECAM = { p: [0, GD * Math.sin(EL), GD * Math.cos(EL)], t: [0, 0, 0], f: 1.8 };
+      // a tile's centre in the world, for a globe turned by rot
+      const lonC = (i) => (i + 0.5) / 16 * 2 * Math.PI - Math.PI, latC = (j) => (j + 0.5) * Math.PI / 12 - Math.PI / 3;
+      function tileWorld(i, j, rot) {
+        const lon = lonC(i), lat = latC(j), l = [Math.sin(lon) * Math.cos(lat), Math.sin(lat), Math.cos(lon) * Math.cos(lat)];
+        const c = Math.cos(rot), s = Math.sin(rot);   // the inverse of the shader's turn
+        return [l[0] * c - l[2] * s, l[1], l[0] * s + l[2] * c];
+      }
+      // each brake: the globe stops with its tile a little right of the middle, the needle pointing at it
+      const OFF = 0.62;
+      let prevRot = -1;
+      const BR = TB.brakes.map((k) => {
+        let rot = lonC(k.lon) - OFF; while (rot < prevRot + Math.PI * 1.2) rot += 2 * Math.PI; prevRot = rot;
+        const P = tileWorld(k.lon, 4, rot), s = project(GLOBECAM, P), c = project(GLOBECAM, [0, 0, 0]);
+        const ang = Math.atan2(-(s[1] - c[1]), s[0] - c[0]);
+        return { ...k, rot, P, sx: s[0], sy: s[1], needle: ang - Math.PI / 4, id: 4 * 16 + k.lon };
+      });
+      const ROT0 = BR[0].rot - 2.6;
+      const MOVES = [[b(7), b(10)], [b(11.2), b(13)], [b(14.2), b(16)]];
+
+      // the tunnel's flight, and before it the same flight seen through the last ring
+      const TT0 = T.tunnel[0], TSTOP = b(47), TZ1 = 26;
+      const tz = (t) => t < TT0 ? -2 * TZ1 / (TSTOP - TT0) * (t - TT0) : (t < TSTOP ? -TZ1 * (1 - (1 - r(t, TT0, TSTOP)) ** 2) : -TZ1 - 0.35 * (t - TSTOP));
+
+      function scene(t) {
+        const S = { mode: 0, cam: OPENCAM, rot: ROT0, globe: 0, glass: 0, needle: 0, blade: 0, ringA: 0, coral: 0, hi: -1, hiAmt: 0,
+          s: 0, wipe: 0, tz: tz(t), tv: 0, roll: 0, twist: 0, tdim: 1, ca: 0, glow: 0, gscale: 2.4, gspin: 0, rings: [0, 0, 0] };
+        S.tv = (tz(t + 1 / 60) - tz(t - 1 / 60)) * 30;
+        if (t < TB.dive[1]) {
+          // I · the needle spins up in its ring, II · the globe
+          S.ringA = eIO(r(t, b(0.3), b(3)));
+          S.blade = eBack(r(t, b(0.8), b(2.2)));
+          S.coral = eOut(r(t, b(3), b(3.4)));
+          S.glass = eIO(r(t, TB.pull[0], TB.pull[1]));
+          S.globe = r(t, TB.build[0], TB.build[1]);
+          const pu = eExpoIO(r(t, TB.pull[0], TB.pull[1]));
+          S.cam = { p: lv(OPENCAM.p, GLOBECAM.p, pu), t: lv(OPENCAM.t, GLOBECAM.t, pu), f: 1.8 };
+          // the needle: a long spin that settles on north-east as the prompt finishes, then points at each brake's tile
+          let nd = -6 * Math.PI * (1 - eOut(r(t, b(0.8), b(5))));
+          let rot = ROT0 + 0.6 * eOut(r(t, b(4), b(7)));
+          let prevN = 0, prevR = rot;
+          BR.forEach((k, j) => {
+            const [m0, m1] = MOVES[j], u = r(t, m0, m1);
+            if (t >= m0) { const e = eP4(u); rot = lerp(prevR, k.rot, e); nd = lerp(prevN, k.needle + 2 * Math.PI * (j + 1), eIO(u)); }
+            prevR = k.rot; prevN = k.needle + 2 * Math.PI * (j + 1);
+            const amt = r(t, k.t - 0.05, k.t + 0.1) * (j < 2 ? 1 - r(t, k.t + BEAT * 1.6, k.t + BEAT * 2.2) : 1);
+            if (amt > 0) { S.hi = k.id; S.hiAmt = amt; }
+          });
+          S.rot = rot; S.needle = nd;
+          // the dive: into the last tile
+          const dv = r(t, TB.dive[0], TB.dive[1]);
+          if (dv > 0) { const K = BR[2], e = eIn(dv), e2 = eIO(r(t, TB.dive[0], TB.dive[0] + BEAT * 1.6));
+            S.cam = { p: lv(GLOBECAM.p, K.P.map((v) => v * 1.36), e), t: lv(GLOBECAM.t, K.P, e2), f: 1.8 }; }
+          S.ca = 0.004 * Math.exp(-Math.max(0, t - TB.pull[0]) * 5) * (t >= TB.pull[0]) + 0.006 * (BR.reduce((a, k) => a + (t >= k.t ? Math.exp(-(t - k.t) * 6) : 0), 0));
+        } else if (t < T.tunnel[0]) {
+          // III · droste
+          S.mode = 1;
+          let k = 0; TB.drosteSteps.forEach((s, j) => { if (t >= s) k = j; });
+          const u = r(t, TB.drosteSteps[k], TB.drosteSteps[k] + 2 * BEAT);
+          S.s = k === 0 ? eIO(r(u, 0.3, 1)) : k + lerp(eExpo(u), u, 0.3);
+          S.wipe = eIO(r(u, 0.04, k === 0 ? 0.38 : 0.5));
+          S.ca = 0.007 * Math.exp(-(t - TB.drosteSteps[k]) * 7);
+          S.tdim = 1;
+        } else {
+          // IV · tunnel, V · --motion, VI · title
+          S.mode = 2;
+          S.roll = 0.5 * Math.sin((t - TT0) * 0.9) * (1 - r(t, TSTOP - 0.5, TSTOP + 1)) + 0.15 * (t - TT0);
+          S.twist = 0.05 * Math.sin((t - TT0) * 0.7);
+          S.tdim = (1 - 0.32 * eIO(r(t, TB.tunnelLines[0] - 0.1, TB.tunnelLines[0] + 0.4))) * (1 - 0.8 * eIO(r(t, T.motion[0] - 0.2, T.motion[0] + 0.6))) * (1 - 0.6 * r(t, T.title, T.title + 0.6));
+          S.ca = 0.006 * Math.exp(-(t - TT0) * 4);
+          S.rings = TB.rings.map((rt0) => eBack(r(t, rt0, rt0 + 0.45)) * (1 - eIn(r(t, T.title - 0.4, T.title + 0.1))));
+          S.glow = 1.3 * eOut(r(t, TB.gather[0], TB.gather[0] + 0.7));
+          S.gscale = lerp(2.4, 1.0, eExpoIO(r(t, TB.gather[0], TB.mark - 0.25)));
+          S.gspin = -2 * Math.PI * (1 - eExpoIO(r(t, TB.gather[0], TB.mark - 0.25)));
+        }
+        return S;
+      }
+
+      // ---------------- WebGL2: pass 1 into a half-float target, pass 2 to the canvas
+      let gl, P1, P2, U1 = {}, U2 = {}, fbo, tex, imgTex;
+      const UNI1 = ["uImg", "uRes", "uTime", "uMode", "uMix", "uCamP", "uCamT", "uFocal", "uRot", "uGlobe", "uGlass", "uNeedle", "uBlade", "uRingA", "uCoral", "uHi", "uHiAmt",
+        "uMap", "uS", "uWipe", "uDro", "uTz", "uTv", "uRoll", "uTwist", "uTdim"];
+      const UNI2 = ["uTex", "uRes", "uCA", "uTime", "uGlow", "uGScale", "uGSpin", "uRings"];
+      function prog(fs, names, U) {
+        const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+        const p = gl.createProgram();
+        gl.attachShader(p, sh(gl.VERTEX_SHADER, "#version 300 es\nin vec2 p; void main(){ gl_Position = vec4(p, 0.0, 1.0); }"));
+        gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs));
+        gl.bindAttribLocation(p, 0, "p");
+        gl.linkProgram(p); if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+        for (const n of names) U[n] = gl.getUniformLocation(p, n);
+        return p;
+      }
+      function initGL(imgs) {
+        gl = $("#gl").getContext("webgl2", { antialias: false, alpha: false, depth: false, stencil: false, preserveDrawingBuffer: true });
+        if (!gl.getExtension("EXT_color_buffer_float")) throw new Error("EXT_color_buffer_float is required");
+        P1 = prog(FS1, UNI1, U1); P2 = prog(FS2, UNI2, U2);
+        const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+        tex = gl.createTexture(); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.texStorage2D(gl.TEXTURE_2D, 11, gl.RGBA16F, W, H);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        // the stills, one layer each
+        imgTex = gl.createTexture(); gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D_ARRAY, imgTex);
+        gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 11, gl.RGBA8, 1024, 683, imgs.length);
+        imgs.forEach((im, k) => gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, k, 1024, 683, 1, gl.RGBA, gl.UNSIGNED_BYTE, im));
+        gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
+        gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR); gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.activeTexture(gl.TEXTURE0);
+        fbo = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+        if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error("framebuffer incomplete");
+        gl.viewport(0, 0, W, H);
+        gl.useProgram(P1);
+        gl.uniform1iv(U1.uMap, new Int32Array(TB.gmap)); gl.uniform1iv(U1.uDro, new Int32Array(TB.droste)); gl.uniform1i(U1.uImg, 1);
+      }
+      function drawGL(S, t) {
+        const C = S.cam;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo); gl.useProgram(P1);
+        const f1 = (n, v) => gl.uniform1f(U1[n], v);
+        gl.uniform2f(U1.uRes, W, H); f1("uTime", t); f1("uMode", S.mode); f1("uMix", 0);
+        gl.uniform3fv(U1.uCamP, C.p); gl.uniform3fv(U1.uCamT, C.t); f1("uFocal", C.f);
+        f1("uRot", S.rot); f1("uGlobe", S.globe); f1("uGlass", S.glass); f1("uNeedle", S.needle); f1("uBlade", S.blade); f1("uRingA", S.ringA); f1("uCoral", S.coral);
+        f1("uHi", S.hi); f1("uHiAmt", S.hiAmt); f1("uS", S.s); f1("uWipe", S.wipe);
+        f1("uTz", S.tz); f1("uTv", S.tv); f1("uRoll", S.roll); f1("uTwist", S.twist); f1("uTdim", S.tdim);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        gl.bindTexture(gl.TEXTURE_2D, tex); gl.generateMipmap(gl.TEXTURE_2D);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.useProgram(P2);
+        const f2 = (n, v) => gl.uniform1f(U2[n], v);
+        gl.uniform1i(U2.uTex, 0); gl.uniform2f(U2.uRes, W, H); f2("uCA", S.ca); f2("uTime", t); f2("uGlow", S.glow); f2("uGScale", S.gscale); f2("uGSpin", S.gspin);
+        gl.uniform3fv(U2.uRings, S.rings);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+      }
+
+      // ---------------- the type
+      const URL_TEXT = "ai.joaoqueiros.com/atlastudio", URL_STILLS = "visions.joaoqueiros.com/stills", URL_MOTION = "visions.joaoqueiros.com/motion";
+      function typeUrl(el, txt, t, t0, t1) {
+        const n = Math.round(txt.length * r(t, t0, t0 + 0.8));
+        el.textContent = txt.slice(0, n); el.style.opacity = (r(t, t0 - 0.05, t0) * (1 - r(t, t1 - 0.25, t1))).toFixed(3);
+      }
+      const HUD = [[0, "prompt"], [TB.pull[0], "--stills"], [T.tunnel[0], "--stills"], [T.motion[0], "--motion"]];
+      let lastPrompt = "", lastCap = -1, lastTag = -1;
+      function slam(el, t, t0, t1) {
+        if (t < t0 || t >= t1) { el.style.opacity = 0; return; }
+        const a = r(t, t0, t0 + 0.14), z = r(t, t1 - 0.12, t1);
+        el.style.opacity = 1; el.style.transform = `scale(${(1.25 - 0.25 * eBack(a)).toFixed(3)})`;
+        el.style.clipPath = `inset(${(100 * z).toFixed(1)}% 0 ${(100 * (1 - eExpo(a))).toFixed(1)}% 0)`;
+      }
+      function fadeLine(el, t, t0, t1, rise = 18) {
+        const o = r(t, t0, t0 + 0.35) * (1 - r(t, t1 - 0.25, t1));
+        el.style.opacity = o.toFixed(3); el.style.transform = `translateY(${(rise * (1 - eOut(r(t, t0, t0 + 0.6)))).toFixed(1)}px)`;
+      }
+
+      function paint(t) {
+        const S = scene(t);
+        if (gl) drawGL(S, t);
+        // I · the prompt types out
+        const po = r(t, TB.typing[0] - 0.3, TB.typing[0]) * (1 - r(t, TB.pull[0] - 0.1, TB.pull[0] + 0.25));
+        $("#panel").style.opacity = po.toFixed(3);
+        const n = Math.round(TB.prompt.length * r(t, TB.typing[0], TB.typing[1]));
+        const html = esc(TB.prompt.slice(0, n)) + (n < TB.prompt.length || Math.floor(t / (BEAT * 0.5)) % 2 === 0 ? "<i></i>" : "");
+        if (html !== lastPrompt) { $("#p-text").innerHTML = html; lastPrompt = html; }
+        $("#p-meta").textContent = TB.promptMeta;
+        fadeLine($("#l-open"), t, TB.openLine, TB.pull[0] + 0.2);
+        // II · the tag on each brake's tile
+        let tg = -1; BR.forEach((k, j) => { if (t >= k.t && t < (j < 2 ? k.t + BEAT * 2.2 : TB.dive[0] + 0.2)) tg = j; });
+        const tagEl = $("#tag");
+        if (tg >= 0) {
+          const K = BR[tg], s = TB.stills[K.layer];
+          if (tg !== lastTag) { tagEl.innerHTML = `<span>--stills ·</span> ${esc(s.title)}`; lastTag = tg; }
+          const u = r(t, K.t, K.t + 0.25), x = K.sx + 0, y = K.sy + 150;
+          tagEl.style.opacity = (eOut(u) * (1 - r(t, (tg < 2 ? K.t + BEAT * 2.2 : TB.dive[0] + 0.2) - 0.15, tg < 2 ? K.t + BEAT * 2.2 : TB.dive[0] + 0.2))).toFixed(3);
+          tagEl.style.transform = `translate(${x.toFixed(1)}px, ${(y + 14 * (1 - eOut(u))).toFixed(1)}px) translateX(-50%)`;
+        } else tagEl.style.opacity = 0;
+        slam($("#s-stills"), t, TB.dive[0], TB.dive[1]);
+        // III · the caption for whichever still fills the frame
+        const ci = t >= TB.dive[1] && t < T.tunnel[0] ? Math.min(7, Math.round(S.s)) : -1;
+        const cap = $("#cap");
+        if (ci >= 0) {
+          if (ci !== lastCap) { const s = TB.stills[TB.droste[ci]]; $("#cap-t").textContent = s.title; $("#cap-p").textContent = `"${s.prompt}"`; lastCap = ci; }
+          const st = TB.drosteSteps[ci] + (ci ? -BEAT * 0.5 : 0.15), u = r(t, st, st + 0.3);
+          cap.style.opacity = (eOut(u) * (1 - r(t, T.tunnel[0] - 0.2, T.tunnel[0]))).toFixed(3);
+          cap.style.clipPath = `inset(0 ${(100 * (1 - eExpo(u))).toFixed(1)}% 0 0)`;
+        } else cap.style.opacity = 0;
+        // IV · tunnel lines
+        fadeLine($("#l-t0"), t, TB.tunnelLines[0], TB.tunnelLines[1] - 0.05);
+        fadeLine($("#l-t1"), t, TB.tunnelLines[1], T.motion[0] + 0.1);
+        typeUrl($("#u-stills"), URL_STILLS, t, TB.tunnelLines[1] + 0.45, T.motion[0] + 0.1);
+        // V · --motion: the clips in their rings
+        [0, 1, 2].forEach((k) => {
+          const o = S.rings[k], w = $("#w" + k), sc = 0.4 + 0.6 * o;
+          w.style.opacity = cl(o * 3).toFixed(3); w.style.transform = `scale(${sc.toFixed(3)})`;
+          const vt = $("#vt" + k); vt.style.opacity = (r(t, TB.rings[k] + 0.3, TB.rings[k] + 0.6) * (1 - r(t, T.title - 0.2, T.title + 0.1))).toFixed(3);
+        });
+        fadeLine($("#l-motion"), t, TB.motionLine, T.title);
+        typeUrl($("#u-motion"), URL_MOTION, t, TB.motionLine + 0.45, T.title);
+        // a flash on every cut, a veil in from black
+        let fl = 0; for (const c of TB.cuts) if (t >= c && t < c + 0.1) fl = Math.max(fl, 0.45 * (1 - (t - c) / 0.1));
+        $("#flash").style.opacity = fl.toFixed(3);
+        $("#veil").style.opacity = (1 - eOut(r(t, 0.0, 0.5))).toFixed(3);
+        let st = HUD[0][1]; for (const [a, s] of HUD) if (t >= a) st = s;
+        $("#hud-st").textContent = st;
+        const hudO = r(t, 0.4, 0.8) * (1 - r(t, T.title, T.title + 0.3));
+        $("#hud-l").style.opacity = hudO; $("#hud-r").style.opacity = hudO;
+        // VI · title: the paper opens from the needle's hub, carrying the official lockup
+        const pr = eIO(r(t, TB.mark - 0.3, TB.mark + 0.45)) * 2300;
+        $("#title").style.clipPath = `circle(${pr.toFixed(1)}px at 501px 420px)`;
+        $("#t-line").style.opacity = r(t, TB.line, TB.line + 0.5);
+        $("#t-line").style.transform = `translateY(${(16 * (1 - eOut(r(t, TB.line, TB.line + 0.6)))).toFixed(1)}px)`;
+        $("#t-url").textContent = URL_TEXT.slice(0, Math.round(URL_TEXT.length * r(t, TB.line + 0.6, TB.line + 1.5)));
+      }
+
+      const tl = gsap.timeline({ paused: true });
+      const clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+
+      async function build() {
+        const imgs = TB.stills.map((s) => { const im = new Image(); im.src = s.src; return im; });
+        await Promise.all([...imgs.map((im) => im.decode()), document.fonts.load('850 40px "Archivo"'), document.fonts.load('400 40px "Instrument Serif"'),
+          document.fonts.load('500 20px "JBM"'), $("#t-logo").decode()]);
+        initGL(imgs);
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = window.__hf.buildReady || {};
+      window.__hf.buildReady["true-north"] = build();
+    </script>
+  </body>
+</html>

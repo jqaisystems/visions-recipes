@@ -106,6 +106,14 @@ Made for: Imagined Worlds · Stills. Stack: Three.js, TSL, GSAP, Python (score).
 
 ## Products and systems
 
+### R31 · True North
+
+A showreel cut for a prompt library drawn by one shader around real images: a raymarched compass needle inside a glass globe tiled with stills that whips and brakes on the beat, an endless Droste zoom of stills nested in compass rings, a time-smeared tunnel of stills, three clips in rings, and the logo.
+
+Made for: Atlas Studio · visual prompt studio. Stack: WebGL2, GLSL, GSAP, Python (table, score).
+
+[Recipe and poster](../recipes/r31-true-north/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r31-true-north-v1)
+
 ### R30 · Ninefold
 
 A showreel cut for a grid maker drawn by one fragment shader: one glass tile bursts into an endless field by domain repetition, every tile refracts the photo into colour, a wave rolls out on every beat, ten hard cuts turn the field into ten tools, a kaleidoscope folds it into one tile, and nine tiles lock into the logo.
