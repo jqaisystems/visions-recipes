@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <!--
+      R34 · Footlights. 33.1 s at 96 bpm, paper cut-out stop motion, backlit (season 4, film 3). For Phone Webcam
+      Bridge, João's local Android-to-Windows camera system for video meetings. A video call staged as a night show in a
+      paper toy theatre: the curtains part on a home office cut in layers, a phone rises from a trap and two flaps pick
+      1080p and the front camera, six PIN tiles flip on the phone and match on the PC, the phone's screen goes dark
+      while its lens keeps throwing light, a USB cable unrolls and Wi-Fi rings ripple, the picture runs to the PC as a
+      string of paper frames on a pulley while the bridge's zoom, exposure and camera switch change them, Start OBS
+      Camera lights the empty meeting tile and the footlights pop up, and a roller blind drops over the cloud: 0
+      accounts, no server, no telemetry. The curtains close and the JQ AI SYSTEMS logo lands.
+      The PIN is a sample, the people are invented paper puppets, and the control labels are the bridge's own.
+      Technique: the R33 paper engine on one Canvas 2D, stood up. The stage is five layers at different depths (back
+      wall, set, apron, arch, curtains); the camera dollies and pans, so nearer layers grow faster. Paper is lit from
+      behind: translucent stocks glow where a light sits behind them, and light cones are added on top. Time is snapped
+      to 12 poses a second and every pose re-cuts each edge a little. paint(t) draws every frame from one baked table
+      (assets/table.js, from bake/table.py); score/compose.py reads it too.
+    -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/table.js"></script>
+    <style>
+      @font-face { font-family: "Archivo"; src: url("assets/fonts/Archivo.ttf") format("truetype"); font-weight: 100 900; }
+      @font-face { font-family: "Instrument Serif"; src: url("assets/fonts/InstrumentSerif-Regular.ttf") format("truetype"); font-weight: 400; font-style: normal; }
+      @font-face { font-family: "Instrument Serif"; src: url("assets/fonts/InstrumentSerif-Italic.ttf") format("truetype"); font-weight: 400; font-style: italic; }
+      @font-face { font-family: "JBM"; src: url("assets/fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 100 800; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #0e1528; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #0e1528; color: #221f1d; }
+      #ct-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #cv { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #ct-ui { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      .hud { position: absolute; top: 40px; font: 600 17px "JBM", monospace; letter-spacing: 0.2em; white-space: nowrap; color: #f2e9d8; text-transform: uppercase; text-shadow: 0 2px 8px rgba(0,0,0,0.7); }
+      #hud-l { left: 64px; }
+      #hud-l span { color: #f6c36a; }
+      #hud-r { right: 64px; letter-spacing: 0.12em; text-transform: none; color: #f6c36a; }
+      #title { position: absolute; inset: 0; opacity: 0; }
+      #t-logo { position: absolute; left: 590px; top: 352px; width: 740px; height: 154px; }
+      #t-name { position: absolute; left: 0; right: 0; top: 560px; text-align: center; font: 700 50px "Archivo", sans-serif; color: #f2e9d8; white-space: nowrap; opacity: 0; }
+      #t-line { position: absolute; left: 0; right: 0; top: 632px; text-align: center; font: italic 400 38px "Instrument Serif", serif; color: #cbbfab; white-space: nowrap; opacity: 0; }
+      #t-url { position: absolute; left: 0; right: 0; top: 708px; height: 40px; text-align: center; font: 500 30px "JBM", monospace; color: #f6c36a; white-space: nowrap; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="33.125" data-width="1920" data-height="1080">
+      <div id="ct-stage" class="clip" data-start="0" data-duration="33.125" data-track-index="0">
+        <canvas id="cv" width="1920" height="1080" data-layout-allow-overflow></canvas>
+      </div>
+      <div id="ct-ui" class="clip" data-start="0" data-duration="33.125" data-track-index="1">
+        <div class="hud" id="hud-l" data-layout-allow-occlusion>JQ AI SYSTEMS <span>· phone webcam bridge</span></div>
+        <div class="hud" id="hud-r" data-layout-allow-occlusion><span id="hud-st">01 curtain up</span></div>
+        <div id="title" data-layout-allow-occlusion>
+          <img id="t-logo" src="assets/brand/jqai-logo.png" alt="JQ AI SYSTEMS">
+          <div id="t-name">Phone Webcam Bridge</div>
+          <div id="t-line">Your phone. Your webcam.</div>
+          <div id="t-url"></div>
+        </div>
+      </div>
+      <audio id="score" src="assets/bgm/score.wav" data-start="0" data-duration="33.125" data-track-index="7" data-volume="0.8"></audio>
+    </div>
+
+    <script>
+      const TB = window.TABLE, T = TB.T, E = TB.E, DUR = TB.dur, BEAT = TB.beat, PZ = TB.poses;
+      const W = 1920, H = 1080;
+      const URL_TEXT = "ai.joaoqueiros.com/systems/phone-webcam-bridge";
+      const $ = (s) => document.querySelector(s);
+      const cl = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+      const r = (t, a, b) => cl((t - a) / (b - a));
+      const lerp = (a, b, u) => a + (b - a) * u;
+      const eOut = (u) => 1 - Math.pow(1 - u, 3), eIn = (u) => u * u * u, eIO = (u) => (u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2);
+      const eBack = (u) => { const c = 1.6, c3 = c + 1; return 1 + c3 * Math.pow(u - 1, 3) + c * Math.pow(u - 1, 2); };
+      function hash(n) { const s = Math.sin(n * 12.9898 + 78.233) * 43758.5453; return s - Math.floor(s); }
+      function vnoise(x, seed) { const i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f); return lerp(hash(i + seed * 57.31), hash(i + 1 + seed * 57.31), u) * 2 - 1; }
+      function prng(a) { return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+
+      let ctx, POSE = 0, LS = 1;
+      const CAM = { x: 0, y: 0, z: 0 };
+
+      // ---------------------------------------------------------------- paper stocks, made once from noise
+      const STOCK = { plum: "#3a2142", plumD: "#26152d", night: "#18233f", nightD: "#0f1629", sky: "#1c2a55", red: "#a8302e", redD: "#6e1c22",
+        gold: "#c9a24f", amber: "#e8a948", tissue: "#f3d9a4", cream: "#f2e9d8", white: "#f8f5ef", news: "#e8e2d4", ink: "#1d1a1f",
+        wood: "#7a5236", woodD: "#4f3424", steel: "#9aa3ad", cyan: "#5fd4e0", cyanD: "#2c7f8c", sage: "#8fae96" };
+      const DARK = new Set(["plum", "plumD", "night", "nightD", "sky", "redD", "ink", "woodD"]);
+      const PAT = {};
+      function makeStocks() {
+        Object.entries(STOCK).forEach(([k, base], si) => {
+          const c = document.createElement("canvas"); c.width = c.height = 512;
+          const g = c.getContext("2d"), R = prng(3000 + si * 7919);
+          g.fillStyle = base; g.fillRect(0, 0, 512, 512);
+          const dark = DARK.has(k), dk = dark ? 0.06 : 0.035, lt = dark ? 0.03 : 0.045;
+          const wrapDraw = (fn) => { for (const ox of [-512, 0, 512]) for (const oy of [-512, 0, 512]) fn(ox, oy); };
+          for (let i = 0; i < 110; i++) {
+            const x = R() * 512, y = R() * 512, rad = 20 + R() * 80, d = R() < 0.5;
+            wrapDraw((ox, oy) => { const gr = g.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, rad);
+              gr.addColorStop(0, d ? `rgba(0,0,0,${dk})` : `rgba(255,255,255,${lt})`); gr.addColorStop(1, "rgba(0,0,0,0)");
+              g.fillStyle = gr; g.fillRect(x + ox - rad, y + oy - rad, rad * 2, rad * 2); });
+          }
+          // tissue is long soft fibres you see when light comes through; wood has a grain running one way
+          const grain = k.startsWith("wood"), fibres = k === "tissue" ? 2600 : 1500;
+          g.lineWidth = 0.8;
+          for (let i = 0; i < fibres; i++) {
+            const x = R() * 512, y = R() * 512, a = grain ? (R() - 0.5) * 0.12 : R() * Math.PI, l = grain ? 40 + R() * 100 : k === "tissue" ? 12 + R() * 30 : 4 + R() * 16;
+            const dk2 = R() < 0.55, al = (dk2 ? 0.07 : 0.11) * R();
+            g.strokeStyle = dk2 ? `rgba(0,0,0,${al})` : `rgba(255,255,255,${al})`;
+            wrapDraw((ox, oy) => { if (Math.abs(ox) + Math.abs(oy) && (x > 120 && x < 392 && y > 24 && y < 488)) return;
+              g.beginPath(); g.moveTo(x + ox, y + oy); g.quadraticCurveTo(x + ox + Math.cos(a + 0.7) * l * 0.5, y + oy + Math.sin(a + 0.7) * l * 0.5, x + ox + Math.cos(a) * l, y + oy + Math.sin(a) * l); g.stroke(); });
+          }
+          for (let i = 0; i < 700; i++) { g.fillStyle = `rgba(0,0,0,${0.1 * R()})`; g.fillRect(R() * 512, R() * 512, 1.2, 1.2); }
+          PAT[k] = ctx.createPattern(c, "repeat");
+        });
+      }
+      let GRAIN, LIGHT;
+      function makePost() {
+        GRAIN = document.createElement("canvas"); GRAIN.width = GRAIN.height = 256;
+        const g = GRAIN.getContext("2d"), im = g.createImageData(256, 256), R = prng(91);
+        for (let i = 0; i < 256 * 256; i++) { const v = 100 + R() * 56; im.data[i * 4] = im.data[i * 4 + 1] = im.data[i * 4 + 2] = v; im.data[i * 4 + 3] = 255; }
+        g.putImageData(im, 0, 0);
+        LIGHT = document.createElement("canvas"); LIGHT.width = W; LIGHT.height = H;
+        const l = LIGHT.getContext("2d");
+        const gr = l.createRadialGradient(960, 520, 200, 960, 560, 1150);
+        gr.addColorStop(0, "rgba(0, 0, 0, 0)"); gr.addColorStop(0.6, "rgba(4, 4, 14, 0.12)"); gr.addColorStop(1, "rgba(4, 4, 14, 0.62)");
+        l.fillStyle = gr; l.fillRect(0, 0, W, H);
+      }
+
+      // ---------------------------------------------------------------- cut paper
+      const SH = new Map();
+      function resample(poly, step) {
+        const pts = [];
+        for (let i = 0; i < poly.length; i++) {
+          const [x0, y0] = poly[i], [x1, y1] = poly[(i + 1) % poly.length];
+          const n = Math.max(1, Math.round(Math.hypot(x1 - x0, y1 - y0) / step));
+          for (let k = 0; k < n; k++) pts.push([x0 + ((x1 - x0) * k) / n, y0 + ((y1 - y0) * k) / n]);
+        }
+        return pts;
+      }
+      function shape(key, make, step) {
+        let s = SH.get(key);
+        if (s) return s;
+        const pts = resample(make(), step), n = pts.length, nrm = [];
+        for (let i = 0; i < n; i++) { const a = pts[(i - 1 + n) % n], b = pts[(i + 1) % n]; const nx = b[1] - a[1], ny = -(b[0] - a[0]), l = Math.hypot(nx, ny) || 1; nrm.push([nx / l, ny / l]); }
+        s = { pts, nrm }; SH.set(key, s); return s;
+      }
+      const RECT = (w, h) => () => [[-w / 2, -h / 2], [w / 2, -h / 2], [w / 2, h / 2], [-w / 2, h / 2]];
+      const CIRC = (rx, ry = rx, n = 36) => () => Array.from({ length: n }, (_, i) => [rx * Math.cos((i / n) * 2 * Math.PI), ry * Math.sin((i / n) * 2 * Math.PI)]);
+      const ARC = (r0, r1, a0, a1, n = 18) => () => [...Array.from({ length: n + 1 }, (_, i) => { const a = lerp(a0, a1, i / n); return [r1 * Math.cos(a), r1 * Math.sin(a)]; }),
+        ...Array.from({ length: n + 1 }, (_, i) => { const a = lerp(a1, a0, i / n); return [r0 * Math.cos(a), r0 * Math.sin(a)]; })];
+      function fillStock(path, stock, seed) {
+        const p = PAT[stock];
+        p.setTransform(new DOMMatrix().translate(hash(seed) * 512, hash(seed + 1.3) * 512));
+        ctx.fillStyle = p; ctx.fill(path);
+      }
+      // one piece of paper: a torn outline, a stock, a shadow from its height, light coming through it, and what is printed on it
+      function piece(P) {
+        const S = shape(P.key, P.make, P.step || 12), n = S.pts.length, tear = P.tear ?? 1.3, seed = P.seed ?? 1;
+        const path = new Path2D();
+        for (let i = 0; i < n; i++) {
+          const p = S.pts[i], q = S.nrm[i];
+          const d = tear * vnoise(i * 0.55, seed) + 0.55 * (hash(i * 3.17 + seed * 11.3 + POSE * 0.731) - 0.5);
+          const x = p[0] + q[0] * d, y = p[1] + q[1] * d;
+          i ? path.lineTo(x, y) : path.moveTo(x, y);
+        }
+        path.closePath();
+        const jx = (hash(seed * 7.7 + POSE * 1.37) - 0.5) * 1.0, jy = (hash(seed * 3.3 + POSE * 2.11) - 0.5) * 1.0, jr = (hash(seed * 5.1 + POSE * 0.77) - 0.5) * 0.004;
+        ctx.save();
+        ctx.translate(P.x + jx, P.y + jy); ctx.rotate((P.rot || 0) + jr);
+        const s = P.s ?? 1; ctx.scale(s * (P.sx ?? 1), s * (P.sy ?? 1));
+        if (P.alpha !== undefined) ctx.globalAlpha *= P.alpha;
+        const h = P.h ?? 0.6;
+        if (h > 0) {
+          ctx.shadowColor = `rgba(2, 2, 10, ${(0.6 - 0.05 * Math.min(h, 4)).toFixed(3)})`;
+          ctx.shadowBlur = (2 + h * 8) * LS; ctx.shadowOffsetX = (1 + h * 4) * LS; ctx.shadowOffsetY = (2 + h * 6) * LS;
+        }
+        fillStock(path, P.stock, seed);
+        ctx.shadowColor = "transparent";
+        if (P.content) { ctx.save(); ctx.clip(path); P.content(); ctx.restore(); }
+        // backlight: where a light sits behind translucent paper, the paper glows
+        if (P.glow > 0) {
+          ctx.save(); ctx.clip(path); ctx.globalCompositeOperation = "screen";
+          const R0 = P.gr || 300, g = ctx.createRadialGradient(P.gx || 0, P.gy || 0, 0, P.gx || 0, P.gy || 0, R0);
+          g.addColorStop(0, `rgba(${P.gc || "255,214,140"},${(0.85 * P.glow).toFixed(3)})`); g.addColorStop(1, `rgba(${P.gc || "255,214,140"},0)`);
+          ctx.fillStyle = g; ctx.fillRect(-R0 * 3, -R0 * 3, R0 * 6, R0 * 6); ctx.restore();
+        }
+        ctx.lineWidth = 1.5 / Math.max(0.2, s); ctx.strokeStyle = P.edge || "rgba(255, 248, 236, 0.28)"; ctx.stroke(path);
+        ctx.restore();
+      }
+      function txt(s, x, y, font, col, align = "center") { ctx.font = font; ctx.fillStyle = col; ctx.textAlign = align; ctx.textBaseline = "middle"; ctx.fillText(s, x, y); }
+      function graphite(pts, col = "rgba(242, 233, 216, 0.8)", w = 2.2, seed = 1) {
+        ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = w; ctx.lineCap = "round"; ctx.lineJoin = "round";
+        for (let pass = 0; pass < 2; pass++) {
+          ctx.beginPath();
+          pts.forEach(([x, y], i) => { const dx = (hash(seed + i * 3.1 + pass * 7 + POSE * 0.37) - 0.5) * 1.6, dy = (hash(seed + i * 5.7 + pass * 3 + POSE * 0.53) - 0.5) * 1.6; i ? ctx.lineTo(x + dx, y + dy) : ctx.moveTo(x + dx, y + dy); });
+          ctx.globalAlpha = pass ? 0.45 : 1; ctx.stroke();
+        }
+        ctx.restore();
+      }
+      // light added on top: a soft cone from a point, as a lamp or a lens throws it
+      function cone(x0, y0, x1, y1, w0, w1, col, a) {
+        if (a <= 0) return;
+        const nx = -(y1 - y0), ny = x1 - x0, l = Math.hypot(nx, ny) || 1, ux = nx / l, uy = ny / l;
+        ctx.save(); ctx.globalCompositeOperation = "lighter";
+        const g = ctx.createLinearGradient(x0, y0, x1, y1); g.addColorStop(0, `rgba(${col},${a.toFixed(3)})`); g.addColorStop(1, `rgba(${col},0)`);
+        ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(x0 + ux * w0, y0 + uy * w0); ctx.lineTo(x1 + ux * w1, y1 + uy * w1); ctx.lineTo(x1 - ux * w1, y1 - uy * w1); ctx.lineTo(x0 - ux * w0, y0 - uy * w0); ctx.closePath(); ctx.fill();
+        ctx.restore();
+      }
+      function glowAt(x, y, rad, col, a, mode = "screen") {
+        if (a <= 0) return;
+        ctx.save(); ctx.globalCompositeOperation = mode;
+        const g = ctx.createRadialGradient(x, y, 0, x, y, rad); g.addColorStop(0, `rgba(${col},${a.toFixed(3)})`); g.addColorStop(1, `rgba(${col},0)`);
+        ctx.fillStyle = g; ctx.fillRect(x - rad, y - rad, rad * 2, rad * 2); ctx.restore();
+      }
+
+      // ---------------------------------------------------------------- type: every word on its own strip of paper
+      const WC = new Map();
+      function wordW(text, font) { const k = font + "|" + text; if (!WC.has(k)) { ctx.font = font; WC.set(k, ctx.measureText(text).width); } return WC.get(k); }
+      function layLines() {
+        TB.lines.forEach((L, i) => {
+          const big = !!L.big, fs = big ? 128 : 74, fa = big ? 152 : 90;
+          const words = L.words.map((w, k) => {
+            const acc = k === L.accent, font = acc ? `italic 400 ${fa}px "Instrument Serif"` : `800 ${fs}px "Archivo"`;
+            return { text: w, font, acc, w: wordW(w, font) + (big ? 46 : 32), h: fs * 1.24 };
+          });
+          const gap = big ? 18 : 12, total = words.reduce((s, w) => s + w.w, 0) + gap * (words.length - 1);
+          let x = L.at[0] === 0 ? 960 - total / 2 : L.at[0];
+          L.lay = words.map((w, k) => {
+            const sd = 300 + i * 20 + k, ink = !w.acc && k % 2 === 1;
+            const o = { ...w, key: `w${i}_${k}`, x: x + w.w / 2, y: L.at[1] + (hash(sd) - 0.5) * 14, rot: (hash(sd * 1.7) - 0.5) * 0.07, seed: sd,
+              stock: w.acc ? "amber" : ink ? "ink" : "news", col: ink ? "#f6efe2" : "#1d1a1f", dy: w.acc ? fs * 0.02 : fs * 0.05 };
+            x += w.w + gap; return o;
+          });
+        });
+      }
+      function drawLine(L, t) {
+        if (t < L.t || t > L.out + 1.4) return;
+        const n = L.lay.length;
+        L.lay.forEach((w, k) => {
+          const ti = L.t + k * 0.16, to = L.out + (n - 1 - k) * 0.08;
+          if (t < ti) return;
+          const a = eOut(r(t, ti, ti + 0.25)), b = eIn(r(t, to, to + 0.4));
+          if (b >= 1) return;
+          piece({ key: w.key, make: RECT(w.w, w.h), x: w.x + 40 * b, y: w.y - 22 * (1 - a) - 320 * b, rot: w.rot + (k % 2 ? 0.5 : -0.5) * b, s: lerp(1.14, 1, a) + 0.08 * b,
+            h: lerp(3.6, 0.45, a) + 3.5 * b, stock: w.stock, seed: w.seed, tear: 1.6, step: 14, content: () => txt(w.text, 0, w.dy, w.font, w.col) });
+        });
+      }
+
+      // ---------------------------------------------------------------- the stage in depth
+      // each layer is drawn in its own coordinates at rest; the camera dollies forward by CAM.z and turns by CAM.x, CAM.y
+      const D = { back: 9, set: 7, apron: 5.6, arch: 5, curt: 4.9 };
+      function layer(d) { const s = d / (d - CAM.z); LS = s; ctx.setTransform(s, 0, 0, s, 960 - 960 * s - CAM.x, 540 - 540 * s - CAM.y); }
+      const WIN = { x: 820, y: 330, w: 420, h: 240 };
+      const MON = { x: 1350, y: 450, sw: 604, sh: 364 };
+      const PH = { x: 430, y: 500 };
+      const WL = { x: 600, y: 330, r: 40 }, WR = { x: 1010, y: 330, r: 40 };
+      const ME = { skin: "#e6b48f", hair: "#3a2418", top: "#e8a948", wall: "#2a2f4a" };
+
+      // what the camera sees at time t: the bridge's zoom, exposure and the front or back camera
+      function camState(t) {
+        return { zoom: lerp(1, 1.5, eIO(r(t, E.zoom[0], E.zoom[1]))), expo: eIO(r(t, E.expo[0], E.expo[1])), back: t >= E.switch[0] && t < E.switch[1] };
+      }
+      // a picture of the invented paper puppet (or the room behind the phone), drawn into a w x h box centred on 0, 0
+      function drawFace(w, h, st, who = ME) {
+        ctx.save(); ctx.beginPath(); ctx.rect(-w / 2, -h / 2, w, h); ctx.clip();
+        ctx.fillStyle = who.wall; ctx.fillRect(-w / 2, -h / 2, w, h);
+        const u = h / 100, z = st.zoom || 1;
+        if (st.back) {
+          // the back camera: a shelf, a plant and a lamp on the far wall
+          ctx.fillStyle = "#5a3b2a"; ctx.fillRect(-w / 2, 8 * u, w, 6 * u);
+          ctx.fillStyle = "#b8664a"; ctx.fillRect(-26 * u, -8 * u, 22 * u, 16 * u);
+          ctx.fillStyle = "#6f9a74"; [[-15, -20, 14], [-24, -26, 10], [-6, -28, 11]].forEach(([x, y, rr]) => { ctx.beginPath(); ctx.ellipse(x * u, y * u, rr * u, rr * 0.6 * u, 0.5, 0, 7); ctx.fill(); });
+          ctx.fillStyle = "#f3d9a4"; ctx.beginPath(); ctx.moveTo(22 * u, -30 * u); ctx.lineTo(44 * u, -30 * u); ctx.lineTo(50 * u, -14 * u); ctx.lineTo(16 * u, -14 * u); ctx.fill();
+          ctx.fillStyle = "#3a2418"; ctx.fillRect(31 * u, -14 * u, 4 * u, 22 * u);
+        } else {
+          ctx.save(); ctx.translate(0, 10 * u); ctx.scale(z, z); ctx.translate(0, -10 * u);
+          ctx.fillStyle = who.top; ctx.beginPath(); ctx.ellipse(0, 58 * u, 46 * u, 34 * u, 0, 0, 7); ctx.fill();
+          ctx.fillStyle = who.skin; ctx.fillRect(-7 * u, 14 * u, 14 * u, 14 * u);
+          ctx.beginPath(); ctx.ellipse(0, -2 * u, 20 * u, 24 * u, 0, 0, 7); ctx.fill();
+          ctx.fillStyle = who.hair; ctx.beginPath(); ctx.ellipse(0, -16 * u, 22 * u, 14 * u, 0, Math.PI, 2 * Math.PI); ctx.fill(); ctx.fillRect(-22 * u, -17 * u, 6 * u, 14 * u);
+          ctx.fillStyle = "#1d1a1f"; ctx.beginPath(); ctx.arc(-7 * u, -2 * u, 2.2 * u, 0, 7); ctx.arc(7 * u, -2 * u, 2.2 * u, 0, 7); ctx.fill();
+          ctx.strokeStyle = "#7a3a2a"; ctx.lineWidth = 1.6 * u; ctx.beginPath(); ctx.arc(0, 6 * u, 6 * u, 0.2, Math.PI - 0.2); ctx.stroke();
+          ctx.restore();
+        }
+        const e = st.expo ?? 1;
+        ctx.fillStyle = `rgba(0, 0, 8, ${(0.42 * (1 - e)).toFixed(3)})`; ctx.fillRect(-w / 2, -h / 2, w, h);
+        ctx.globalCompositeOperation = "screen"; ctx.fillStyle = `rgba(255, 228, 190, ${(0.14 * e).toFixed(3)})`; ctx.fillRect(-w / 2, -h / 2, w, h);
+        ctx.restore();
+      }
+
+      // ---------------------------------------------------------------- the back wall: the window, the cloud, the blind, the tags
+      function drawBack(t) {
+        layer(D.back);
+        piece({ key: "wall", make: RECT(2900, 1800), x: 960, y: 540, h: 0, stock: "plum", seed: 2, tear: 2, step: 40, edge: "rgba(0,0,0,0)", content: () => {
+          ctx.fillStyle = "rgba(0,0,0,0.12)"; for (let x = -1450; x < 1450; x += 64) ctx.fillRect(x, -900, 22, 1800);
+        } });
+        const lamp = lampOn(t), mon = 0.12 + 0.1 * r(t, E.tile, E.tile + 0.5);
+        glowAt(260, 330, 560, "255,190,110", 0.34 * lamp);
+        glowAt(MON.x, MON.y, 640, "95,212,224", mon);
+        // the window and the night outside
+        const bu = eIO(r(t, E.blind[0], E.blind[1])), cloudOn = 1 - bu;
+        piece({ key: "frame", make: RECT(WIN.w + 44, WIN.h + 44), x: WIN.x, y: WIN.y, h: 0.5, stock: "woodD", seed: 4, tear: 0.8, step: 12 });
+        piece({ key: "sky", make: RECT(WIN.w, WIN.h), x: WIN.x, y: WIN.y, h: 0, stock: "sky", seed: 5, tear: 0.6, step: 12, content: () => {
+          for (let i = 0; i < 26; i++) { const sx = (hash(i * 3.7) - 0.5) * WIN.w, sy = (hash(i * 5.3) - 0.5) * WIN.h, tw = 0.5 + 0.5 * hash(i + POSE * 0.21); ctx.fillStyle = `rgba(255, 244, 214, ${(0.35 + 0.5 * tw).toFixed(3)})`; ctx.fillRect(sx, sy, 2.4, 2.4); }
+          // the cloud with a login card on it: what the bridge never needs
+          ctx.save(); ctx.globalAlpha = 0.35 + 0.65 * cloudOn;
+          piece({ key: "cloud", make: () => { const p = []; [[-70, 10, 46], [-10, -18, 60], [62, 4, 48]].forEach(([cx, cy, rr], j) => { for (let i = 0; i < 14; i++) { const a = Math.PI + (i / 13) * Math.PI; p.push([cx + rr * Math.cos(a) * (j === 1 ? 1 : 1), cy + rr * Math.sin(a)]); } }); p.push([110, 40], [-116, 40]); return p; },
+            x: 30, y: -10, h: 0.6, stock: "cream", seed: 6, tear: 1.2, step: 10, glow: 0.45 * cloudOn, gc: "95,212,224", gr: 160 });
+          piece({ key: "login", make: RECT(104, 72), x: 30, y: 4, h: 0.8, stock: "white", seed: 7, tear: 0.6, step: 8, content: () => {
+            txt("sign in", 0, -24, '700 12px "JBM"', "#1d1a1f"); ctx.fillStyle = "rgba(29,26,31,0.25)"; ctx.fillRect(-38, -10, 76, 9); ctx.fillRect(-38, 4, 76, 9);
+            ctx.fillStyle = "#2c7f8c"; ctx.fillRect(-22, 19, 44, 11);
+          } });
+          ctx.restore();
+          ctx.fillStyle = `rgba(0, 0, 12, ${(0.5 * bu).toFixed(3)})`; ctx.fillRect(-WIN.w / 2, -WIN.h / 2, WIN.w, WIN.h);
+        } });
+        // the roller blind: rolled at the top, pulled down over the cloud
+        const L = lerp(14, WIN.h + 8, bu);
+        piece({ key: "blind", make: RECT(WIN.w + 16, WIN.h + 8), x: WIN.x, y: WIN.y - WIN.h / 2 - 4 + L / 2, sy: L / (WIN.h + 8), h: 0.7, stock: "tissue", seed: 8, tear: 0.8, step: 12, glow: 0.25 * lamp, gx: -300, gr: 500,
+          content: () => { ctx.fillStyle = "rgba(90, 60, 30, 0.12)"; for (let y = -WIN.h / 2; y < WIN.h / 2; y += 22) ctx.fillRect(-WIN.w / 2 - 8, y, WIN.w + 16, 3); } });
+        piece({ key: "roll", make: RECT(WIN.w + 40, 22), x: WIN.x, y: WIN.y - WIN.h / 2 - 8, h: 0.9, stock: "wood", seed: 9, tear: 0.5, step: 10 });
+        const ry = WIN.y - WIN.h / 2 - 4 + L + 26;
+        graphite([[WIN.x + 150, WIN.y - WIN.h / 2], [WIN.x + 150, ry - 10]], "rgba(242,233,216,0.6)", 1.6, 11);
+        piece({ key: "ring", make: CIRC(10, 10, 14), x: WIN.x + 150, y: ry, h: 1, stock: "gold", seed: 10, tear: 0.3, step: 4 });
+        // three tags flip down under the window
+        TB.tags.forEach((tg, k) => {
+          const u = eBack(r(t, E.tags[k], E.tags[k] + 0.35)); if (u <= 0) return;
+          const x = WIN.x - 150 + k * 150, y = WIN.y + WIN.h / 2 + 96;
+          graphite([[x, y - 70], [x, y - 30]], "rgba(242,233,216,0.55)", 1.4, 20 + k);
+          piece({ key: "tag", make: RECT(138, 46), x, y: y - 30 + 23 * u, sy: Math.max(0.05, u), h: 0.8, stock: k ? "cream" : "amber", seed: 30 + k, tear: 0.8, step: 8, content: () => txt(tg, 0, 1, '700 16px "JBM"', "#1d1a1f") });
+        });
+      }
+      function lampOn(t) { const u = r(t, E.lamp[0], E.lamp[1]); return u >= 1 ? 1 : [0, 0.6, 0.1, 0.8, 0.4, 1][Math.floor(u * 6)] ?? 1; }
+
+      // ---------------------------------------------------------------- the set: floor, lamp, desk, monitor, phone, cable, pulley
+      function drawSet(t) {
+        layer(D.set);
+        piece({ key: "floor", make: RECT(3000, 700), x: 960, y: 860 + 350, h: 0, stock: "wood", seed: 40, tear: 1.6, step: 30, edge: "rgba(0,0,0,0)", content: () => {
+          ctx.fillStyle = "rgba(0,0,0,0.25)"; for (let y = -350; y < 350; y += 34) ctx.fillRect(-1500, y, 3000, 2);
+          ctx.fillStyle = "rgba(0,0,0,0.3)"; ctx.fillRect(-1500, -350, 3000, 14);
+        } });
+        const lamp = lampOn(t);
+        // a floor lamp with a tissue shade, the first light on stage
+        piece({ key: "lpole", make: RECT(14, 520), x: 230, y: 620, h: 0.6, stock: "ink", seed: 41, tear: 0.4, step: 10 });
+        piece({ key: "lbase", make: CIRC(70, 14, 20), x: 230, y: 878, h: 0.4, stock: "ink", seed: 42, tear: 0.4, step: 8 });
+        piece({ key: "shade", make: () => [[-56, -60], [56, -60], [88, 60], [-88, 60]], x: 230, y: 330, h: 1.2, stock: "tissue", seed: 43, tear: 1.0, step: 10, glow: 0.95 * lamp, gy: 40, gr: 120 });
+        cone(230, 390, 230, 880, 80, 260, "255,200,120", 0.12 * lamp);
+        // the desk and the monitor
+        piece({ key: "desk", make: RECT(780, 34), x: MON.x, y: 760, h: 0.8, stock: "wood", seed: 44, tear: 0.8, step: 12 });
+        for (const lx of [-340, 340]) piece({ key: "leg", make: RECT(24, 110), x: MON.x + lx, y: 830, h: 0.5, stock: "woodD", seed: 45 + lx, tear: 0.5, step: 10 });
+        piece({ key: "mneck", make: RECT(56, 110), x: MON.x, y: 690, h: 0.7, stock: "ink", seed: 47, tear: 0.4, step: 10 });
+        piece({ key: "mbase", make: RECT(220, 20), x: MON.x, y: 742, h: 0.7, stock: "ink", seed: 48, tear: 0.4, step: 10 });
+        piece({ key: "mframe", make: RECT(MON.sw + 36, MON.sh + 40), x: MON.x, y: MON.y, h: 1.2, stock: "ink", seed: 49, tear: 0.8, step: 12 });
+        piece({ key: "mscreen", make: RECT(MON.sw, MON.sh), x: MON.x, y: MON.y - 2, h: 0, stock: "nightD", seed: 50, tear: 0.4, step: 12, glow: 0.25, gc: "95,212,224", gr: 420, content: () => drawScreen(t) });
+        drawCable(t);
+        drawPulley(t);
+        drawPhone(t);
+        drawWifi(t);
+      }
+
+      // ---------------------------------------------------------------- the monitor: the meeting, and the bridge's panel over it
+      const TILE = { w: 290, h: 170 }, TILES = [[-148, -90], [148, -90], [-148, 90], [148, 90]];
+      function drawScreen(t) {
+        // the meeting window: three invented people and an empty tile for you
+        const lit = r(t, E.tile, E.tile + 0.25);
+        TILES.forEach(([x, y], k) => {
+          ctx.save(); ctx.translate(x, y);
+          if (k < 3) drawFace(TILE.w, TILE.h, { zoom: 1.15, expo: 0.7 }, TB.people[k]);
+          else {
+            ctx.fillStyle = "#121a30"; ctx.fillRect(-TILE.w / 2, -TILE.h / 2, TILE.w, TILE.h);
+            if (lit < 1) { ctx.globalAlpha = 1 - lit; ctx.strokeStyle = "rgba(242,233,216,0.45)"; ctx.lineWidth = 3; ctx.strokeRect(-26, -16, 40, 30); ctx.beginPath(); ctx.moveTo(14, -4); ctx.lineTo(28, -12); ctx.lineTo(28, 12); ctx.lineTo(14, 4); ctx.stroke(); ctx.beginPath(); ctx.moveTo(-34, 22); ctx.lineTo(34, -26); ctx.stroke(); ctx.globalAlpha = 1; }
+            if (lit > 0) { ctx.globalAlpha = lit; drawFace(TILE.w, TILE.h, camState(t)); ctx.globalAlpha = 1; ctx.strokeStyle = `rgba(246, 195, 106, ${(0.9 * lit).toFixed(3)})`; ctx.lineWidth = 4; ctx.strokeRect(-TILE.w / 2 + 2, -TILE.h / 2 + 2, TILE.w - 4, TILE.h - 4); }
+          }
+          ctx.fillStyle = "rgba(0,0,0,0.45)"; ctx.fillRect(-TILE.w / 2 + 8, TILE.h / 2 - 26, k === 3 ? 44 : 64, 18);
+          txt(k === 3 ? "you" : ["sam", "ana", "lee"][k], -TILE.w / 2 + 14, TILE.h / 2 - 17, '600 12px "JBM"', "#f2e9d8", "left");
+          ctx.restore();
+        });
+        // the bridge's panel slides down over the meeting, and away again once the camera has started
+        const a = eOut(r(t, E.panelIn[0], E.panelIn[1])), o = eIn(r(t, E.panelOut[0], E.panelOut[1]));
+        if (a <= 0 || o >= 1) return;
+        const py = lerp(-420, 0, a) + 440 * o;
+        piece({ key: "panel", make: RECT(MON.sw - 12, MON.sh - 12), x: 0, y: py, h: 1.6, stock: "cream", seed: 60, tear: 0.9, step: 12, content: () => drawPanel(t) });
+      }
+      function drawPanel(t) {
+        const paired = t >= E.match, usb = t >= E.usbBtn + 0.2, running = t >= E.run;
+        piece({ key: "phead", make: RECT(600, 40), x: 0, y: -158, h: 0.1, stock: "night", seed: 61, tear: 0.6, step: 10, content: () => {
+          txt("Phone Webcam Bridge", -280, 1, '700 15px "JBM"', "#f2e9d8", "left");
+          const st = !paired ? "waiting for phone" : usb ? "paired · usb" : "paired";
+          ctx.fillStyle = paired ? "#5fd4e0" : "#e8a948"; ctx.beginPath(); ctx.arc(150, 1, 5, 0, 7); ctx.fill();
+          txt(st, 162, 1, '500 13px "JBM"', "#cfd8e0", "left");
+        } });
+        // the preview, with the frame rate over it
+        txt("preview", -288, -120, '600 12px "JBM"', "#6e5a48", "left");
+        ctx.save(); ctx.translate(-140, -32);
+        ctx.fillStyle = "#121a30"; ctx.fillRect(-150, -80, 300, 160);
+        if (running) drawFace(300, 160, camState(t)); else txt("no signal", 0, 0, '500 14px "JBM"', "rgba(242,233,216,0.5)");
+        const fu = r(t, E.fps, E.fps + 0.3);
+        piece({ key: "fps", make: RECT(84, 26), x: 98, y: -62, sy: Math.max(0.06, Math.abs(Math.cos(fu * Math.PI))), h: 0.3, stock: "ink", seed: 62, tear: 0.4, step: 6, content: () => txt(fu < 0.5 ? "-- fps" : "30 fps", 0, 1, '700 14px "JBM"', fu < 0.5 ? "#9aa3ad" : "#5fd4e0") });
+        ctx.restore();
+        // the controls: zoom, exposure, profile, switch camera
+        const st = camState(t), zu = eIO(r(t, E.zoom[0], E.zoom[1])), xu = eIO(r(t, E.expo[0], E.expo[1]));
+        const slider = (lab, y, u, k) => {
+          txt(lab, 40, y - 16, '600 12px "JBM"', "#6e5a48", "left");
+          ctx.fillStyle = "rgba(29,26,31,0.3)"; ctx.fillRect(40, y + 2, 240, 5);
+          ctx.fillStyle = "#2c7f8c"; ctx.fillRect(40, y + 2, 240 * u, 5);
+          piece({ key: "knob" + k, make: CIRC(11, 11, 14), x: 40 + 240 * u, y: y + 4, h: 0.8, stock: "amber", seed: 63 + k, tear: 0.4, step: 5 });
+        };
+        slider("zoom", -112, lerp(0.15, 0.7, zu), 0);
+        slider("exposure", -62, lerp(0.35, 0.85, xu), 1);
+        txt("profile", 40, -26, '600 12px "JBM"', "#6e5a48", "left");
+        piece({ key: "prof", make: RECT(90, 28), x: 85, y: -4, h: 0.3, stock: "night", seed: 65, tear: 0.4, step: 6, content: () => txt("1080p", 0, 1, '700 14px "JBM"', "#f2e9d8") });
+        txt("camera", 160, -26, '600 12px "JBM"', "#6e5a48", "left");
+        piece({ key: "tog", make: RECT(110, 28), x: 215, y: -4, h: 0.3, stock: "night", seed: 66, tear: 0.4, step: 6, content: () => {
+          ctx.fillStyle = "#e8a948"; ctx.fillRect(st.back ? 0 : -55, -14, 55, 28);
+          txt("front", -27, 1, '700 13px "JBM"', st.back ? "#cfd8e0" : "#1d1a1f"); txt("back", 27, 1, '700 13px "JBM"', st.back ? "#1d1a1f" : "#cfd8e0");
+        } });
+        // the pairing PIN
+        txt("pair with PIN", -288, 74, '600 12px "JBM"', "#6e5a48", "left");
+        for (let k = 0; k < 6; k++) {
+          const u = r(t, TB.E.pinPC[k], TB.E.pinPC[k] + 0.22), m = paired ? 1 : 0;
+          piece({ key: "pc" + k, make: RECT(36, 46), x: -270 + k * 42, y: 116, sy: Math.max(0.06, Math.abs(Math.cos(u * Math.PI))), h: 0.4, stock: u < 0.5 ? "night" : m ? "cyan" : "white", seed: 70 + k, tear: 0.4, step: 6,
+            content: u < 0.5 ? null : () => txt(TB.pin[k], 0, 2, '800 26px "Archivo"', "#1d1a1f") });
+        }
+        // the buttons
+        const btn = (lab, y, tp, k) => {
+          const p = r(t, tp - 0.05, tp + 0.25), d = p > 0 && p < 1 ? 1 : 0;
+          piece({ key: "btn" + k, make: RECT(240, 36), x: 160, y: y + 3 * d, h: d ? 0.15 : 0.7, stock: k ? "amber" : "night", seed: 80 + k, tear: 0.6, step: 8,
+            content: () => txt(lab, 0, 1, '700 14px "JBM"', k ? "#1d1a1f" : "#f2e9d8") });
+        };
+        btn("Connect USB", 84, E.usbBtn, 0);
+        btn("Start OBS Camera", 132, E.start, 1);
+        // a paper cursor that presses the buttons and drags the sliders
+        const C = cursorAt(t); if (C) piece({ key: "cursor", make: () => [[0, 0], [0, 30], [8, 23], [14, 36], [20, 33], [14, 21], [24, 21]], x: C.x, y: C.y, h: C.d ? 0.4 : 1.6, s: C.d ? 0.92 : 1, stock: "white", seed: 90, tear: 0.4, step: 5, edge: "rgba(29,26,31,0.7)" });
+      }
+      function cursorAt(t) {
+        const zx = (u) => 40 + 240 * lerp(0.15, 0.7, u), xx = (u) => 40 + 240 * lerp(0.35, 0.85, u);
+        const K = [[E.panelIn[1], 320, 200, 0], [E.usbBtn - 0.3, 170, 92, 0], [E.usbBtn, 170, 92, 1], [E.usbBtn + 0.3, 170, 92, 0],
+          [E.zoom[0] - 0.4, zx(0), -108, 0], [E.zoom[0], zx(0), -108, 1], [E.zoom[1], zx(1), -108, 1], [E.zoom[1] + 0.2, zx(1), -108, 0],
+          [E.expo[0] - 0.4, xx(0), -58, 0], [E.expo[0], xx(0), -58, 1], [E.expo[1], xx(1), -58, 1], [E.expo[1] + 0.2, xx(1), -58, 0],
+          [E.switch[0] - 0.3, 240, 0, 0], [E.switch[0], 240, 0, 1], [E.switch[0] + 0.2, 240, 0, 0], [E.switch[1] - 0.3, 190, 0, 0], [E.switch[1], 190, 0, 1], [E.switch[1] + 0.2, 190, 0, 0],
+          [E.start - 0.35, 180, 140, 0], [E.start, 180, 140, 1], [E.start + 0.3, 180, 140, 0], [E.panelOut[0], 330, 220, 0]];
+        if (t < K[0][0] || t > K[K.length - 1][0]) return null;
+        let i = 0; while (i < K.length - 2 && t > K[i + 1][0]) i++;
+        const A = K[i], B = K[i + 1], u = eIO(r(t, A[0], B[0]));
+        return { x: lerp(A[1], B[1], u), y: lerp(A[2], B[2], u), d: A[3] && B[3] ? 1 : (u < 0.5 ? A[3] : B[3]) };
+      }
+
+      // ---------------------------------------------------------------- the phone: up through a trap, two flaps, the PIN, screen off
+      function phoneY(t) { return lerp(1300, PH.y, eBack(r(t, E.phoneUp[0], E.phoneUp[1]))); }
+      function drawPhone(t) {
+        if (t < E.phoneUp[0]) return;
+        const y = phoneY(t), off = r(t, E.screenOff[0], E.screenOff[1]), offS = Math.floor(off * 4) / 4;
+        piece({ key: "rod", make: RECT(18, 420), x: PH.x, y: y + 400, h: 0.6, stock: "steel", seed: 100, tear: 0.4, step: 10 });
+        piece({ key: "clamp", make: RECT(150, 26), x: PH.x, y: y + 205, h: 0.8, stock: "ink", seed: 101, tear: 0.4, step: 8 });
+        piece({ key: "phone", make: RECT(200, 400), x: PH.x, y, h: 1.4, stock: "ink", seed: 102, tear: 0.8, step: 10, content: () => {
+          piece({ key: "pscreen", make: RECT(176, 344), x: 0, y: 8, h: 0, stock: "nightD", seed: 103, tear: 0.4, step: 10, glow: 0.4 * (1 - offS), gc: "95,212,224", gr: 260, content: () => {
+            txt("camera", 0, -150, '700 14px "JBM"', "#cfd8e0");
+            TB.settings.forEach(([a, b], k) => {
+              const u = r(t, E.flaps[k], E.flaps[k] + 0.3), sy = Math.max(0.06, Math.abs(Math.cos(u * Math.PI)));
+              txt(k ? "camera" : "video", 0, -112 + k * 92, '600 12px "JBM"', "#8fa2b8");
+              piece({ key: "flap" + k, make: RECT(130, 52), x: 0, y: -78 + k * 92, sy, h: 0.6 + 1.4 * Math.sin(u * Math.PI), stock: u < 0.5 ? "night" : "amber", seed: 104 + k, tear: 0.6, step: 8,
+                content: () => txt(u < 0.5 ? a : b, 0, 2, '800 24px "Archivo"', u < 0.5 ? "#cfd8e0" : "#1d1a1f") });
+            });
+            txt("PIN", 0, 86, '600 12px "JBM"', "#8fa2b8");
+            for (let k = 0; k < 6; k++) {
+              const u = r(t, E.pinPhone[k], E.pinPhone[k] + 0.22);
+              piece({ key: "pp" + k, make: RECT(24, 34), x: -65 + k * 26, y: 116, sy: Math.max(0.06, Math.abs(Math.cos(u * Math.PI))), h: 0.3, stock: u < 0.5 ? "night" : t >= E.match ? "cyan" : "white", seed: 110 + k, tear: 0.3, step: 5,
+                content: u < 0.5 ? null : () => txt(TB.pin[k], 0, 2, '800 20px "Archivo"', "#1d1a1f") });
+            }
+            ctx.fillStyle = `rgba(2, 3, 8, ${(0.94 * offS).toFixed(3)})`; ctx.fillRect(-88, -172, 176, 344);
+          } });
+        } });
+        // the lens at the top keeps throwing light, screen on or off
+        piece({ key: "lens", make: CIRC(13, 13, 16), x: PH.x, y: y - 188, h: 0.2, stock: "ink", seed: 115, tear: 0.2, step: 4, glow: 0.9, gc: "95,212,224", gr: 18 });
+        const bm = r(t, E.beam[0], E.beam[1]);
+        if (bm > 0 && t < E.close[1]) { cone(PH.x, y - 188, WL.x, WL.y, 6, 46, "95,212,224", 0.22 * bm); glowAt(PH.x, y - 188, 60, "95,212,224", 0.5 * bm, "lighter"); }
+        // after the screen goes dark: a tag says it is still streaming
+        const tu = eBack(r(t, E.screenOff[1], E.screenOff[1] + 0.35)), tg = eIn(r(t, E.wifi[2] + 0.4, E.wifi[2] + 0.8));
+        if (tu > 0 && tg < 1) piece({ key: "otag", make: RECT(250, 40), x: PH.x + 40, y: y + 250 + 30 * tg, rot: -0.04, sy: Math.max(0.05, tu), alpha: 1 - tg, h: 1.2, stock: "amber", seed: 116, tear: 0.6, step: 8,
+          content: () => txt("screen off · still streaming", 0, 1, '700 14px "JBM"', "#1d1a1f") });
+      }
+
+      // ---------------------------------------------------------------- USB or Wi-Fi
+      const CABLE = [[PH.x + 10, 880], [560, 896], [700, 900], [840, 892], [960, 884], [MON.x - 330, 870]];
+      function drawCable(t) {
+        const u = eIO(r(t, E.cable[0], E.cable[1])); if (u <= 0) return;
+        const pts = [], N = 40;
+        for (let i = 0; i <= N * u; i++) { const q = (i / N) * (CABLE.length - 1), k = Math.min(CABLE.length - 2, Math.floor(q)), f = q - k; pts.push([lerp(CABLE[k][0], CABLE[k + 1][0], f), lerp(CABLE[k][1], CABLE[k + 1][1], f) + Math.sin(i * 0.8) * 2]); }
+        graphite(pts, "rgba(10, 10, 16, 0.9)", 11, 120); graphite(pts, "rgba(232, 169, 72, 0.9)", 5, 121);
+        const e = pts[pts.length - 1];
+        piece({ key: "plug", make: RECT(30, 18), x: e[0] + 10, y: e[1], h: 0.6, stock: "steel", seed: 122, tear: 0.3, step: 5 });
+        const tu = eBack(r(t, E.cable[0] + 0.6, E.cable[0] + 1));
+        if (tu > 0) piece({ key: "usb", make: RECT(84, 40), x: 730, y: 846, rot: 0.05, sy: Math.max(0.05, tu), h: 1.4, stock: "amber", seed: 123, tear: 0.6, step: 8, content: () => txt("USB", 0, 2, '800 22px "Archivo"', "#1d1a1f") });
+      }
+      function drawWifi(t) {
+        if (t < E.wifi[0] || t > E.run + 2) return;
+        const y = phoneY(t) - 220, fade = 1 - r(t, E.run, E.run + 2);
+        E.wifi.forEach((tw, k) => {
+          const u = eOut(r(t, tw, tw + 0.5)); if (u <= 0) return;
+          const pulse = 0.5 + 0.5 * Math.cos((t - tw) * Math.PI * 2 / (BEAT * 2));
+          piece({ key: "wifi" + k, make: ARC(40 + k * 46, 58 + k * 46, -Math.PI * 0.82, -Math.PI * 0.18), x: PH.x, y: y + 40, s: lerp(0.4, 1, u), h: 1.2, stock: "cyan", seed: 130 + k, tear: 0.6, step: 8,
+            alpha: fade * (0.55 + 0.45 * pulse), glow: 0.5, gc: "180,240,250", gr: 160 });
+        });
+        const tu = eBack(r(t, E.wifi[1], E.wifi[1] + 0.35));
+        if (tu > 0) piece({ key: "wtag", make: RECT(100, 40), x: PH.x + 170, y: y - 70, rot: -0.06, sy: Math.max(0.05, tu), alpha: fade, h: 1.4, stock: "amber", seed: 133, tear: 0.6, step: 8, content: () => txt("Wi-Fi", 0, 2, '800 22px "Archivo"', "#1d1a1f") });
+      }
+
+      // ---------------------------------------------------------------- the feed: paper frames on a pulley, from the lens to the PC
+      function drawPulley(t) {
+        const u = eOut(r(t, E.pulley[0], E.pulley[1])); if (u <= 0) return;
+        const run = Math.max(0, t - E.run), spin = run * 4;
+        const xr = lerp(WL.x, WR.x, u);
+        graphite([[WL.x, WL.y - WL.r], [xr, WR.y - WR.r]], "rgba(242,233,216,0.75)", 2, 140);
+        graphite([[WL.x, WL.y + WL.r], [xr, WR.y + WR.r]], "rgba(242,233,216,0.5)", 2, 141);
+        for (const [Wh, k] of [[WL, 0], [WR, 1]]) {
+          const pu = eBack(r(t, E.pulley[0] + k * 0.4, E.pulley[0] + 0.4 + k * 0.4)); if (pu <= 0) continue;
+          piece({ key: "wheel", make: CIRC(Wh.r, Wh.r, 30), x: Wh.x, y: Wh.y, rot: spin, s: pu, h: 1, stock: "gold", seed: 142 + k, tear: 0.6, step: 6, content: () => {
+            ctx.strokeStyle = "rgba(60,40,10,0.55)"; ctx.lineWidth = 3; for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(34 * Math.cos(i * Math.PI / 2), 34 * Math.sin(i * Math.PI / 2)); ctx.stroke(); }
+            ctx.fillStyle = "#3a2a10"; ctx.beginPath(); ctx.arc(0, 0, 6, 0, 7); ctx.fill();
+          } });
+        }
+        if (t < E.pulley[1]) return;
+        // the frames: each one a lit card of what the camera sees at that moment, clipped between the wheels
+        const span = WR.x - WL.x, step = 70, v = 210, st = camState(t);
+        ctx.save(); ctx.beginPath(); ctx.rect(WL.x + 4, WL.y - 120, span - 8, 200); ctx.clip();
+        for (let k = 0; k < 7; k++) {
+          const x = WL.x + ((k * step + v * run) % (step * 7)) - 20, ya = WL.y - WL.r;
+          if (x < WL.x - 40 || x > WR.x + 40) continue;
+          graphite([[x, ya], [x, ya + 8]], "rgba(242,233,216,0.7)", 1.5, 150 + k);
+          piece({ key: "fr" + k, make: RECT(62, 48), x, y: ya + 34, rot: Math.sin(run * 6 + k) * 0.03, h: 0.9, stock: "white", seed: 160 + k, tear: 0.5, step: 6, glow: 0.3, gc: "95,212,224", gr: 60,
+            content: () => drawFace(54, 40, st) });
+        }
+        ctx.restore();
+      }
+
+      // ---------------------------------------------------------------- the apron and the footlights
+      function drawApron(t) {
+        layer(D.apron);
+        piece({ key: "apron", make: RECT(3000, 320), x: 960, y: 1110, h: 0, stock: "woodD", seed: 170, tear: 1.6, step: 24, content: () => {
+          ctx.fillStyle = "rgba(255, 220, 160, 0.12)"; ctx.fillRect(-1500, -160, 3000, 6);
+          ctx.fillStyle = "rgba(0,0,0,0.3)"; for (let x = -1500; x < 1500; x += 120) ctx.fillRect(x, -150, 3, 310);
+        } });
+        E.foot.forEach((tf, k) => {
+          const u = eBack(r(t, tf, tf + 0.3)); if (u <= 0) return;
+          const x = 380 + k * 232, y = 976, on = r(t, tf + 0.15, tf + 0.4);
+          cone(x, y - 10, x, y - 520, 30, 230, "255,196,110", 0.14 * on);
+          glowAt(x, y - 16, 60, "255,214,150", 0.8 * on, "lighter");
+          piece({ key: "cup", make: ARC(10, 44, 0.05, Math.PI - 0.05), x, y: y - 12 + 30 * (1 - u), sy: Math.max(0.06, u), h: 0.8, stock: "gold", seed: 180 + k, tear: 0.5, step: 6 });
+        });
+      }
+
+      // ---------------------------------------------------------------- the arch and the curtains
+      function drawArch() {
+        layer(D.arch);
+        for (const [x, k] of [[40, 0], [1880, 1]]) piece({ key: "pillar", make: RECT(300, 1600), x, y: 560, h: 1.2, stock: "plumD", seed: 190 + k, tear: 1.2, step: 20, content: () => {
+          ctx.fillStyle = "#c9a24f"; ctx.fillRect(k ? -150 : 132, -800, 14, 1600); ctx.fillStyle = "rgba(201,162,79,0.4)"; ctx.fillRect(k ? -120 : 100, -800, 5, 1600);
+        } });
+        piece({ key: "valance", make: () => { const p = [[-1500, -500], [1500, -500], [1500, 0]]; for (let i = 30; i >= 0; i--) { const x = -1500 + i * 100; p.push([x + 50, 46], [x, 0]); } return p; },
+          x: 960, y: 108, h: 1.4, stock: "red", seed: 195, tear: 1.4, step: 14, content: () => { ctx.fillStyle = "rgba(0,0,0,0.25)"; for (let x = -1500; x < 1500; x += 100) ctx.fillRect(x + 46, -500, 8, 540);
+            ctx.fillStyle = "#c9a24f"; ctx.fillRect(-1500, -22, 3000, 8); } });
+        piece({ key: "crest", make: CIRC(70, 44, 30), x: 960, y: 70, h: 1.6, stock: "gold", seed: 196, tear: 0.6, step: 8, content: () => { ctx.strokeStyle = "rgba(60,40,10,0.5)"; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(0, 0, 50, 28, 0, 0, 7); ctx.stroke(); } });
+      }
+      function curtainOpen(t) { return eIO(r(t, E.curtain[0], E.curtain[1])) * (1 - eIO(r(t, E.close[0], E.close[1]))); }
+      function drawCurtains(t) {
+        layer(D.curt);
+        const o = curtainOpen(t);
+        for (const side of [-1, 1]) {
+          const sx = lerp(1, 0.24, o), w = 1040, edge = side < 0 ? -80 : 2000, x = edge - side * (w / 2) * sx;
+          piece({ key: "drape", make: () => { const p = []; for (let i = 0; i <= 20; i++) p.push([-w / 2 + (i / 20) * w, -760 + Math.sin(i * 1.3) * 10]); p.push([w / 2, 760]); for (let i = 20; i >= 0; i--) p.push([-w / 2 + (i / 20) * w, 760 + Math.sin(i * 2.1) * 18]); return p; },
+            x, y: 460, sx: side * sx, h: 2.2, stock: "red", seed: 200 + side, tear: 1.6, step: 16, content: () => {
+              for (let i = 0; i < 14; i++) { const fx = -w / 2 + (i + 0.5) * (w / 14), g = ctx.createLinearGradient(fx - 40, 0, fx + 40, 0);
+                g.addColorStop(0, "rgba(0,0,0,0.32)"); g.addColorStop(0.5, "rgba(255,190,150,0.12)"); g.addColorStop(1, "rgba(0,0,0,0.32)"); ctx.fillStyle = g; ctx.fillRect(fx - 40, -800, 80, 1600); }
+            } });
+          if (o > 0.6) piece({ key: "tie", make: RECT(40, 90), x: edge - side * (w * sx - 20), y: 620, rot: side * 0.2, h: 2.4, stock: "gold", seed: 210 + side, tear: 0.5, step: 6, alpha: r(o, 0.6, 0.9) });
+        }
+      }
+
+      // ---------------------------------------------------------------- the camera: a dolly into the stage, pans like a stage rig
+      // each key is [time, the set-layer point to centre on, its scale on the set layer]
+      function camAt(t) {
+        const K = [[0, 960, 560, 1.0], [E.curtain[1] + 0.3, 960, 540, 1.05], [E.phoneUp[0], 960, 540, 1.05], [E.phoneUp[1] + 0.2, 560, 500, 1.3],
+          [E.flaps[0] - 0.3, 450, 470, 1.6], [E.flaps[1] + 0.4, 450, 470, 1.6], [E.panelIn[0] + 0.3, 900, 480, 1.1], [E.pinPC[5] + 0.6, 900, 480, 1.12],
+          [E.screenOff[0] - 0.2, 560, 520, 1.4], [E.screenOff[1] + 0.6, 560, 520, 1.4], [E.cable[0], 900, 600, 1.05], [E.wifi[2] + 0.6, 860, 560, 1.08],
+          [E.pulley[0], 800, 400, 1.35], [E.fps + 0.4, 860, 400, 1.4], [E.zoom[0] - 0.4, 1350, 445, 1.75], [E.switch[1] + 0.4, 1350, 445, 1.75],
+          [E.start - 0.6, 1440, 505, 1.85], [E.start + 0.5, 1440, 505, 1.85], [E.panelOut[1], 1350, 450, 1.5], [E.tile + 0.5, 1350, 450, 1.55],
+          [E.foot[0] - 0.2, 960, 560, 1.0], [E.foot[5] + 0.8, 960, 560, 1.0], [T.local[0] + 0.4, 820, 400, 1.25], [E.tags[2] + 0.8, 820, 420, 1.3],
+          [E.close[0], 960, 540, 1.0], [DUR, 960, 540, 1.0]];
+        let i = 0; while (i < K.length - 2 && t > K[i + 1][0]) i++;
+        const A = K[i], B = K[i + 1], u = eIO(r(t, A[0], B[0]));
+        const tx = lerp(A[1], B[1], u), ty = lerp(A[2], B[2], u), s = lerp(A[3], B[3], u);
+        return { x: (tx - 960) * s, y: (ty - 540) * s, z: D.set - D.set / s };
+      }
+      function post(t) {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        // the footlights warm the whole stage from below once they are on
+        const fw = r(t, E.foot[0], E.foot[5] + 0.4) * (1 - r(t, E.close[0], E.close[1]));
+        if (fw > 0) { ctx.save(); ctx.globalCompositeOperation = "screen"; const g = ctx.createLinearGradient(0, H, 0, 300); g.addColorStop(0, `rgba(255, 170, 90, ${(0.2 * fw).toFixed(3)})`); g.addColorStop(1, "rgba(255,170,90,0)"); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); ctx.restore(); }
+        ctx.drawImage(LIGHT, 0, 0);
+        const f = (hash(POSE * 1.713) - 0.5) * 0.05;
+        ctx.fillStyle = f > 0 ? `rgba(255, 244, 228, ${f.toFixed(3)})` : `rgba(10, 6, 16, ${(-f).toFixed(3)})`; ctx.fillRect(0, 0, W, H);
+        ctx.save(); ctx.globalCompositeOperation = "overlay"; ctx.globalAlpha = 0.16;
+        const ox = Math.floor(hash(POSE * 3.1) * 256), oy = Math.floor(hash(POSE * 5.3) * 256);
+        for (let x = -ox; x < W; x += 512) for (let y = -oy; y < H; y += 512) ctx.drawImage(GRAIN, x, y, 512, 512);
+        ctx.restore();
+      }
+      // the front-cloth: a black sheet dropped in front of the closed curtains for the title
+      function cloth(t) {
+        const u = r(t, E.cloth[0], E.cloth[1]);
+        if (u <= 0) return;
+        ctx.setTransform(1, 0, 0, 1, 0, 0); LS = 1;
+        piece({ key: "cloth", make: RECT(2400, 1400), x: 960, y: lerp(-800, 540, eOut(u)), rot: lerp(-0.03, 0, eOut(u)), h: 2 * (1 - u) + 0.6, stock: "ink", seed: 900, tear: 7, step: 26, edge: "rgba(255,248,236,0.12)" });
+      }
+
+      function paint(t) {
+        const ts = Math.floor(t * PZ + 1e-4) / PZ;   // shot on twos: every frame shows the pose of its twelfth of a second
+        POSE = Math.round(ts * PZ);
+        const covered = ts >= E.cloth[1];
+        Object.assign(CAM, camAt(ts));
+        ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = "#0e1528"; ctx.fillRect(0, 0, W, H);
+        if (!covered) {
+          drawBack(ts); drawSet(ts); drawApron(ts); drawArch(); drawCurtains(ts);
+          ctx.setTransform(1, 0, 0, 1, 0, 0); LS = 1;
+          TB.lines.forEach((L) => drawLine(L, ts));
+        }
+        cloth(ts);
+        post(ts);
+        const lo = r(ts, E.logo, E.logo + 0.25);
+        $("#title").style.opacity = lo > 0 ? 1 : 0;
+        $("#t-logo").style.opacity = lo.toFixed(3); $("#t-logo").style.transform = `scale(${lerp(1.06, 1, eOut(lo)).toFixed(4)})`;
+        $("#t-name").style.opacity = r(ts, E.name, E.name + 0.25).toFixed(3);
+        $("#t-line").style.opacity = r(ts, E.name + 0.4, E.name + 0.7).toFixed(3);
+        $("#t-url").textContent = URL_TEXT.slice(0, Math.round(URL_TEXT.length * r(t, E.url, E.url + 1.1)));
+        let st = TB.hud[0][1]; for (const [a, s] of TB.hud) if (ts >= a) st = s;
+        $("#hud-st").textContent = st;
+        const ho = (1 - r(ts, E.cloth[0], E.cloth[0] + 0.4)).toFixed(3);
+        $("#hud-l").style.opacity = ho; $("#hud-r").style.opacity = ho;
+      }
+
+      const tl = gsap.timeline({ paused: true });
+      const clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+
+      async function build() {
+        await Promise.all([document.fonts.load('800 40px "Archivo"'), document.fonts.load('700 40px "Archivo"'), document.fonts.load('italic 400 40px "Instrument Serif"'),
+          document.fonts.load('500 20px "JBM"'), document.fonts.load('600 20px "JBM"'), document.fonts.load('700 20px "JBM"'), $("#t-logo").decode()]);
+        ctx = $("#cv").getContext("2d");
+        makeStocks(); makePost(); layLines();
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = window.__hf.buildReady || {};
+      window.__hf.buildReady["footlights"] = build();
+    </script>
+  </body>
+</html>

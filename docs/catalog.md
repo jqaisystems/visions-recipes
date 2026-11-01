@@ -106,6 +106,14 @@ Made for: Imagined Worlds · Stills. Stack: Three.js, TSL, GSAP, Python (score).
 
 ## Products and systems
 
+### R34 · Footlights
+
+A film for a phone-to-PC webcam bridge made as paper cut-out stop motion in a backlit toy theatre: curtains that part on a paper office at night, a phone that rises through a trap, PIN tiles that match, frames that run on a pulley from the lens to the PC, and footlights that come up when the meeting goes live.
+
+Made for: Phone Webcam Bridge · your phone as your webcam. Stack: Canvas 2D, GSAP, Python (table, score).
+
+[Recipe and poster](../recipes/r34-footlights/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r34-footlights-v1)
+
 ### R33 · Planner
 
 A film for a content planner made as paper cut-out stop motion on a desk: a brief whose fields pull out as tabs, a paper wheel that unrolls a banner for each weekly theme, a month of post cards under lift-the-flaps, rubber stamps that throw out repeats, and a printout that rises out of a printer a row at a time.
