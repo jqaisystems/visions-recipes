@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <!--
+      R35 · Pop-Up. 33.4 s at 88 bpm, paper cut-out stop motion, a pop-up book (season 4, film 4). For the AI Brief
+      Generator, João's internal tool that turns a client intake form into a structured creative brief. A brief as a
+      book that builds itself: an intake form and the optional call notes slide in under a closed book, the cover
+      opens and two vague answers are pulled through a slot and come out as concrete attributes, the system's seven
+      sections fan out as tabs, then each spread pops up: three personas on a box fold, a tone scale and a skyline of
+      three unnamed competitors with the gap between them, a fan of swatches and the deliverables standing up line by
+      line, a ? flap over two questions for a person. A red pencil edits the summary, a stamp says reviewed, and the
+      book closes, folds flat into a PDF and goes into an envelope. The JQ AI SYSTEMS logo lands.
+      The client, the answers and everything in the brief are an illustrative sample; the section template is the
+      system's own.
+      Technique: the R34 paper engine on one Canvas 2D, in 3D. The table is seen from the front and above, orthographic,
+      so every flat piece on any plane (a page at any angle, a card standing on its hinge, a flap) is one affine
+      setTransform and keeps its torn edge, its paper stock and its print. Leaves turn about the spine; a spread's
+      pop-ups rise as its leaf lands and fold as the next one lifts. Time is snapped to 12 poses a second and every
+      pose re-cuts each edge a little. paint(t) draws every frame from one baked table (assets/table.js, from
+      bake/table.py); score/compose.py reads it too.
+    -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/table.js"></script>
+    <style>
+      @font-face { font-family: "Archivo"; src: url("assets/fonts/Archivo.ttf") format("truetype"); font-weight: 100 900; }
+      @font-face { font-family: "Instrument Serif"; src: url("assets/fonts/InstrumentSerif-Regular.ttf") format("truetype"); font-weight: 400; font-style: normal; }
+      @font-face { font-family: "Instrument Serif"; src: url("assets/fonts/InstrumentSerif-Italic.ttf") format("truetype"); font-weight: 400; font-style: italic; }
+      @font-face { font-family: "JBM"; src: url("assets/fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 100 800; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #8f9583; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #8f9583; color: #221f1d; }
+      #ct-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #cv { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #ct-ui { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      .hud { position: absolute; top: 40px; font: 600 17px "JBM", monospace; letter-spacing: 0.2em; white-space: nowrap; color: #1d1a1f; text-transform: uppercase; }
+      #hud-l { left: 64px; }
+      #hud-l span { color: #8f3a28; }
+      #hud-r { right: 64px; letter-spacing: 0.12em; text-transform: none; color: #8f3a28; }
+      #title { position: absolute; inset: 0; opacity: 0; }
+      #t-logo { position: absolute; left: 590px; top: 352px; width: 740px; height: 154px; }
+      #t-name { position: absolute; left: 0; right: 0; top: 560px; text-align: center; font: 700 50px "Archivo", sans-serif; color: #f2e9d8; white-space: nowrap; opacity: 0; }
+      #t-line { position: absolute; left: 0; right: 0; top: 632px; text-align: center; font: italic 400 38px "Instrument Serif", serif; color: #cbbfab; white-space: nowrap; opacity: 0; }
+      #t-url { position: absolute; left: 0; right: 0; top: 708px; height: 40px; text-align: center; font: 500 30px "JBM", monospace; color: #dda04a; white-space: nowrap; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="33.4091" data-width="1920" data-height="1080">
+      <div id="ct-stage" class="clip" data-start="0" data-duration="33.4091" data-track-index="0">
+        <canvas id="cv" width="1920" height="1080" data-layout-allow-overflow></canvas>
+      </div>
+      <div id="ct-ui" class="clip" data-start="0" data-duration="33.4091" data-track-index="1">
+        <div class="hud" id="hud-l" data-layout-allow-occlusion>JQ AI SYSTEMS <span>· ai brief generator</span></div>
+        <div class="hud" id="hud-r" data-layout-allow-occlusion><span id="hud-st">01 intake</span></div>
+        <div id="title" data-layout-allow-occlusion>
+          <img id="t-logo" src="assets/brand/jqai-logo.png" alt="JQ AI SYSTEMS">
+          <div id="t-name">AI Brief Generator</div>
+          <div id="t-line">Intake form in, full brief out.</div>
+          <div id="t-url"></div>
+        </div>
+      </div>
+      <audio id="score" src="assets/bgm/score.wav" data-start="0" data-duration="33.4091" data-track-index="7" data-volume="0.8"></audio>
+    </div>
+
+    <script>
+      const TB = window.TABLE, T = TB.T, E = TB.E, DUR = TB.dur, BEAT = TB.beat, PZ = TB.poses;
+      const W = 1920, H = 1080;
+      const URL_TEXT = "ai.joaoqueiros.com/systems/ai-brief-generator";
+      const $ = (s) => document.querySelector(s);
+      const cl = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+      const r = (t, a, b) => cl((t - a) / (b - a));
+      const lerp = (a, b, u) => a + (b - a) * u;
+      const eOut = (u) => 1 - Math.pow(1 - u, 3), eIn = (u) => u * u * u, eIO = (u) => (u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2);
+      const eBack = (u) => { const c = 1.6, c3 = c + 1; return 1 + c3 * Math.pow(u - 1, 3) + c * Math.pow(u - 1, 2); };
+      function hash(n) { const s = Math.sin(n * 12.9898 + 78.233) * 43758.5453; return s - Math.floor(s); }
+      function vnoise(x, seed) { const i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f); return lerp(hash(i + seed * 57.31), hash(i + 1 + seed * 57.31), u) * 2 - 1; }
+      function prng(a) { return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+
+      let ctx, POSE = 0, LS = 1;
+      const CAM = { x: 0, y: 0, s: 1 };
+
+      // ---------------------------------------------------------------- paper stocks, made once from noise
+      const STOCK = { linen: "#a7ad9a", linenD: "#8a907d", ivory: "#f4eedf", cream: "#efe2c8", white: "#faf7f0", news: "#e8e2d4", ink: "#1d1a1f",
+        terra: "#c4553b", terraD: "#8f3a28", teal: "#2f6f73", tealD: "#1f4c50", ochre: "#dda04a", kraft: "#c9a77a", red: "#b8322b",
+        sage: "#8fae96", sky: "#9cc3c9", rose: "#e3a59a", gold: "#c9a24f", amber: "#e8a948" };
+      const DARK = new Set(["terraD", "teal", "tealD", "ink", "linenD"]);
+      const PAT = {};
+      function makeStocks() {
+        Object.entries(STOCK).forEach(([k, base], si) => {
+          const c = document.createElement("canvas"); c.width = c.height = 512;
+          const g = c.getContext("2d"), R = prng(3000 + si * 7919);
+          g.fillStyle = base; g.fillRect(0, 0, 512, 512);
+          const dark = DARK.has(k), dk = dark ? 0.06 : 0.035, lt = dark ? 0.03 : 0.045;
+          const wrapDraw = (fn) => { for (const ox of [-512, 0, 512]) for (const oy of [-512, 0, 512]) fn(ox, oy); };
+          for (let i = 0; i < 110; i++) {
+            const x = R() * 512, y = R() * 512, rad = 20 + R() * 80, d = R() < 0.5;
+            wrapDraw((ox, oy) => { const gr = g.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, rad);
+              gr.addColorStop(0, d ? `rgba(0,0,0,${dk})` : `rgba(255,255,255,${lt})`); gr.addColorStop(1, "rgba(0,0,0,0)");
+              g.fillStyle = gr; g.fillRect(x + ox - rad, y + oy - rad, rad * 2, rad * 2); });
+          }
+          // linen is a weave of longer fibres; kraft has a grain running one way
+          const grain = k === "kraft", fibres = k.startsWith("linen") ? 2600 : 1500;
+          g.lineWidth = 0.8;
+          for (let i = 0; i < fibres; i++) {
+            const x = R() * 512, y = R() * 512, a = grain ? (R() - 0.5) * 0.12 : R() * Math.PI, l = grain ? 40 + R() * 100 : k.startsWith("linen") ? 10 + R() * 22 : 4 + R() * 16;
+            const dk2 = R() < 0.55, al = (dk2 ? 0.07 : 0.11) * R();
+            g.strokeStyle = dk2 ? `rgba(0,0,0,${al})` : `rgba(255,255,255,${al})`;
+            wrapDraw((ox, oy) => { if (Math.abs(ox) + Math.abs(oy) && (x > 120 && x < 392 && y > 24 && y < 488)) return;
+              g.beginPath(); g.moveTo(x + ox, y + oy); g.quadraticCurveTo(x + ox + Math.cos(a + 0.7) * l * 0.5, y + oy + Math.sin(a + 0.7) * l * 0.5, x + ox + Math.cos(a) * l, y + oy + Math.sin(a) * l); g.stroke(); });
+          }
+          for (let i = 0; i < 700; i++) { g.fillStyle = `rgba(0,0,0,${0.1 * R()})`; g.fillRect(R() * 512, R() * 512, 1.2, 1.2); }
+          PAT[k] = ctx.createPattern(c, "repeat");
+        });
+      }
+      let GRAIN, LIGHT;
+      function makePost() {
+        GRAIN = document.createElement("canvas"); GRAIN.width = GRAIN.height = 256;
+        const g = GRAIN.getContext("2d"), im = g.createImageData(256, 256), R = prng(91);
+        for (let i = 0; i < 256 * 256; i++) { const v = 100 + R() * 56; im.data[i * 4] = im.data[i * 4 + 1] = im.data[i * 4 + 2] = v; im.data[i * 4 + 3] = 255; }
+        g.putImageData(im, 0, 0);
+        LIGHT = document.createElement("canvas"); LIGHT.width = W; LIGHT.height = H;
+        const l = LIGHT.getContext("2d");
+        const gr = l.createRadialGradient(960, 520, 200, 960, 560, 1150);
+        gr.addColorStop(0, "rgba(0, 0, 0, 0)"); gr.addColorStop(0.6, "rgba(40, 30, 20, 0.08)"); gr.addColorStop(1, "rgba(40, 30, 20, 0.42)");
+        l.fillStyle = gr; l.fillRect(0, 0, W, H);
+      }
+
+      // ---------------------------------------------------------------- cut paper
+      const SH = new Map();
+      function resample(poly, step) {
+        const pts = [];
+        for (let i = 0; i < poly.length; i++) {
+          const [x0, y0] = poly[i], [x1, y1] = poly[(i + 1) % poly.length];
+          const n = Math.max(1, Math.round(Math.hypot(x1 - x0, y1 - y0) / step));
+          for (let k = 0; k < n; k++) pts.push([x0 + ((x1 - x0) * k) / n, y0 + ((y1 - y0) * k) / n]);
+        }
+        return pts;
+      }
+      function shape(key, make, step) {
+        let s = SH.get(key);
+        if (s) return s;
+        const pts = resample(make(), step), n = pts.length, nrm = [];
+        for (let i = 0; i < n; i++) { const a = pts[(i - 1 + n) % n], b = pts[(i + 1) % n]; const nx = b[1] - a[1], ny = -(b[0] - a[0]), l = Math.hypot(nx, ny) || 1; nrm.push([nx / l, ny / l]); }
+        s = { pts, nrm }; SH.set(key, s); return s;
+      }
+      const RECT = (w, h) => () => [[-w / 2, -h / 2], [w / 2, -h / 2], [w / 2, h / 2], [-w / 2, h / 2]];
+      const CIRC = (rx, ry = rx, n = 36) => () => Array.from({ length: n }, (_, i) => [rx * Math.cos((i / n) * 2 * Math.PI), ry * Math.sin((i / n) * 2 * Math.PI)]);
+      const ARC = (r0, r1, a0, a1, n = 18) => () => [...Array.from({ length: n + 1 }, (_, i) => { const a = lerp(a0, a1, i / n); return [r1 * Math.cos(a), r1 * Math.sin(a)]; }),
+        ...Array.from({ length: n + 1 }, (_, i) => { const a = lerp(a1, a0, i / n); return [r0 * Math.cos(a), r0 * Math.sin(a)]; })];
+      function fillStock(path, stock, seed) {
+        const p = PAT[stock];
+        p.setTransform(new DOMMatrix().translate(hash(seed) * 512, hash(seed + 1.3) * 512));
+        ctx.fillStyle = p; ctx.fill(path);
+      }
+      // one piece of paper: a torn outline, a stock, a shadow from its height, light coming through it, and what is printed on it
+      function piece(P) {
+        const S = shape(P.key, P.make, P.step || 12), n = S.pts.length, tear = P.tear ?? 1.3, seed = P.seed ?? 1;
+        const path = new Path2D();
+        for (let i = 0; i < n; i++) {
+          const p = S.pts[i], q = S.nrm[i];
+          const d = tear * vnoise(i * 0.55, seed) + 0.55 * (hash(i * 3.17 + seed * 11.3 + POSE * 0.731) - 0.5);
+          const x = p[0] + q[0] * d, y = p[1] + q[1] * d;
+          i ? path.lineTo(x, y) : path.moveTo(x, y);
+        }
+        path.closePath();
+        const jx = (hash(seed * 7.7 + POSE * 1.37) - 0.5) * 1.0, jy = (hash(seed * 3.3 + POSE * 2.11) - 0.5) * 1.0, jr = (hash(seed * 5.1 + POSE * 0.77) - 0.5) * 0.004;
+        ctx.save();
+        ctx.translate(P.x + jx, P.y + jy); ctx.rotate((P.rot || 0) + jr);
+        const s = P.s ?? 1; ctx.scale(s * (P.sx ?? 1), s * (P.sy ?? 1));
+        if (P.alpha !== undefined) ctx.globalAlpha *= P.alpha;
+        const h = P.h ?? 0.6;
+        if (h > 0) {
+          ctx.shadowColor = `rgba(40, 30, 18, ${(0.42 - 0.04 * Math.min(h, 4)).toFixed(3)})`;
+          ctx.shadowBlur = (2 + h * 8) * LS; ctx.shadowOffsetX = (1 + h * 4) * LS; ctx.shadowOffsetY = (2 + h * 6) * LS;
+        }
+        fillStock(path, P.stock, seed);
+        ctx.shadowColor = "transparent";
+        if (P.content) { ctx.save(); ctx.clip(path); P.content(); ctx.restore(); }
+        // backlight: where a light sits behind translucent paper, the paper glows
+        if (P.glow > 0) {
+          ctx.save(); ctx.clip(path); ctx.globalCompositeOperation = "screen";
+          const R0 = P.gr || 300, g = ctx.createRadialGradient(P.gx || 0, P.gy || 0, 0, P.gx || 0, P.gy || 0, R0);
+          g.addColorStop(0, `rgba(${P.gc || "255,214,140"},${(0.85 * P.glow).toFixed(3)})`); g.addColorStop(1, `rgba(${P.gc || "255,214,140"},0)`);
+          ctx.fillStyle = g; ctx.fillRect(-R0 * 3, -R0 * 3, R0 * 6, R0 * 6); ctx.restore();
+        }
+        ctx.lineWidth = 1.5 / Math.max(0.2, s); ctx.strokeStyle = P.edge || "rgba(255, 248, 236, 0.28)"; ctx.stroke(path);
+        ctx.restore();
+      }
+      function txt(s, x, y, font, col, align = "center") { ctx.font = font; ctx.fillStyle = col; ctx.textAlign = align; ctx.textBaseline = "middle"; ctx.fillText(s, x, y); }
+      function graphite(pts, col = "rgba(242, 233, 216, 0.8)", w = 2.2, seed = 1) {
+        ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = w; ctx.lineCap = "round"; ctx.lineJoin = "round";
+        for (let pass = 0; pass < 2; pass++) {
+          ctx.beginPath();
+          pts.forEach(([x, y], i) => { const dx = (hash(seed + i * 3.1 + pass * 7 + POSE * 0.37) - 0.5) * 1.6, dy = (hash(seed + i * 5.7 + pass * 3 + POSE * 0.53) - 0.5) * 1.6; i ? ctx.lineTo(x + dx, y + dy) : ctx.moveTo(x + dx, y + dy); });
+          ctx.globalAlpha = pass ? 0.45 : 1; ctx.stroke();
+        }
+        ctx.restore();
+      }
+      // light added on top: a soft cone from a point, as a lamp or a lens throws it
+      function cone(x0, y0, x1, y1, w0, w1, col, a) {
+        if (a <= 0) return;
+        const nx = -(y1 - y0), ny = x1 - x0, l = Math.hypot(nx, ny) || 1, ux = nx / l, uy = ny / l;
+        ctx.save(); ctx.globalCompositeOperation = "lighter";
+        const g = ctx.createLinearGradient(x0, y0, x1, y1); g.addColorStop(0, `rgba(${col},${a.toFixed(3)})`); g.addColorStop(1, `rgba(${col},0)`);
+        ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(x0 + ux * w0, y0 + uy * w0); ctx.lineTo(x1 + ux * w1, y1 + uy * w1); ctx.lineTo(x1 - ux * w1, y1 - uy * w1); ctx.lineTo(x0 - ux * w0, y0 - uy * w0); ctx.closePath(); ctx.fill();
+        ctx.restore();
+      }
+      function glowAt(x, y, rad, col, a, mode = "screen") {
+        if (a <= 0) return;
+        ctx.save(); ctx.globalCompositeOperation = mode;
+        const g = ctx.createRadialGradient(x, y, 0, x, y, rad); g.addColorStop(0, `rgba(${col},${a.toFixed(3)})`); g.addColorStop(1, `rgba(${col},0)`);
+        ctx.fillStyle = g; ctx.fillRect(x - rad, y - rad, rad * 2, rad * 2); ctx.restore();
+      }
+
+      // ---------------------------------------------------------------- type: every word on its own strip of paper
+      const WC = new Map();
+      function wordW(text, font) { const k = font + "|" + text; if (!WC.has(k)) { ctx.font = font; WC.set(k, ctx.measureText(text).width); } return WC.get(k); }
+      function layLines() {
+        TB.lines.forEach((L, i) => {
+          const big = !!L.big, fs = big ? 128 : 74, fa = big ? 152 : 90;
+          const words = L.words.map((w, k) => {
+            const acc = k === L.accent, font = acc ? `italic 400 ${fa}px "Instrument Serif"` : `800 ${fs}px "Archivo"`;
+            return { text: w, font, acc, w: wordW(w, font) + (big ? 46 : 32), h: fs * 1.24 };
+          });
+          const gap = big ? 18 : 12, total = words.reduce((s, w) => s + w.w, 0) + gap * (words.length - 1);
+          let x = L.at[0] === 0 ? 960 - total / 2 : L.at[0];
+          L.lay = words.map((w, k) => {
+            const sd = 300 + i * 20 + k, ink = !w.acc && k % 2 === 1;
+            const o = { ...w, key: `w${i}_${k}`, x: x + w.w / 2, y: L.at[1] + (hash(sd) - 0.5) * 14, rot: (hash(sd * 1.7) - 0.5) * 0.07, seed: sd,
+              stock: w.acc ? "amber" : ink ? "ink" : "news", col: ink ? "#f6efe2" : "#1d1a1f", dy: w.acc ? fs * 0.02 : fs * 0.05 };
+            x += w.w + gap; return o;
+          });
+        });
+      }
+      function drawLine(L, t) {
+        if (t < L.t || t > L.out + 1.4) return;
+        const n = L.lay.length;
+        L.lay.forEach((w, k) => {
+          const ti = L.t + k * 0.16, to = L.out + (n - 1 - k) * 0.08;
+          if (t < ti) return;
+          const a = eOut(r(t, ti, ti + 0.25)), b = eIn(r(t, to, to + 0.4));
+          if (b >= 1) return;
+          piece({ key: w.key, make: RECT(w.w, w.h), x: w.x + 40 * b, y: w.y - 22 * (1 - a) - 320 * b, rot: w.rot + (k % 2 ? 0.5 : -0.5) * b, s: lerp(1.14, 1, a) + 0.08 * b,
+            h: lerp(3.6, 0.45, a) + 3.5 * b, stock: w.stock, seed: w.seed, tear: 1.6, step: 14, content: () => txt(w.text, 0, w.dy, w.font, w.col) });
+        });
+      }
+
+
+      // ---------------------------------------------------------------- the book in 3D, drawn flat
+      // an orthographic view of the table from the front, a little to the left, looking down: any flat piece on any plane
+      // in the scene is one affine map, so every page, card and flap is a piece() drawn through a single setTransform
+      const PSI = -0.12, PHI = 0.82, cps = Math.cos(PSI), sps = Math.sin(PSI), sph = Math.sin(PHI), cph = Math.cos(PHI);
+      function pl(X, Y, Z) { const x1 = X * cps - Z * sps, z1 = X * sps + Z * cps; return [x1, z1 * sph - Y * cph]; }
+      function plane(O, U, V) {
+        const o = pl(O[0], O[1], O[2]), u = pl(U[0], U[1], U[2]), v = pl(V[0], V[1], V[2]), S = CAM.s; LS = S;
+        ctx.setTransform(u[0] * S, u[1] * S, v[0] * S, v[1] * S, (o[0] - CAM.x) * S + W / 2, (o[1] - CAM.y) * S + H / 2);
+      }
+      const flat = (X, Y, Z) => plane([X, Y, Z], [1, 0, 0], [0, 0, 1]);
+      // a card hinged along its foot: lying flat and pointing away at a = 0, standing at a = PI/2; its local y runs from its top (-h) to the hinge (0)
+      const stand = (X, Y, Z, a) => plane([X, Y, Z], [1, 0, 0], [0, -Math.sin(a), Math.cos(a)]);
+
+      const PW = 470, PD = 600, BT = 32, SLOT = 110, SZ = [20, 196];
+      const INK = "#1d1a1f", SEPIA = "#6b5a48", RED = "#b8322b";
+      // leaf k turns from the right (0) to the left (PI); spread k is the back of leaf k and the front of leaf k + 1
+      function leafA(k, t) { if (k > 4) return 0; const e = E["leaf" + k]; return Math.PI * eIO(r(t, e[0], e[1])); }
+      const closeU = (t) => eIO(r(t, E.close[0], E.close[1]));
+      // a spread's pop-ups rise as its leaf lands and fold flat as the next leaf lifts: the height follows the page's angle
+      function rise(k, t) {
+        const up = eOut(r(leafA(k, t), 0.6 * Math.PI, Math.PI));
+        const down = k < 4 ? r(leafA(k + 1, t), 0, 0.42 * Math.PI) : r(closeU(t), 0, 0.42);
+        return up * (1 - eIn(down));
+      }
+      function stackY(t) { let n = 0; for (let k = 0; k < 5; k++) n += leafA(k, t) / Math.PI; return { n, YL: 2 + 5.6 * n, YR: BT - 5.6 * n }; }
+
+      // ---------------------------------------------------------------- what is printed on the pages
+      function head(n, title) {
+        if (n) txt(n, -PW / 2 + 40, -PD / 2 + 44, '700 14px "JBM"', "#c4553b", "left");
+        txt(title, -PW / 2 + 40, -PD / 2 + 80, 'italic 400 38px "Instrument Serif"', INK, "left");
+        ctx.fillStyle = "rgba(29,26,31,0.22)"; ctx.fillRect(-PW / 2 + 40, -PD / 2 + 106, PW - 80, 1.5);
+      }
+      function folio(s) { txt(s, 0, PD / 2 - 30, '500 11px "JBM"', "rgba(29,26,31,0.45)"); }
+      function coverFront() {
+        ctx.strokeStyle = "rgba(244,238,223,0.55)"; ctx.lineWidth = 2; ctx.strokeRect(-PW / 2 + 30, -PD / 2 + 30, PW - 60, PD - 60);
+        ctx.strokeRect(-PW / 2 + 38, -PD / 2 + 38, PW - 76, PD - 76);
+        txt("Creative", 0, -78, 'italic 400 84px "Instrument Serif"', "#f4eedf"); txt("brief", 0, 4, 'italic 400 84px "Instrument Serif"', "#f4eedf");
+        ctx.fillStyle = "#dda04a"; ctx.fillRect(-60, 66, 120, 3);
+        txt("SAMPLE", 0, 104, '700 14px "JBM"', "#f4eedf");
+        txt("A NEIGHBOURHOOD FITNESS STUDIO", 0, 130, '500 12px "JBM"', "rgba(244,238,223,0.8)");
+      }
+      const FACES = [
+        { front: coverFront, back: () => {
+          head("01", "project context");
+          TB.context.forEach((s, i) => txt(s, -PW / 2 + 40, -PD / 2 + 146 + i * 36, 'italic 400 26px "Instrument Serif"', INK, "left"));
+          folio("sample brief · invented client");
+        } },
+        { front: () => {
+          head("", "reading the answers");
+          // the slot each vague answer is pulled through
+          SZ.forEach((z) => { ctx.fillStyle = "#2a211b"; ctx.fillRect(SLOT - PW / 2 - 3, z - 30, 6, 60); ctx.fillStyle = "rgba(29,26,31,0.18)"; ctx.fillRect(SLOT - PW / 2 + 3, z - 30, 4, 60); });
+          txt("in", SLOT - PW / 2 - 24, SZ[0] - 44, '500 11px "JBM"', SEPIA); txt("out", SLOT - PW / 2 + 40, SZ[0] - 92, '500 11px "JBM"', SEPIA);
+        }, back: () => { head("02", "audience"); folio("personas are invented"); } },
+        { front: () => { ctx.fillStyle = "rgba(29,26,31,0.08)"; for (let i = 0; i < 3; i++) ctx.fillRect(-PW / 2 + 40, -PD / 2 + 90 + i * 30, PW - 80, 1); folio("who it's for"); },
+          back: () => {
+          head("03", "tone and voice");
+          ctx.fillStyle = INK; ctx.fillRect(-170, -62, 340, 3);
+          for (let i = 0; i <= 10; i++) ctx.fillRect(-170 + i * 34 - 1, -70, 2, i % 5 ? 10 : 18);
+          txt(TB.tone.ends[0], -170, -28, '500 13px "JBM"', SEPIA); txt(TB.tone.ends[1], 170, -28, '500 13px "JBM"', SEPIA);
+          folio("pull the tab");
+        } },
+        { front: () => { head("04", "competition"); folio("names left out"); },
+          back: () => { head("05", "visual direction"); folio("a first direction, not the design"); } },
+        { front: () => { head("06", "scope and deliverables"); folio("for the quote"); },
+          back: (t) => drawSummary(t) },
+        { front: (t) => {
+          head("07", "risks and questions");
+          const u = r(t, E.stamp, E.stamp + 0.12);
+          if (u > 0) {
+            ctx.save(); ctx.translate(90, 200); ctx.rotate(-0.12); ctx.scale(lerp(1.25, 1, u), lerp(1.25, 1, u)); ctx.globalAlpha = 0.85 * u;
+            ctx.strokeStyle = RED; ctx.lineWidth = 4; ctx.strokeRect(-92, -26, 184, 52); ctx.lineWidth = 1.5; ctx.strokeRect(-84, -19, 168, 38);
+            txt("REVIEWED", 0, 1, '800 22px "JBM"', RED); ctx.restore();
+          }
+          folio("a person follows these up");
+        } },
+      ];
+      // the summary page the pencil goes through: one weak word struck, a better one written above, three ticks
+      function drawSummary(t) {
+        head("", "summary · draft");
+        TB.summary.forEach(([k, v], i) => {
+          const y = -70 + i * 70;
+          txt(k, -170, y, '500 13px "JBM"', SEPIA, "left");
+          txt(v, -80, y, 'italic 400 30px "Instrument Serif"', INK, "left");
+          if (i === TB.edit.line) {
+            ctx.font = 'italic 400 30px "Instrument Serif"'; const w = ctx.measureText(v).width, s = r(t, E.strike[0], E.strike[1]);
+            if (s > 0) graphite([[-84, y + 2], [-84 + (w + 8) * s, y - 1]], RED, 3, 77);
+            const wu = r(t, E.write[0], E.write[1]);
+            if (wu > 0) {
+              ctx.font = 'italic 400 28px "Instrument Serif"'; const w2 = ctx.measureText(TB.edit.write).width;
+              ctx.save(); ctx.beginPath(); ctx.rect(-80, y - 60, w2 * wu + 4, 40); ctx.clip(); txt(TB.edit.write, -80, y - 38, 'italic 400 28px "Instrument Serif"', RED, "left"); ctx.restore();
+            }
+          }
+          const tk = r(t, E.ticks[i], E.ticks[i] + 0.25);
+          if (tk > 0) { const p = [[-196, y - 2], [-188, y + 8], [-172, y - 14]]; const a = Math.min(1, tk * 2), b2 = Math.max(0, tk * 2 - 1);
+            graphite(b2 > 0 ? [p[0], p[1], [lerp(p[1][0], p[2][0], b2), lerp(p[1][1], p[2][1], b2)]] : [p[0], [lerp(p[0][0], p[1][0], a), lerp(p[0][1], p[1][1], a)]], RED, 3, 90 + i); }
+        });
+        folio("draft for review");
+      }
+      // where the pencil's tip is, in the summary page's coordinates
+      function pencilTip(t) {
+        const y = -70 + TB.edit.line * 70;
+        ctx.font = 'italic 400 30px "Instrument Serif"'; const w = ctx.measureText(TB.summary[TB.edit.line][1]).width;
+        ctx.font = 'italic 400 28px "Instrument Serif"'; const w2 = ctx.measureText(TB.edit.write).width;
+        if (t < E.strike[1]) return [-84 + (w + 8) * eIO(r(t, E.strike[0], E.strike[1])), y];
+        if (t < E.write[0]) return [lerp(-84 + w + 8, -80, r(t, E.strike[1], E.write[0])), lerp(y, y - 30, r(t, E.strike[1], E.write[0]))];
+        if (t < E.write[1]) { const u = r(t, E.write[0], E.write[1]); return [-80 + w2 * u, y - 34 + Math.sin(u * 40) * 6]; }
+        for (let i = 0; i < 3; i++) if (t < E.ticks[i] + 0.25) { const yy = -70 + i * 70, u = r(t, E.ticks[i], E.ticks[i] + 0.25); return [lerp(-196, -172, u), yy + (u < 0.5 ? lerp(-2, 8, u * 2) : lerp(8, -14, u * 2 - 1))]; }
+        return [-172, 70];
+      }
+
+      // ---------------------------------------------------------------- the table, the cup, the form and the call notes
+      function drawTable() {
+        flat(0, 0, 0);
+        piece({ key: "table", make: RECT(5600, 4000), x: 0, y: 0, h: 0, stock: "linen", seed: 2, tear: 2, step: 60, edge: "rgba(0,0,0,0)", content: () => {
+          ctx.fillStyle = "rgba(60,64,50,0.05)"; for (let x = -2800; x < 2800; x += 9) ctx.fillRect(x, -2000, 1, 4000);
+        } });
+        flat(-900, 0, -330);
+        piece({ key: "saucer", make: CIRC(110, 110, 40), x: 0, y: 0, h: 0.4, stock: "white", seed: 5, tear: 0.6, step: 10 });
+        piece({ key: "cup", make: CIRC(70, 70, 36), x: 0, y: 0, h: 1.4, stock: "white", seed: 6, tear: 0.5, step: 8, content: () => {
+          ctx.fillStyle = "#4a2e1f"; ctx.beginPath(); ctx.arc(0, 0, 56, 0, 7); ctx.fill(); ctx.fillStyle = "rgba(255,240,220,0.25)"; ctx.beginPath(); ctx.ellipse(-16, -18, 18, 8, -0.6, 0, 7); ctx.fill(); } });
+      }
+      function drawIntake(t) {
+        if (t > E.feed[1] + 0.1) return;
+        const fu = r(t, E.feed[0], E.feed[1]), fe = eIO(fu);
+        // the call notes first, so the form lies over them as they both slide in under the book
+        const nu = eOut(r(t, E.notes[0], E.notes[1]));
+        if (nu > 0) {
+          flat(lerp(lerp(-1500, -150, nu), 240, eIO(r(fu, 0.15, 1))), 0.6, lerp(150, 0, fe));
+          piece({ key: "notes", make: RECT(260, 180), x: 0, y: 0, rot: lerp(0.3, 0.06, nu), h: 1.4, stock: "kraft", seed: 12, tear: 1.2, step: 10, content: () => {
+            txt(TB.notes[0], -110, -64, '700 12px "JBM"', INK, "left");
+            TB.notes.slice(1).forEach((s, i) => txt(s, -110, -26 + i * 34, 'italic 400 21px "Instrument Serif"', "#2b3f73", "left"));
+          } });
+          piece({ key: "opt", make: RECT(96, 30), x: 92, y: -96, rot: 0.12, h: 1.8, stock: "terra", seed: 13, tear: 0.6, step: 8, content: () => txt("optional", 0, 1, '700 12px "JBM"', "#f4eedf") });
+        }
+        const u = eOut(r(t, E.form[0], E.form[1]));
+        flat(lerp(lerp(-1500, -500, u), 240, fe), 1.2, lerp(-20, 0, fe));
+        piece({ key: "form", make: RECT(360, 480), x: 0, y: 0, rot: lerp(-0.2, -0.04, u) * (1 - fe), h: 1.6, stock: "white", seed: 11, tear: 1, step: 12, content: () => {
+          txt("INTAKE FORM", -150, -206, '700 14px "JBM"', INK, "left"); txt("sample", 150, -206, '500 12px "JBM"', "#c4553b", "right");
+          ctx.fillStyle = "rgba(29,26,31,0.3)"; ctx.fillRect(-150, -188, 300, 1.5);
+          TB.form.forEach(([q, a], i) => {
+            const y = -160 + i * 38, vague = i === 2 || i === 3;
+            txt(String(i + 1).padStart(2, "0") + " " + q, -150, y, '500 10px "JBM"', SEPIA, "left");
+            if (vague) { ctx.fillStyle = "rgba(221,160,74,0.45)"; ctx.fillRect(-152, y + 6, 230, 18); }
+            txt(a, -150, y + 16, 'italic 400 19px "Instrument Serif"', vague ? "#2b3f73" : INK, "left");
+          });
+        } });
+      }
+
+      // ---------------------------------------------------------------- pages, leaves, the stacks and the boards
+      function leaf(k, th, Y, t) {
+        const cover = k === 0, front = th <= Math.PI / 2, w = cover ? PW + 10 : PW, d = cover ? PD + 14 : PD, c = Math.cos(th), s = Math.sin(th);
+        if (front) plane([0, Y, 0], [c, s, 0], [0, 0, 1]); else plane([0, Y, 0], [-c, -s, 0], [0, 0, 1]);
+        const fn = front ? FACES[k].front : FACES[k].back;
+        piece({ key: "leaf" + k + (front ? "f" : "b"), make: RECT(w, d), x: front ? w / 2 : -w / 2, y: 0, h: 0.3 + 2.4 * s,
+          stock: cover ? (front ? "terra" : "cream") : "ivory", seed: 40 + k * 3 + (front ? 0 : 1), tear: 0.7, step: 14, edge: "rgba(120,100,80,0.35)",
+          content: () => { fn(t); const a = (front ? 0.1 : 0.24) * s; if (a > 0.004) { ctx.fillStyle = `rgba(40,28,16,${a.toFixed(3)})`; ctx.fillRect(-w, -d, 2 * w, 2 * d); } } });
+      }
+      // the edge of a stack of pages where it faces us
+      function block(x0, x1, Y, side) {
+        if (Y < 1.5) return;
+        plane([x0, Y, PD / 2], [1, 0, 0], [0, -1, 0]);
+        const hh = Math.round(Y);
+        piece({ key: "edge" + side + hh, make: RECT(x1 - x0, hh), x: (x1 - x0) / 2, y: hh / 2, h: 0, stock: "ivory", seed: 60, tear: 0.3, step: 10, edge: "rgba(120,100,80,0.4)", content: () => {
+          ctx.fillStyle = "rgba(90,70,50,0.18)"; for (let y = -hh / 2 + 2; y < hh / 2; y += 3) ctx.fillRect(-(x1 - x0) / 2, y, x1 - x0, 1);
+        } });
+      }
+      function board(side) {
+        flat(0, 0, 0);
+        piece({ key: "board" + side, make: RECT(PW + 10, PD + 14), x: side * (PW + 10) / 2, y: 0, h: 0.8, stock: "terraD", seed: 70 + side, tear: 0.6, step: 14 });
+      }
+      // the section tabs fanned out along the fore-edge: the system's fixed template
+      function drawTabs(t, YR, fade) {
+        TB.tabs.forEach((s, j) => {
+          const g = eBack(r(t, E.tabs[j], E.tabs[j] + 0.35));
+          if (g <= 0) return;
+          flat(0, Math.max(1, YR - 2), 0);
+          piece({ key: "tab" + j, make: RECT(150, 58), x: PW - 72 + 104 * g, y: -250 + j * 83.3, h: 0.5, stock: ["teal", "ochre", "terra", "sage", "sky", "rose", "ochre"][j], seed: 80 + j, tear: 0.6, step: 8,
+            alpha: fade, content: () => txt(s, 22, 1, '700 12px "JBM"', j === 0 || j === 2 ? "#f4eedf" : INK) });
+        });
+      }
+      function drawBook(t) {
+        const cu = closeU(t);
+        if (t >= E.flat[0] && cu >= 1) return;
+        const { n, YL, YR } = stackY(t);
+        board(1); if (n > 0.5 && cu === 0) board(-1);
+        drawTabs(t, YR, 1);
+        block(0, PW, cu > 0 ? lerp(YR, YL, cu) : YR, "R"); if (n > 0.5 && cu === 0) block(-PW, 0, YL, "L");
+        if (cu > 0) {
+          // closing: everything on the left swings back over as one, cover outward
+          leaf(5, 0, YR, t); pops4(t, YL, YR);
+          const th = Math.PI * (1 - cu);
+          leaf(th > Math.PI / 2 ? 4 : 0, th, lerp(YL, YR, 0.5 * Math.sin(th)), t);
+          return;
+        }
+        let cur = -1, lt = -1, rt = 5;
+        for (let k = 0; k < 5; k++) { const a = leafA(k, t); if (a > 1e-6 && a < Math.PI - 1e-6) cur = k; if (a >= Math.PI - 1e-6) lt = k; }
+        for (let k = 5; k >= 0; k--) if (leafA(k, t) <= 1e-6) rt = k;
+        if (lt >= 0) leaf(lt, Math.PI, YL, t);
+        leaf(rt, 0, YR, t);
+        if (cur >= 0) {
+          const th = leafA(cur, t), Y = lerp(YR, YL, th / Math.PI);
+          if (th > Math.PI / 2) { leaf(cur, th, Y, t); pops(t, YL, YR); } else { pops(t, YL, YR); leaf(cur, th, Y, t); }
+        } else pops(t, YL, YR);
+      }
+
+      // ---------------------------------------------------------------- the pop-ups, a spread at a time
+      function pops(t, YL, YR) { pops0(t, YL, YR); pops1(t, YL, YR); pops2(t, YL, YR); pops3(t, YL, YR); pops4(t, YL, YR); }
+      const Ytop = (YL, YR) => Math.max(YL, YR) + 0.5;
+      // II: each vague answer is pulled through the slot and comes out the other side as three concrete chips
+      function pops0(t, YL, YR) {
+        const k = rise(0, t);
+        if (k <= 0.01) return;
+        const Y = Ytop(YL, YR);
+        TB.strips.forEach((S, j) => {
+          const e = E["strip" + j], u = eIO(r(t, e[0], e[1])), x = lerp(-235, SLOT + 190, u);
+          if (x - 170 < SLOT) {
+            flat(0, Y, 0); ctx.save(); ctx.beginPath(); ctx.rect(-PW - 200, -PD, PW + 200 + SLOT, 2 * PD); ctx.clip();
+            piece({ key: "strip" + j, make: RECT(340, 46), x, y: SZ[j], rot: lerp(-0.05 + 0.08 * j, 0, u), h: 1.2 * k, alpha: k, stock: "white", seed: 100 + j, tear: 0.8, step: 10,
+              content: () => txt(S.in, 0, 2, 'italic 400 25px "Instrument Serif"', "#2b3f73") });
+            ctx.restore();
+          }
+          S.out.forEach((c, i) => {
+            const t0 = E["chips" + j][i], v = eOut(r(t, t0, t0 + 0.4));
+            if (v <= 0) return;
+            const z = SZ[j] - 46 + i * 46, a = 0.5 * eBack(r(t, t0 + 0.3, t0 + 0.7)) * k;
+            stand(0, Y, z + 19, a);
+            ctx.save(); ctx.beginPath(); ctx.rect(SLOT, -200, 600, 400); ctx.clip();
+            piece({ key: "chip" + j + i, make: RECT(210, 38), x: lerp(SLOT - 110, 300, v), y: -19, h: 0.4 + 1.6 * a, alpha: k, stock: ["teal", "ochre", "white"][i], seed: 110 + j * 3 + i, tear: 0.6, step: 8,
+              content: () => txt(c, 0, 1, '700 15px "JBM"', i === 0 ? "#f4eedf" : INK) });
+            ctx.restore();
+          });
+        });
+      }
+      function puppet(w, h, p) {
+        ctx.fillStyle = p.wall; ctx.fillRect(-w / 2, -h / 2, w, h);
+        const u = h / 100;
+        ctx.fillStyle = p.top; ctx.beginPath(); ctx.ellipse(0, 50 * u, 40 * u, 30 * u, 0, 0, 7); ctx.fill();
+        ctx.fillStyle = p.skin; ctx.fillRect(-6 * u, 8 * u, 12 * u, 14 * u);
+        ctx.beginPath(); ctx.ellipse(0, -8 * u, 18 * u, 22 * u, 0, 0, 7); ctx.fill();
+        ctx.fillStyle = p.hair; ctx.beginPath(); ctx.ellipse(0, -21 * u, 20 * u, 12 * u, 0, Math.PI, 2 * Math.PI); ctx.fill(); ctx.fillRect(-20 * u, -22 * u, 5 * u, 12 * u);
+        ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(-6 * u, -8 * u, 2 * u, 0, 7); ctx.arc(6 * u, -8 * u, 2 * u, 0, 7); ctx.fill();
+        ctx.strokeStyle = "#7a3a2a"; ctx.lineWidth = 1.5 * u; ctx.beginPath(); ctx.arc(0, 0, 5 * u, 0.2, Math.PI - 0.2); ctx.stroke();
+      }
+      // III: three personas stand up on a box fold across the gutter
+      function pops1(t, YL, YR) {
+        const k = rise(1, t);
+        if (k <= 0.01) return;
+        const Y = Ytop(YL, YR);
+        TB.personas.forEach((p, j) => {
+          const a = (Math.PI / 2) * k * eBack(r(t, E.per[j], E.per[j] + 0.5));
+          if (a <= 0.01) return;
+          stand(-250 + j * 250, Y, 50, a);
+          piece({ key: "per" + j, make: RECT(190, 250), x: 0, y: -125, h: 0.4 + 2 * Math.sin(a), stock: "ivory", seed: 130 + j, tear: 0.8, step: 10, content: () => {
+            ctx.save(); ctx.translate(0, -40); ctx.beginPath(); ctx.rect(-84, -80, 168, 164); ctx.clip(); puppet(168, 164, p); ctx.restore();
+            txt(p.name, 0, 68, '700 15px "JBM"', INK); txt(p.line, 0, 96, 'italic 400 21px "Instrument Serif"', SEPIA);
+          } });
+        });
+        const a = (Math.PI / 2) * k * eOut(r(t, E.per[0] - 0.3, E.per[0] + 0.2));
+        stand(0, Y, 160, a);
+        piece({ key: "box", make: RECT(860, 62), x: 0, y: -31, h: 0.4 + 1.6 * Math.sin(a), stock: "teal", seed: 140, tear: 0.8, step: 12,
+          content: () => txt("AUDIENCE · THREE INVENTED PERSONAS", 0, 1, '700 15px "JBM"', "#f4eedf") });
+      }
+      // IV: a pull tab slides the tone along its scale; three competitors rise as a skyline, and a flag marks the gap
+      function pops2(t, YL, YR) {
+        const k = rise(2, t);
+        if (k <= 0.01) return;
+        const pos = lerp(0.12, TB.tone.at, eIO(r(t, E.tone[0], E.tone[1]))), px = -PW / 2 + (-170 + 340 * pos);
+        flat(0, YL + 0.5, 0);
+        piece({ key: "pull", make: RECT(300, 26), x: px - 170, y: -30, h: 0.6, alpha: k, stock: "terra", seed: 150, tear: 0.6, step: 8, content: () => txt("pull", -110, 1, '700 11px "JBM"', "#f4eedf") });
+        piece({ key: "ptr", make: () => [[-34, -36], [34, -36], [34, 6], [0, 26], [-34, 6]], x: px, y: -98, h: 1.2, alpha: k, stock: "white", seed: 151, tear: 0.5, step: 6,
+          content: () => { ctx.fillStyle = "#c4553b"; ctx.beginPath(); ctx.moveTo(-10, 0); ctx.lineTo(10, 0); ctx.lineTo(0, 16); ctx.fill(); txt("tone", 0, -16, '700 11px "JBM"', INK); } });
+        TB.tone.words.forEach((w, i) => {
+          const a = 0.95 * k * eBack(r(t, E.toneW[i], E.toneW[i] + 0.4));
+          if (a <= 0.01) return;
+          stand(-PW / 2 + (-130 + i * 130), YL + 0.5, 90, a);
+          piece({ key: "tw" + i, make: RECT(112, 54), x: 0, y: -27, h: 0.4 + 1.4 * Math.sin(a), stock: ["ochre", "rose", "sky"][i], seed: 155 + i, tear: 0.6, step: 8,
+            content: () => txt(w, 0, 2, 'italic 400 30px "Instrument Serif"', INK) });
+        });
+        TB.comp.forEach(([name, note, h], i) => {
+          const a = (Math.PI / 2) * k * eBack(r(t, E.sky[i], E.sky[i] + 0.5));
+          if (a <= 0.01) return;
+          stand(PW / 2 + (-145 + i * 145), YR + 0.5, -10, a);
+          piece({ key: "sky" + i, make: () => [[-65, -h], [-20, -h], [-20, -h - 18], [24, -h - 18], [24, -h], [65, -h], [65, 0], [-65, 0]], x: 0, y: 0, h: 0.4 + 2 * Math.sin(a),
+            stock: ["tealD", "teal", "sage"][i], seed: 160 + i, tear: 0.8, step: 8, content: () => {
+              ctx.fillStyle = "rgba(244,238,223,0.35)"; for (let y = -h + 16; y < -56; y += 22) for (let x = -50; x < 50; x += 22) ctx.fillRect(x, y, 12, 12);
+              ctx.fillStyle = "#f4eedf"; ctx.fillRect(-60, -50, 120, 44);
+              txt(name, 0, -37, '700 12px "JBM"', INK); txt(note, 0, -18, '500 10px "JBM"', SEPIA);
+            } });
+        });
+        const ga = (Math.PI / 2) * k * eBack(r(t, E.gap[0], E.gap[1]));
+        if (ga > 0.01) {
+          stand(PW / 2 + 72, YR + 0.5, 120, ga);
+          piece({ key: "gap", make: RECT(236, 62), x: 0, y: -31, h: 0.4 + 1.8 * Math.sin(ga), stock: "ochre", seed: 170, tear: 0.6, step: 8, content: () => {
+            txt("the gap:", 0, -12, '700 12px "JBM"', INK); txt("small groups, real coaches", 0, 12, '500 12px "JBM"', INK); } });
+        }
+      }
+      // V: a fan of swatches springs up from the gutter beside a type specimen; the deliverables stand up line by line
+      function pops3(t, YL, YR) {
+        const k = rise(3, t);
+        if (k <= 0.01) return;
+        const f = eOut(r(t, E.fan[0], E.fan[1]));
+        stand(-PW / 2 - 70, YL + 0.5, 200, 0.75 * k);
+        TB.swatch.forEach((c, i) => {
+          const rot = (i - 2) * 0.27 * f, L = 120;
+          piece({ key: "sw" + i, make: RECT(66, 220), x: Math.sin(rot) * L, y: -Math.cos(rot) * L, rot, h: 0.6 + 0.3 * i, stock: "white", seed: 180 + i, tear: 0.5, step: 8, content: () => {
+            ctx.fillStyle = c; ctx.fillRect(-33, -110, 66, 170); txt(c.slice(1).toUpperCase(), 0, 84, '600 10px "JBM"', INK); } });
+        });
+        const sa = (Math.PI / 2) * k * eBack(r(t, E.spec, E.spec + 0.5));
+        if (sa > 0.01) {
+          stand(-110, YL + 0.5, 110, sa);
+          piece({ key: "spec", make: RECT(176, 160), x: 0, y: -80, h: 0.4 + 2 * Math.sin(sa), stock: "white", seed: 190, tear: 0.6, step: 8, content: () => {
+            txt("Aa", -36, -20, '800 56px "Archivo"', INK); txt("Aa", 40, -18, 'italic 400 64px "Instrument Serif"', "#c4553b");
+            txt("display · text", 0, 50, '500 11px "JBM"', SEPIA); } });
+        }
+        TB.scope.forEach((s, j) => {
+          const a = (Math.PI / 2) * k * eBack(r(t, E.rows[j], E.rows[j] + 0.4));
+          if (a <= 0.01) return;
+          stand(PW / 2, YR + 0.5, -150 + j * 68, a);
+          piece({ key: "row" + j, make: RECT(360, 46), x: 0, y: -23, h: 0.4 + 1.4 * Math.sin(a), stock: "white", seed: 200 + j, tear: 0.6, step: 8, content: () => {
+            ctx.strokeStyle = INK; ctx.lineWidth = 2; ctx.strokeRect(-160, -10, 20, 20);
+            txt(s, -128, 1, '600 16px "JBM"', INK, "left"); } });
+        });
+      }
+      // VI and VII: a ? flap lifts on two questions; the red pencil goes through the summary; a stamp comes down
+      function pops4(t, YL, YR) {
+        const k = rise(4, t);
+        if (k > 0.01) {
+          // the flap is hinged on its left edge and swings open like a door, leaning over toward the gutter
+          const be = 2.15 * eOut(r(t, E.flap[0], E.flap[1])) * k;
+          plane([PW / 2 - 170, YR + 0.6, 30], [Math.cos(be), Math.sin(be), 0], [0, 0, 1]);
+          piece({ key: "flap", make: RECT(340, 250), x: 170, y: 0, h: 0.5 + 1.6 * Math.sin(be), stock: be < 1.4 ? "rose" : "ivory", seed: 210, tear: 0.7, step: 10, content: () => {
+            if (be < 1.3) { txt("?", 0, -6, 'italic 400 150px "Instrument Serif"', INK); txt("lift", 0, 96, '700 12px "JBM"', INK); } } });
+          TB.questions.forEach((q, j) => {
+            const a = (Math.PI / 2) * k * eBack(r(t, E.qt[j], E.qt[j] + 0.45));
+            if (a <= 0.01) return;
+            stand(PW / 2, YR + 0.6, -20 + j * 92, a);
+            piece({ key: "q" + j, make: RECT(330, 50), x: 0, y: -25, h: 0.4 + 1.6 * Math.sin(a), stock: ["ochre", "sky"][j], seed: 220 + j, tear: 0.6, step: 8, content: () => {
+              ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(-140, 0, 13, 0, 7); ctx.fill(); txt("?", -140, 1, '700 16px "JBM"', "#f4eedf");
+              txt(q, -116, 1, '600 15px "JBM"', INK, "left"); } });
+          });
+        }
+        // the pencil, lying on the summary page, tip on the line it is working
+        const pa = r(t, E.strike[0] - 0.5, E.strike[0] - 0.1) * (1 - r(t, E.ticks[2] + 0.3, E.ticks[2] + 0.8));
+        if (pa > 0 && closeU(t) === 0) {
+          const [lx, ly] = pencilTip(t), off = (1 - pa) * 500;
+          flat(-PW / 2 + lx + off, YL + 1, ly + off * 0.4);
+          piece({ key: "pencil", make: () => [[0, 0], [30, -9], [330, -9], [330, 9], [30, 9]], x: 0, y: 0, rot: -0.55, h: 3.2, stock: "red", seed: 230, tear: 0.4, step: 8, content: () => {
+            ctx.fillStyle = "#e8cfa6"; ctx.beginPath(); ctx.moveTo(4, -1); ctx.lineTo(30, -9); ctx.lineTo(30, 9); ctx.fill();
+            ctx.fillStyle = RED; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(9, -3); ctx.lineTo(9, 3); ctx.fill();
+            ctx.fillStyle = "#c9a24f"; ctx.fillRect(296, -9, 12, 18); ctx.fillStyle = "#e3a59a"; ctx.fillRect(308, -9, 22, 18); } });
+        }
+        // the stamp drops onto the questions page and lifts away
+        const s0 = E.stamp, d = r(t, s0 - 0.35, s0), l = r(t, s0 + 0.15, s0 + 0.6);
+        if (d > 0 && l < 1) {
+          const Ys = l > 0 ? lerp(4, 360, eIn(l)) : lerp(320, 4, eIn(d));
+          flat(PW / 2 + 90, YR + Ys, 200);
+          piece({ key: "stampb", make: RECT(210, 74), x: 0, y: 0, rot: -0.12, h: 0.6 + Ys / 60, stock: "kraft", seed: 240, tear: 0.6, step: 8, content: () => {
+            ctx.fillStyle = "#7a5236"; ctx.beginPath(); ctx.arc(0, 0, 24, 0, 7); ctx.fill(); } });
+        }
+      }
+
+      // ---------------------------------------------------------------- export: the closed book folds flat into a PDF and goes in an envelope
+      function drawExport(t) {
+        const fl = r(t, E.flat[0], E.flat[1]);
+        if (fl <= 0) return;
+        const eu = r(t, E.env[0], E.env[1]);
+        const env = () => {
+          const ex = lerp(1600, 240, eOut(r(eu, 0, 0.4)));
+          flat(ex, 0.5, 40);
+          piece({ key: "envb", make: RECT(580, 360), x: 0, y: 0, h: 1.2, stock: "kraft", seed: 250, tear: 0.8, step: 12 });
+          return ex;
+        };
+        const pocket = (ex) => {
+          flat(ex, 1.6, 40);
+          piece({ key: "envf", make: () => [[-290, -70], [0, 60], [290, -70], [290, 180], [-290, 180]], x: 0, y: 0, h: 0.6, stock: "kraft", seed: 251, tear: 0.8, step: 10, content: () => {
+            ctx.fillStyle = "rgba(60,40,20,0.12)"; ctx.fillRect(-290, -70, 580, 250);
+            txt("to: the client", -250, 120, '600 14px "JBM"', INK, "left"); txt("brief.pdf", 250, 120, 'italic 400 26px "Instrument Serif"', INK, "right"); } });
+          const fu = r(eu, 0.8, 1);
+          flat(ex, 2.2, -140);
+          piece({ key: "envflap", make: () => [[-290, 0], [290, 0], [0, 210]], x: 0, y: 0, sy: lerp(-1, 1, eIO(fu)), h: 0.8 + 1.5 * Math.sin(fu * Math.PI), stock: "kraft", seed: 252, tear: 0.8, step: 10 });
+        };
+        let ex = 240;
+        if (eu > 0 && eu < 0.4) { ex = env(); pocket(ex); }
+        else if (eu >= 0.4) ex = env();
+        // the book: its pages squash flat while the cover turns into a printed sheet
+        const sh = r(eu, 0.4, 0.55), go = r(eu, 0.55, 0.8);
+        if (go < 1) {
+          if (fl < 1) { board(1); block(0, PW, 30 * (1 - fl), "R"); }
+          if (fl < 1) { flat(0, 30 * (1 - fl) + 1, 0); piece({ key: "leaf0f", make: RECT(PW + 10, PD + 14), x: (PW + 10) / 2, y: 0, h: 0.4, alpha: 1 - fl, stock: "terra", seed: 40, tear: 0.7, step: 14, content: coverFront }); }
+        }
+        if (eu < 1) {
+          flat(240, 1.4 + 8 * sh, lerp(0, -160, eIO(sh)) + lerp(0, 220, eIO(go)));
+          piece({ key: "pdf", make: RECT(420, 540), x: 0, y: 0, sy: lerp(1, 0.55, eIO(sh)), h: 0.6 + 2 * sh, alpha: fl, stock: "white", seed: 260, tear: 0.5, step: 12, content: () => {
+            txt("brief.pdf", -180, -238, 'italic 400 34px "Instrument Serif"', INK, "left"); txt("SAMPLE", 180, -238, '700 12px "JBM"', "#c4553b", "right");
+            ctx.fillStyle = "rgba(29,26,31,0.3)"; ctx.fillRect(-180, -212, 360, 1.5);
+            TB.tabs.forEach((s, j) => { txt(String(j + 1).padStart(2, "0") + "  " + s, -180, -176 + j * 44, '600 14px "JBM"', INK, "left");
+              ctx.fillStyle = "rgba(29,26,31,0.1)"; ctx.fillRect(-180, -158 + j * 44, 360, 1); });
+            ctx.fillStyle = "#2f6f73"; ctx.fillRect(-180, 150, 40, 40); ctx.fillStyle = "#dda04a"; ctx.fillRect(-134, 150, 40, 40); ctx.fillStyle = "#c4553b"; ctx.fillRect(-88, 150, 40, 40);
+          } });
+        }
+        if (eu >= 0.4) pocket(ex);
+      }
+
+      // ---------------------------------------------------------------- the camera: each key is [time, the point to centre on, the scale]
+      function camAt(t) {
+        const K = [[0, -110, -40, 1.0], [E.feed[0], -110, -40, 1.0], [E.feed[1] + 0.2, 200, -40, 1.12], [E.leaf0[1], 40, -40, 1.2],
+          [E.strip0[0] - 0.3, 70, -40, 1.45], [E.chips1[2] + 0.4, 70, -40, 1.45], [E.tabs[0] - 0.1, 170, -40, 1.25], [E.tabs[6] + 0.4, 170, -40, 1.25],
+          [E.leaf1[0] + 0.3, 30, -60, 1.2], [E.leaf1[1] + 0.2, 0, -90, 1.3], [E.per[2] + 0.8, 0, -95, 1.36],
+          [E.leaf2[0] + 0.2, 0, -60, 1.25], [E.leaf2[1] + 0.2, -230, -30, 1.55], [E.toneW[2] + 0.3, -230, -30, 1.55], [E.sky[0] - 0.3, 240, -90, 1.5], [E.gap[1] + 0.4, 240, -90, 1.5],
+          [E.leaf3[0] + 0.2, 0, -60, 1.25], [E.leaf3[1] + 0.2, -250, -50, 1.5], [E.spec + 0.4, -250, -50, 1.5], [E.rows[0] - 0.4, 240, -40, 1.5], [E.rows[4] + 0.6, 240, -40, 1.5],
+          [E.leaf4[0] + 0.2, 0, -60, 1.25], [E.leaf4[1] + 0.2, 240, -40, 1.5], [E.qt[1] + 0.5, 240, -40, 1.5], [E.strike[0] - 0.3, -240, -20, 1.6], [E.ticks[2] + 0.3, -240, -20, 1.6],
+          [E.stamp - 0.3, 0, -40, 1.2], [E.stamp + 0.6, 0, -40, 1.2], [E.close[1], 200, -40, 1.2], [E.env[0], 240, -30, 1.2], [E.env[1], 300, -20, 1.15], [DUR, 300, -20, 1.15]];
+        let i = 0; while (i < K.length - 2 && t > K[i + 1][0]) i++;
+        const A = K[i], B = K[i + 1], u = eIO(r(t, A[0], B[0]));
+        return { x: lerp(A[1], B[1], u), y: lerp(A[2], B[2], u), s: lerp(A[3], B[3], u) };
+      }
+      function post(t) {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        // morning light through a window on the left
+        ctx.save(); ctx.globalCompositeOperation = "screen";
+        const g = ctx.createLinearGradient(0, 0, W * 0.75, H * 0.5); g.addColorStop(0, "rgba(255, 236, 200, 0.22)"); g.addColorStop(1, "rgba(255,236,200,0)");
+        ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); ctx.restore();
+        ctx.drawImage(LIGHT, 0, 0);
+        const f = (hash(POSE * 1.713) - 0.5) * 0.04;
+        ctx.fillStyle = f > 0 ? `rgba(255, 244, 228, ${f.toFixed(3)})` : `rgba(30, 24, 16, ${(-f).toFixed(3)})`; ctx.fillRect(0, 0, W, H);
+        ctx.save(); ctx.globalCompositeOperation = "overlay"; ctx.globalAlpha = 0.14;
+        const ox = Math.floor(hash(POSE * 3.1) * 256), oy = Math.floor(hash(POSE * 5.3) * 256);
+        for (let x = -ox; x < W; x += 512) for (let y = -oy; y < H; y += 512) ctx.drawImage(GRAIN, x, y, 512, 512);
+        ctx.restore();
+      }
+      // a black sheet slid over the table for the title
+      function cloth(t) {
+        const u = r(t, E.cloth[0], E.cloth[1]);
+        if (u <= 0) return;
+        ctx.setTransform(1, 0, 0, 1, 0, 0); LS = 1;
+        piece({ key: "cloth", make: RECT(2400, 1400), x: lerp(-1300, 960, eOut(u)), y: 540, rot: lerp(0.04, 0, eOut(u)), h: 2 * (1 - u) + 0.6, stock: "ink", seed: 900, tear: 7, step: 26, edge: "rgba(255,248,236,0.12)" });
+      }
+
+      function paint(t) {
+        const ts = Math.floor(t * PZ + 1e-4) / PZ;   // shot on twos: every frame shows the pose of its twelfth of a second
+        POSE = Math.round(ts * PZ);
+        const covered = ts >= E.cloth[1];
+        Object.assign(CAM, camAt(ts));
+        ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = "#8f9583"; ctx.fillRect(0, 0, W, H);
+        if (!covered) {
+          drawTable(); drawIntake(ts); drawBook(ts); drawExport(ts);
+          ctx.setTransform(1, 0, 0, 1, 0, 0); LS = 1;
+          TB.lines.forEach((L) => drawLine(L, ts));
+        }
+        cloth(ts);
+        post(ts);
+        const lo = r(ts, E.logo, E.logo + 0.25);
+        $("#title").style.opacity = lo > 0 ? 1 : 0;
+        $("#t-logo").style.opacity = lo.toFixed(3); $("#t-logo").style.transform = `scale(${lerp(1.06, 1, eOut(lo)).toFixed(4)})`;
+        $("#t-name").style.opacity = r(ts, E.name, E.name + 0.25).toFixed(3);
+        $("#t-line").style.opacity = r(ts, E.name + 0.4, E.name + 0.7).toFixed(3);
+        $("#t-url").textContent = URL_TEXT.slice(0, Math.round(URL_TEXT.length * r(t, E.url, E.url + 1.1)));
+        let st = TB.hud[0][1]; for (const [a, s] of TB.hud) if (ts >= a) st = s;
+        $("#hud-st").textContent = st;
+        const ho = (1 - r(ts, E.cloth[0], E.cloth[0] + 0.4)).toFixed(3);
+        $("#hud-l").style.opacity = ho; $("#hud-r").style.opacity = ho;
+      }
+
+      const tl = gsap.timeline({ paused: true });
+      const clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+
+      async function build() {
+        await Promise.all([document.fonts.load('800 40px "Archivo"'), document.fonts.load('700 40px "Archivo"'), document.fonts.load('italic 400 40px "Instrument Serif"'),
+          document.fonts.load('500 20px "JBM"'), document.fonts.load('600 20px "JBM"'), document.fonts.load('700 20px "JBM"'), $("#t-logo").decode()]);
+        ctx = $("#cv").getContext("2d");
+        makeStocks(); makePost(); layLines();
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = window.__hf.buildReady || {};
+      window.__hf.buildReady["popup"] = build();
+    </script>
+  </body>
+</html>

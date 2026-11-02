@@ -106,6 +106,14 @@ Made for: Imagined Worlds · Stills. Stack: Three.js, TSL, GSAP, Python (score).
 
 ## Products and systems
 
+### R35 · Pop-Up
+
+A film for a brief generator made as paper cut-out stop motion in a pop-up book: an intake form that slides in under the cover, vague answers pulled through a slot and coming out concrete, a section for every spread that stands up as its page lands, a red pencil edit, and a book that closes into a PDF.
+
+Made for: AI Brief Generator · intake form in, full brief out. Stack: Canvas 2D, GSAP, Python (table, score).
+
+[Recipe and poster](../recipes/r35-popup/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r35-popup-v1)
+
 ### R34 · Footlights
 
 A film for a phone-to-PC webcam bridge made as paper cut-out stop motion in a backlit toy theatre: curtains that part on a paper office at night, a phone that rises through a trap, PIN tiles that match, frames that run on a pulley from the lens to the PC, and footlights that come up when the meeting goes live.
