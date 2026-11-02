@@ -106,6 +106,14 @@ Made for: Imagined Worlds · Stills. Stack: Three.js, TSL, GSAP, Python (score).
 
 ## Products and systems
 
+### R36 · Tideline
+
+A film for a music-to-social pipeline that uses time as its material: real footage in one texture array, where every pixel picks its own moment, so a whole video becomes a strip of time, the slits outside a vertical crop fall away through time, and three phones show one wave at three moments.
+
+Made for: Tidesstunes Social Pipeline · one video in, three platforms out. Stack: WebGL2, GSAP, Python (energy, frames, table), FFmpeg.
+
+[Recipe and poster](../recipes/r36-tideline/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r36-tideline-v1)
+
 ### R35 · Pop-Up
 
 A film for a brief generator made as paper cut-out stop motion in a pop-up book: an intake form that slides in under the cover, vague answers pulled through a slot and coming out concrete, a section for every spread that stands up as its page lands, a red pencil edit, and a book that closes into a PDF.

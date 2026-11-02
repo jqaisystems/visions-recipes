@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1308" height="527" viewBox="0 0 1308 527">
+  <defs><linearGradient id="g" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#18a4e0"/><stop offset="1" stop-color="#2fe0a6"/></linearGradient></defs>
+  <rect x="24" y="24" width="1260" height="479" rx="40" fill="none" stroke="url(#g)" stroke-width="10" stroke-dasharray="40 26"/>
+  <text x="654" y="318" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="150" letter-spacing="6" fill="url(#g)">YOUR MARK</text>
+</svg>

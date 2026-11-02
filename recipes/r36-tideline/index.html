@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <!--
+      R36 · Tideline. 33.4 s at 72 bpm (season 5, time as a material, film 1). For the Tidesstunes Social Pipeline,
+      João's system that turns a Tidesstunes music video into vertical clips with a caption for each platform.
+      One video in: the whole video laid out as a strip of time; its real energy and the strongest minute; the
+      picture cut to vertical as the slits outside the crop drift back in time and fall; a datamosh hold that
+      collapses into one link; three phones showing one wave at three moments with the three captions the
+      pipeline writes; a queue, a slit-scan tunnel of sea, and type cut out of time; the Tidesstunes mark.
+      Technique: real footage as time. A slab of 144 consecutive frames sits in one texture array and every pixel
+      of the fragment shader picks its own moment from it (slit-scan, time smear, echo, datamosh, radial time
+      ripples, a stargate plane whose depth is time). strip.jpg is the whole video as one slit-scan photograph.
+      paint(t) sets every uniform from one baked table (assets/table.js, from bake/table.py); a 2D canvas on top
+      draws the lines and captions. bake/prep.py makes the media; score/compose.py the soundtrack.
+    -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/table.js"></script>
+    <style>
+      @font-face { font-family: "Inter"; src: url("assets/fonts/inter-400.woff2") format("woff2"); font-weight: 400; }
+      @font-face { font-family: "Inter"; src: url("assets/fonts/inter-500.woff2") format("woff2"); font-weight: 500; }
+      @font-face { font-family: "Inter"; src: url("assets/fonts/inter-600.woff2") format("woff2"); font-weight: 600; }
+      @font-face { font-family: "Libre Baskerville"; src: url("assets/fonts/libre-baskerville-400.woff2") format("woff2"); font-weight: 400; }
+      @font-face { font-family: "Libre Baskerville"; src: url("assets/fonts/libre-baskerville-700.woff2") format("woff2"); font-weight: 700; }
+      @font-face { font-family: "JBM"; src: url("assets/fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 100 800; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #0A1418; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #0A1418; color: #F4F1EA; }
+      #ct-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #gl, #ov { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #ct-ui { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      .hud { position: absolute; top: 44px; font: 500 17px "JBM", monospace; letter-spacing: 0.18em; white-space: nowrap; color: #c9d3d6; text-transform: uppercase;
+        text-shadow: 0 2px 12px rgba(0, 0, 0, 0.8); }
+      #hud-l { left: 64px; color: #F4F1EA; letter-spacing: 0.26em; }
+      #hud-l span { color: #3fd6c0; }
+      #hud-r { right: 64px; text-transform: none; letter-spacing: 0.1em; }
+      #ln { position: absolute; left: 96px; top: 930px; font: 400 76px/1.05 "Libre Baskerville", serif; letter-spacing: -0.01em; color: #F4F1EA; white-space: nowrap; opacity: 0;
+        text-shadow: 0 6px 40px rgba(0, 0, 0, 0.85), 0 0 14px rgba(0, 0, 0, 0.5); }
+      #flash { position: absolute; inset: 0; background: #fff4e6; opacity: 0; }
+      #veil { position: absolute; inset: 0; background: #000; opacity: 1; }
+      #card { position: absolute; inset: 0; background: #0A1418; opacity: 0; }
+      #c-logo { position: absolute; left: 580px; top: 250px; width: 760px; height: 306px; }
+      #c-name { position: absolute; left: 0; right: 0; top: 618px; text-align: center; font: 600 46px "Inter", sans-serif; color: #F4F1EA; letter-spacing: -0.01em; white-space: nowrap; }
+      #c-claim { position: absolute; left: 0; right: 0; top: 694px; text-align: center; font: 400 38px "Libre Baskerville", serif; color: #c9d3d6; white-space: nowrap; }
+      #c-url { position: absolute; left: 0; right: 0; top: 776px; height: 40px; text-align: center; font: 500 28px "JBM", monospace; color: #3fd6c0; white-space: nowrap; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="33.4" data-width="1920" data-height="1080">
+      <div id="ct-stage" class="clip" data-start="0" data-duration="33.4" data-track-index="0">
+        <canvas id="gl" width="1920" height="1080" data-layout-allow-overflow></canvas>
+        <canvas id="ov" width="1920" height="1080" data-layout-allow-overflow></canvas>
+      </div>
+      <div id="ct-ui" class="clip" data-start="0" data-duration="33.4" data-track-index="1">
+        <div class="hud" id="hud-l" data-layout-allow-occlusion>TIDESSTUNES <span>· social pipeline</span></div>
+        <div class="hud" id="hud-r" data-layout-allow-occlusion><span id="hud-st"></span></div>
+        <div id="ln" data-layout-allow-occlusion></div>
+        <div id="card" data-layout-allow-occlusion>
+          <img id="c-logo" src="assets/brand/your-mark.svg" alt="Your mark">
+          <div id="c-name"></div>
+          <div id="c-claim"></div>
+          <div id="c-url"></div>
+        </div>
+        <div id="flash" data-layout-allow-occlusion></div>
+        <div id="veil" data-layout-allow-occlusion></div>
+      </div>
+      <audio id="score" src="assets/bgm/score.wav" data-start="0" data-duration="33.4" data-track-index="7" data-volume="0.9"></audio>
+    </div>
+
+    <script>
+      // one pass: every pixel picks its own moment from the slab
+      const FS = `#version 300 es
+precision highp float;
+precision highp sampler2DArray;
+uniform sampler2DArray uSlab;
+uniform sampler2D uStrip, uMask;
+uniform vec2 uRes;
+uniform float uTime, uMode, uNow, uSA, uN, uFps;
+uniform float uP[12];
+uniform vec4 uPh[3];      // the phones: centre x, centre y, scale, how far open
+out vec4 fragColor;
+
+const vec3 INK = vec3(0.039, 0.078, 0.094);
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float hash1(float x) { return fract(sin(x * 91.345) * 47453.5453); }
+// the slab is a short take: time runs to its end and back, so any moment is a real frame
+float pp(float x) { float L = (uN - 1.0) / uFps; return L - abs(mod(x, 2.0 * L) - L); }
+vec3 F(vec2 uv, float tau) {
+  float l = pp(tau) * uFps, l0 = floor(l), f = l - l0;
+  uv = clamp(uv, 0.002, 0.998);
+  vec3 a = texture(uSlab, vec3(uv, l0)).rgb, b = texture(uSlab, vec3(uv, min(l0 + 1.0, uN - 1.0))).rgb;
+  return mix(a, b, f);
+}
+// the picture covering the frame, by pixel (from the top left)
+vec2 cover(vec2 P) { float H = max(uRes.y, uRes.x / uSA); return (P - 0.5 * uRes) / vec2(H * uSA, H) + 0.5; }
+vec3 strip(vec2 P) { return texture(uStrip, P / uRes).rgb; }
+vec3 ground(vec2 P) { return INK + strip(P) * 0.05; }
+float sdRBox(vec2 p, vec2 b, float r) { vec2 q = abs(p) - b + r; return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r; }
+
+// a slit and the wake it leaves: left of x, the strip; just behind it, the picture smeared back in time
+vec3 slitScan(vec2 P, float x, vec2 uv, float wake) {
+  vec3 live = F(uv, uNow);
+  if (P.x > x) return live;
+  float d = x - P.x, w = 260.0;
+  vec3 s = strip(P);
+  if (d < w) { vec3 sm = F(vec2(uv.x + d / uRes.x * 0.25, uv.y), uNow - d / w * 3.0 * wake); s = mix(sm, s, smoothstep(0.0, w, d)); }
+  return s;
+}
+vec3 slitGlow(vec2 P, float x) { float d = abs(P.x - x); return vec3(1.0, 0.93, 0.85) * (exp(-d / 2.0) * 1.3 + exp(-d / 30.0) * 0.25) + vec3(1.0, 0.55, 0.3) * exp(-d / 120.0) * 0.12; }
+
+// ---------------- I · the strip
+vec3 mOpen(vec2 P) {
+  vec2 uv = cover(P);
+  vec3 c = slitScan(P, uP[0], uv, uP[2]);
+  if (uP[0] > -10.0 && uP[0] < uRes.x + 10.0) c += slitGlow(P, uP[0]);
+  return c * uP[1];
+}
+// ---------------- II · the strongest minute
+vec3 mMinute(vec2 P) {
+  float x0 = uP[1], x1 = uP[2];
+  bool inW = P.x >= x0 && P.x <= x1;
+  vec2 SP = P;
+  if (inW) SP.x = mix(P.x, uP[5] + (P.x - x0) / max(x1 - x0, 1.0) * (uP[6] - uP[5]), uP[7]);
+  vec3 s = strip(SP);
+  vec3 c = inW ? s : s * (1.0 - 0.72 * uP[0]);
+  if (inW && P.x < uP[3]) {
+    vec2 uv = cover(P);
+    float d = uP[3] - P.x;
+    c = F(uv, uNow - exp(-d / 200.0) * 2.5);
+  }
+  if (uP[3] > 0.0 && uP[3] < uRes.x) c += slitGlow(P, uP[3]) * step(x0, P.x) * step(P.x, x1);
+  return c;
+}
+// ---------------- III · cut to vertical
+vec3 mVertical(vec2 P) {
+  float cw = uP[2], cx = 0.5 * uRes.x, SW = 32.0;
+  vec2 uv = cover(P);
+  if (abs(P.x - cx) <= cw) return F(uv, uNow) * (1.0 + 0.06 * uP[3]);
+  float i = floor(P.x / SW), cc = (i + 0.5) * SW;
+  float dc = max(0.0, (abs(cc - cx) - cw) / SW);
+  float drift = uP[0] * (0.38 * dc + 0.7);
+  vec3 col = ground(P);
+  // the echoes first, the column itself last
+  for (int k = 5; k >= 0; k--) {
+    float fk = clamp(uP[1] * 1.7 - dc * 0.045 - hash1(i) * 0.25 - float(k) * 0.05, 0.0, 1.0);
+    if (k > 0 && fk <= 0.0) continue;
+    float yo = fk * fk * 1500.0;
+    float sy = P.y - yo;
+    if (sy < 0.0) continue;
+    vec3 s = F(cover(vec2(P.x, sy)), uNow - drift - float(k) * 0.25);
+    float a = (k == 0 ? 1.0 : 0.42 * pow(0.62, float(k))) * (1.0 - smoothstep(0.55, 1.0, fk));
+    if (k > 0) s *= vec3(0.75, 0.9, 1.15);
+    col = mix(col, s, a);
+  }
+  // seams between the slits as they come apart
+  float seam = smoothstep(0.0, 1.0, uP[0]) * (1.0 - smoothstep(1.2, 0.0, min(mod(P.x, SW), SW - mod(P.x, SW))));
+  return col * (1.0 - 0.55 * seam);
+}
+// ---------------- IV · the hold, the mosh, one link
+vec3 mLink(vec2 P) {
+  float cw = uP[2] * (1.0 - uP[4] * 0.996), cx = 0.5 * uRes.x;
+  if (abs(P.x - cx) > cw || uP[6] <= 0.0) return ground(P);
+  vec2 Q = vec2(cx + (P.x - cx) / max(1.0 - uP[4] * 0.996, 1e-3), P.y);
+  vec2 uv = cover(Q);
+  float m = uP[1], tf = uP[0];
+  // datamosh: the frame holds, but its motion keeps flowing. One smooth flow field (the swell rolling in), and the
+  // 16 px blocks it reaches stop refreshing and drag the held picture along it, so the image bleeds and streaks.
+  vec2 B = floor(Q / 16.0), Bc = (B + 0.5) * 16.0 / uRes.y;
+  float h = hash(B);
+  vec2 fl = vec2(0.55 + 0.35 * sin(Bc.y * 5.0 + 1.3) + 0.2 * sin(Bc.x * 9.0), -0.35 + 0.5 * sin(Bc.x * 6.0 + Bc.y * 3.0));
+  float reach = smoothstep(0.0, 0.25, m * 1.3 - (1.0 - Bc.y / 1.0) * 0.5 - h * 0.35);    // it spreads from the bottom up
+  vec3 c = F(uv, tf);
+  if (reach > 0.0) {
+    vec2 d = fl * (0.02 + 0.16 * m) * reach * (0.6 + 0.8 * h);
+    vec3 acc = vec3(0.0);
+    for (int k = 0; k < 6; k++) { float s = float(k) / 5.0; acc += F(uv - d * s, tf + m * 1.6 * s); }
+    acc /= 6.0;
+    vec3 hd = F(uv - d, tf);
+    vec3 mo = mix(acc, hd, 0.35);
+    mo = vec3(F(uv - d + vec2(0.005 * m, 0.0), tf).r, mo.g, F(uv - d - vec2(0.005 * m, 0.0), tf).b * 0.5 + mo.b * 0.5);
+    c = mix(c, mo, step(h * 0.6, reach));
+  }
+  float edge = smoothstep(0.85, 1.0, abs(P.x - cx) / max(cw, 1.0));
+  return mix(ground(P), c * (1.0 + uP[5] * 2.5) + vec3(1.0, 0.95, 0.9) * uP[5] * (0.6 + edge), uP[6]);
+}
+// ---------------- V, VI · the phones
+vec4 phone(vec2 P, int k, float spread, float front, float rip) {
+  vec4 ph = uPh[k];
+  if (ph.w <= 0.001 || ph.z <= 0.001) return vec4(0.0);
+  vec2 hs = vec2(190.0, 338.0) * ph.z, q = P - ph.xy;
+  float d = sdRBox(q, hs, 34.0 * ph.z);
+  if (d > 1.0) return vec4(0.0);
+  if (abs(q.y) > hs.y * ph.w) return vec4(0.0);
+  vec2 n = q / hs;                                    // -1..1 across the phone
+  float cf = (9.0 / 16.0) / uSA;                      // the 9:16 centre crop, as a fraction of the picture's width
+  vec2 uv = vec2(0.5 + n.x * cf * 0.5, 0.5 + n.y * 0.5);
+  float r = length(q) / ph.z;
+  float tau = uNow + (float(k) - 1.0) * spread + rip * exp(-pow((r - front) / 70.0, 2.0)) * 1.4 - rip * 0.4 * smoothstep(front, front - 300.0, r);
+  vec3 c = F(uv, tau);
+  float a = smoothstep(1.0, -1.0, d);
+  // the open edge: a bright line where the phone is still opening
+  float oe = exp(-abs(abs(q.y) - hs.y * ph.w) / 2.0) * step(ph.w, 0.995);
+  return vec4(c + vec3(1.0, 0.95, 0.9) * oe, a);
+}
+vec3 mPhones(vec2 P) {
+  vec3 col = ground(P);
+  for (int k = 0; k < 3; k++) { vec4 p = phone(P, k, uP[0], uP[1], uP[2]); col = mix(col, p.rgb, p.a); }
+  return col;
+}
+// the stargate: two planes running to a horizon, and their depth is time
+vec3 gate(vec2 P) {
+  float y = P.y - 0.5 * uRes.y, ay = abs(y) + 0.5;
+  float z = 260.0 / ay;
+  float u = (P.x - 0.5 * uRes.x) / ay * 0.42, v = z * 0.11 + uP[5];
+  vec2 uv = vec2(1.0 - abs(1.0 - mod(u * 0.5 + 0.5, 2.0)), 1.0 - abs(1.0 - mod(v, 2.0)));
+  if (y < 0.0) uv.y = 1.0 - uv.y;
+  float tau = uNow - z * 0.35;
+  vec3 c = vec3(F(uv + vec2(0.006 * uP[6], 0.0), tau).r, F(uv, tau).g, F(uv - vec2(0.006 * uP[6], 0.0), tau).b);
+  c *= smoothstep(0.0, 0.7, ay / (0.5 * uRes.y)) * 1.25 + 0.05;
+  c += vec3(1.0, 0.9, 0.8) * (exp(-ay / 3.0) * 1.5 + exp(-ay / 40.0) * 0.3);
+  return c;
+}
+vec3 mQueue(vec2 P) {
+  vec3 col = ground(P);
+  float g = uP[4];
+  if (g > 0.0) {
+    float ay = abs(P.y - 0.5 * uRes.y);
+    if (ay < g * 0.5 * uRes.y + 2.0) col = gate(P) * smoothstep(g * 0.5 * uRes.y + 2.0, g * 0.5 * uRes.y - 30.0, ay) + col * smoothstep(g * 0.5 * uRes.y - 30.0, g * 0.5 * uRes.y + 2.0, ay);
+  }
+  for (int k = 0; k < 3; k++) { vec4 p = phone(P, k, uP[0], uP[1], 0.0); col = mix(col, p.rgb, p.a); }
+  return col;
+}
+// ---------------- VII · type cut out of time
+vec3 mTitle(vec2 P) {
+  vec2 uv = cover(P);
+  vec3 bg = mix(INK, F(uv, uNow), 0.2 * (1.0 - uP[1]));
+  vec4 mk = texture(uMask, P / uRes);
+  float id = floor(mk.g * 32.0 + 0.5);
+  float on = smoothstep(id - 1.0, id, uP[0] * 30.0);
+  vec2 lu = uv + vec2(0.0, (1.0 - on) * 0.04);
+  vec3 lt = F(lu, uNow + mod(id * 2.7, 11.0)) * 1.18;
+  vec3 c = mix(bg, lt, mk.r * on);
+  return mix(c, INK, uP[1]);
+}
+
+void main() {
+  vec2 P = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y);
+  vec3 col;
+  if (uMode < 0.5) col = mOpen(P);
+  else if (uMode < 1.5) col = mMinute(P);
+  else if (uMode < 2.5) col = mVertical(P);
+  else if (uMode < 3.5) col = mLink(P);
+  else if (uMode < 4.5) col = mPhones(P);
+  else if (uMode < 5.5) col = mQueue(P);
+  else col = mTitle(P);
+  vec2 sv = (P - 0.5 * uRes) / uRes.y;
+  col *= 1.0 - 0.3 * dot(sv, sv);
+  col = col / (1.0 + max(col - 1.0, 0.0));
+  col += (hash(gl_FragCoord.xy + fract(uTime * 7.0) * 91.0) - 0.5) / 120.0;
+  fragColor = vec4(col, 1.0);
+}
+`;
+    </script>
+
+    <script>
+      const TB = window.TABLE, T = TB.T, DUR = TB.dur, BEAT = TB.beat;
+      const W = 1920, H = 1080, SA = TB.src[0] / TB.src[1];
+      const $ = (s) => document.querySelector(s);
+      const cl = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x)), r = (t, a, b) => cl((t - a) / (b - a)), lerp = (a, b, u) => a + (b - a) * u;
+      const E = (n) => gsap.parseEase(n), eOut = E("power3.out"), eIO = E("power3.inOut"), eExpo = E("expo.out"), eExpoIO = E("expo.inOut"), eBack = E("back.out(1.5)"),
+        eIn = E("power3.in"), eSine = E("sine.inOut"), eP2 = E("power2.inOut");
+      const b = (x) => x * BEAT;
+      const now = (t) => 0.4 + t * 0.42;                 // the slab's running time
+      const CW = H * 9 / 16 / 2;                          // half the 9:16 crop, in pixels
+      const PH_X = [W / 2 - 470, W / 2, W / 2 + 470], PH_Y = 500;
+      const tx = (s) => s / TB.trackDur * W;              // a second of the track, across the frame
+      const BX0 = tx(TB.best), BX1 = tx(TB.best + 60);
+
+      function scene(t) {
+        const S = { mode: 0, now: now(t), p: new Array(12).fill(0), ph: [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]] };
+        const p = S.p;
+        if (t < T.minute[0]) {
+          S.mode = 0;
+          p[0] = lerp(-20, W + 20, eP2(r(t, TB.sweep[0], TB.sweep[1])));
+          p[1] = eOut(r(t, 0, 0.6)); p[2] = 1;
+        } else if (t < T.vertical[0]) {
+          S.mode = 1;
+          p[0] = eIO(r(t, TB.graph[0], TB.graph[0] + 0.6));
+          const sl = eExpoIO(r(t, TB.slide[0], TB.slide[1]));
+          let x0 = lerp(tx(0), BX0, sl), x1 = lerp(tx(60), BX1, sl);
+          const zo = eExpoIO(r(t, TB.zoom[0], TB.zoom[1]));
+          p[5] = x0; p[6] = x1;
+          x0 = lerp(x0, 0, zo); x1 = lerp(x1, W, zo);
+          // before the window lands it is only a frame: the outside stays lit, the window just an outline
+          const show = r(t, TB.slide[0] - 0.4, TB.slide[0]);
+          p[1] = show > 0 ? x0 : -1; p[2] = show > 0 ? x1 : -2;
+          p[0] *= show > 0 ? 1 : 0.4;
+          p[3] = lerp(-20, W + 40, eIO(r(t, TB.unfold[0], TB.unfold[1])));
+          p[7] = zo;
+        } else if (t < T.link[0]) {
+          S.mode = 2;
+          p[0] = eIO(r(t, TB.drift[0], TB.drift[1]));
+          p[1] = r(t, TB.fall[0], TB.fall[1]);
+          p[2] = CW; p[3] = r(t, TB.fall[1] - 0.3, TB.fall[1]);
+        } else if (t < T.phones[0]) {
+          S.mode = 3;
+          p[0] = now(TB.freeze); p[1] = eSine(r(t, TB.mosh[0], TB.mosh[1]));
+          p[2] = CW; p[4] = eExpoIO(r(t, TB.collapse[0], TB.collapse[1]));
+          p[5] = r(t, TB.collapse[0], TB.collapse[1]) ** 2;
+          p[6] = 1 - r(t, TB.linkLine[0] + 0.1, TB.linkLine[0] + 0.45);   // the collapsed frame hands over to the link
+          S.now = now(TB.freeze);
+        } else if (t < T.queue[0]) {
+          S.mode = 4;
+          p[0] = 2.2 * eIO(r(t, TB.ripple[0], TB.ripple[1]));
+          p[1] = lerp(0, 900, r(t, TB.ripple[0], TB.ripple[1]));
+          p[2] = 1 - r(t, TB.ripple[1] - 1, TB.ripple[1]);
+          S.ph = PH_X.map((x, k) => [x, PH_Y, 1, eExpo(r(t, TB.phones[k], TB.phones[k] + 0.7))]);
+        } else if (t < T.title) {
+          S.mode = 5;
+          p[0] = 2.2;
+          const q = eExpoIO(r(t, TB.queue[0], TB.queue[1] - 0.2));
+          const g = eIn(r(t, TB.tunnel[0] - 0.3, TB.tunnel[0] + 0.5));
+          // into the queue: smaller, further apart, on a rail; then into the horizon
+          S.ph = PH_X.map((x, k) => {
+            const qx = lerp(x, W / 2 + (k - 1) * 560, q), qy = lerp(PH_Y, 560, q), sc = lerp(1, 0.46, q);
+            return [lerp(qx, W / 2, g), lerp(qy, H / 2, g), sc * (1 - g), 1];
+          });
+          p[4] = eExpo(r(t, TB.tunnel[0], TB.tunnel[0] + 0.9));
+          p[5] = 2.4 * (t - TB.tunnel[0]) + 1.6 * (t - TB.tunnel[0]) ** 2;
+          p[6] = Math.exp(-Math.max(0, t - TB.tunnel[0]) * 3);
+          S.now = now(t) + 2.2 * cl((t - TB.tunnel[0]) * 0.5, 0, 1);
+        } else {
+          S.mode = 6;
+          p[0] = eOut(r(t, TB.titleType[0] + 0.1, TB.titleType[0] + 1.2));
+          p[1] = eIO(r(t, T.mark - 0.35, T.mark + 0.2));
+        }
+        return S;
+      }
+
+      // ---------------- WebGL2
+      let gl, P1, U = {};
+      const UNI = ["uSlab", "uStrip", "uMask", "uRes", "uTime", "uMode", "uNow", "uSA", "uN", "uFps", "uP", "uPh"];
+      function initGL(frames, stripImg, maskCanvas) {
+        gl = $("#gl").getContext("webgl2", { antialias: false, alpha: false, depth: false, stencil: false, preserveDrawingBuffer: true });
+        const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+        P1 = gl.createProgram();
+        gl.attachShader(P1, sh(gl.VERTEX_SHADER, "#version 300 es\nin vec2 p; void main(){ gl_Position = vec4(p, 0.0, 1.0); }"));
+        gl.attachShader(P1, sh(gl.FRAGMENT_SHADER, FS));
+        gl.bindAttribLocation(P1, 0, "p"); gl.linkProgram(P1);
+        if (!gl.getProgramParameter(P1, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(P1));
+        for (const n of UNI) U[n] = gl.getUniformLocation(P1, n);
+        const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+        const lin = (target) => { gl.texParameteri(target, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(target, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+          gl.texParameteri(target, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(target, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); };
+        const fw = frames[0].naturalWidth, fh = frames[0].naturalHeight;
+        gl.activeTexture(gl.TEXTURE0); const slab = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D_ARRAY, slab);
+        gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, fw, fh, frames.length);
+        frames.forEach((im, k) => gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, k, fw, fh, 1, gl.RGBA, gl.UNSIGNED_BYTE, im));
+        lin(gl.TEXTURE_2D_ARRAY);
+        gl.activeTexture(gl.TEXTURE1); const st = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, st);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, stripImg); lin(gl.TEXTURE_2D);
+        gl.activeTexture(gl.TEXTURE2); const mk = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, mk);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, maskCanvas); lin(gl.TEXTURE_2D);
+        gl.useProgram(P1);
+        gl.uniform1i(U.uSlab, 0); gl.uniform1i(U.uStrip, 1); gl.uniform1i(U.uMask, 2);
+        gl.uniform2f(U.uRes, W, H); gl.uniform1f(U.uSA, SA); gl.uniform1f(U.uN, frames.length); gl.uniform1f(U.uFps, TB.slabFps);
+        gl.viewport(0, 0, W, H);
+      }
+      function drawGL(S, t) {
+        gl.uniform1f(U.uTime, t); gl.uniform1f(U.uMode, S.mode); gl.uniform1f(U.uNow, S.now);
+        gl.uniform1fv(U.uP, new Float32Array(S.p)); gl.uniform4fv(U.uPh, new Float32Array(S.ph.flat()));
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+      }
+
+      // the title's mask: each letter's coverage in red, its number in green, so each can show its own second
+      function makeMask() {
+        const c = document.createElement("canvas"); c.width = W; c.height = H;
+        const g = c.getContext("2d"); g.fillStyle = "#000"; g.fillRect(0, 0, W, H);
+        let id = 1;
+        const word = (txt, font, y, track) => {
+          g.font = font; const ws = [...txt].map((ch) => g.measureText(ch).width + track), tot = ws.reduce((a, v) => a + v, 0) - track;
+          let x = W / 2 - tot / 2;
+          [...txt].forEach((ch, k) => { if (ch !== " ") { g.fillStyle = `rgb(255, ${Math.round(id * 255 / 32)}, 0)`; g.fillText(ch, x, y); id++; } x += ws[k]; });
+        };
+        g.textBaseline = "alphabetic";
+        word("Tidesstunes", '700 270px "Libre Baskerville"', 520, -4);
+        word("Social Pipeline", '600 150px "Inter"', 720, -2);
+        return c;
+      }
+
+      // ---------------- the overlay: lines, the energy, the window, the rail, the captions
+      const ov = () => $("#ov").getContext("2d");
+      const TEAL = "#3fd6c0", OFF = "#F4F1EA";
+      function chip(g, txt, x, y, col, a) {
+        g.save(); g.globalAlpha = a; g.font = '600 18px "JBM"'; const w = g.measureText(txt).width + 26;
+        g.fillStyle = "rgba(10, 20, 24, 0.82)"; g.strokeStyle = col; g.lineWidth = 1.5;
+        g.beginPath(); g.roundRect(x - w / 2, y - 18, w, 36, 9); g.fill(); g.stroke();
+        g.fillStyle = OFF; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(txt, x, y + 1); g.restore();
+      }
+      function ticks(g, a, upTo = W) {
+        g.save(); g.globalAlpha = a; g.font = '500 16px "JBM"'; g.fillStyle = "rgba(244,241,234,0.85)"; g.strokeStyle = "rgba(244,241,234,0.6)"; g.lineWidth = 1;
+        g.textAlign = "center"; g.shadowColor = "rgba(0,0,0,0.9)"; g.shadowBlur = 8;
+        for (let s = 0; s <= TB.trackDur; s += 30) {
+          const x = cl(tx(s), 24, W - 24); if (x > upTo) continue;
+          g.beginPath(); g.moveTo(tx(s), 1000); g.lineTo(tx(s), 1012); g.stroke();
+          g.fillText(`${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`, x, 1036);
+        }
+        g.restore();
+      }
+      function wrap(g, txt, maxW) {
+        const out = []; let line = "";
+        for (const w of txt.split(" ")) { const tst = line ? line + " " + w : w; if (g.measureText(tst).width > maxW && line) { out.push(line); line = w; } else line = tst; }
+        if (line) out.push(line); return out;
+      }
+      function caption(g, k, ph, u) {
+        if (u <= 0) return;
+        const [cx, cy, sc] = ph, hw = 190 * sc, hh = 338 * sc, C = TB.caps_text[k];
+        const full = C.lines.join("\n"), n = Math.round(full.length * u);
+        let shown = full.slice(0, n).split("\n");
+        g.save();
+        g.beginPath(); g.roundRect(cx - hw, cy - hh, 2 * hw, 2 * hh, 34 * sc); g.clip();
+        const grd = g.createLinearGradient(0, cy + hh - 330 * sc, 0, cy + hh);
+        grd.addColorStop(0, "rgba(6,12,16,0)"); grd.addColorStop(0.45, "rgba(6,12,16,0.62)"); grd.addColorStop(1, "rgba(6,12,16,0.86)");
+        g.globalAlpha = cl(u * 6); g.fillStyle = grd; g.fillRect(cx - hw, cy + hh - 330 * sc, 2 * hw, 330 * sc);
+        // lay out the full caption once, so it types on in place from the top
+        const rows = []; C.lines.forEach((ln, i) => {
+          g.font = i === 0 ? `600 ${21 * sc}px "Inter"` : `400 ${18 * sc}px "Inter"`;
+          wrap(g, ln, 2 * hw - 44 * sc).forEach((w) => rows.push({ i, w }));
+        });
+        const lh = 26 * sc; let y = cy + hh - 28 * sc - (rows.length - 1) * lh - (C.lines.length - 1) * 8 * sc;
+        let left = n, prevI = 0;
+        for (const row of rows) {
+          if (row.i !== prevI) { y += 8 * sc; prevI = row.i; }
+          const take = Math.max(0, Math.min(row.w.length, left)); left -= row.w.length + (row === rows[rows.length - 1] ? 0 : 1);
+          const s = row.w.slice(0, take);
+          g.font = row.i === 0 ? `600 ${21 * sc}px "Inter"` : `400 ${18 * sc}px "Inter"`;
+          g.fillStyle = row.w.startsWith("#") ? TEAL : (row.i === 0 ? OFF : "rgba(244,241,234,0.86)");
+          if (C.lines[row.i].startsWith("board")) g.fillStyle = TEAL;
+          g.globalAlpha = 1; g.textBaseline = "alphabetic"; g.fillText(s, cx - hw + 22 * sc, y);
+          y += lh;
+        }
+        g.restore();
+      }
+      function overlay(t, S) {
+        const g = ov(); g.clearRect(0, 0, W, H);
+        if (S.mode === 0) {
+          const x = S.p[0];
+          ticks(g, r(t, TB.sweep[0] + 0.3, TB.sweep[0] + 0.8), x);
+        } else if (S.mode === 1) {
+          const out = 1 - r(t, TB.zoom[0], TB.zoom[0] + 0.35);
+          ticks(g, out);
+          // the energy, one value a second, drawn on
+          const u = eIO(r(t, TB.graph[0], TB.graph[1])), n = Math.round((TB.energy.length - 1) * u);
+          if (n > 1 && out > 0) {
+            const y = (e) => 960 - 300 * e;
+            g.save(); g.globalAlpha = out;
+            g.beginPath(); g.moveTo(tx(0), 960); for (let i = 0; i <= n; i++) g.lineTo(tx(i + 0.5), y(TB.energy[i])); g.lineTo(tx(n + 0.5), 960); g.closePath();
+            g.fillStyle = "rgba(244,241,234,0.10)"; g.fill();
+            g.beginPath(); for (let i = 0; i <= n; i++) (i ? g.lineTo : g.moveTo).call(g, tx(i + 0.5), y(TB.energy[i]));
+            g.strokeStyle = OFF; g.lineWidth = 3; g.shadowColor = "rgba(0,0,0,0.8)"; g.shadowBlur = 10; g.stroke();
+            g.restore();
+          }
+          // the window: first the first minute, then the strongest
+          const show = r(t, TB.graph[0] + 0.9, TB.graph[0] + 1.2) * out;
+          if (show > 0) {
+            const x0 = S.p[1] > 0 ? S.p[1] : tx(0), x1 = S.p[2] > 0 ? S.p[2] : tx(60);
+            g.save(); g.globalAlpha = show; g.strokeStyle = TEAL; g.lineWidth = 3; g.shadowColor = TEAL; g.shadowBlur = 16;
+            g.strokeRect(x0 + 1.5, 100, x1 - x0 - 3, 860); g.restore();
+            const locked = t >= TB.slide[1] - 0.1;
+            chip(g, locked ? `strongest minute · ${TB.bestLabel}` : "the first minute", (x0 + x1) / 2, 140, TEAL, show);
+            if (!locked && t > TB.slide[0] - 0.5) {
+              g.save(); g.globalAlpha = show * r(t, TB.slide[0] - 0.5, TB.slide[0] - 0.2) * (1 - r(t, TB.slide[0] + 0.2, TB.slide[0] + 0.4));
+              g.strokeStyle = "#ff8a6a"; g.lineWidth = 3; g.beginPath(); g.moveTo((x0 + x1) / 2 - 150, 140); g.lineTo((x0 + x1) / 2 + 150, 140); g.stroke(); g.restore();
+            }
+          }
+        } else if (S.mode === 2) {
+          const a = r(t, TB.fall[1] - 0.6, TB.fall[1]);
+          if (a > 0) {
+            g.save(); g.globalAlpha = a; g.strokeStyle = OFF; g.lineWidth = 2; g.strokeRect(W / 2 - CW, 0, 2 * CW, H); g.restore();
+            chip(g, "9:16 · centre crop", W / 2, 140, OFF, a);
+          }
+        } else if (S.mode === 3) {
+          const a = r(t, TB.mosh[0] + 0.3, TB.mosh[0] + 0.7) * (1 - r(t, TB.collapse[0], TB.collapse[0] + 0.2));
+          if (a > 0) chip(g, "hold", W / 2, 140, OFF, a);
+          // the link: the collapsed frame turns into one bright line
+          const u = eExpo(r(t, TB.linkLine[0], TB.linkLine[1]));
+          if (u > 0) {
+            g.save(); g.strokeStyle = OFF; g.shadowColor = "#fff2e0"; g.shadowBlur = 24; g.lineWidth = 3;
+            const hw = 640 * u; g.beginPath(); g.moveTo(W / 2 - hw, PH_Y); g.lineTo(W / 2 + hw, PH_Y); g.stroke(); g.restore();
+            chip(g, "tidesstunes/clip_xkictSVrg9k.mp4", W / 2, PH_Y - 60, TEAL, r(t, TB.linkLine[0] + 0.3, TB.linkLine[0] + 0.6));
+          }
+        } else if (S.mode === 4 || S.mode === 5) {
+          if (S.mode === 4) {
+            // the line splits into the three phones
+            const sp = 1 - eOut(r(t, TB.phones[0], TB.phones[2] + 0.4));
+            if (sp > 0) { g.save(); g.globalAlpha = sp; g.strokeStyle = OFF; g.lineWidth = 3; g.shadowColor = "#fff2e0"; g.shadowBlur = 20;
+              g.beginPath(); g.moveTo(W / 2 - 640, PH_Y); g.lineTo(W / 2 + 640, PH_Y); g.stroke(); g.restore(); }
+            chip(g, "tidesstunes/clip_xkictSVrg9k.mp4", W / 2, 120, TEAL, r(t, T.phones[0], T.phones[0] + 0.3) * (1 - r(t, TB.caps[0] - 0.3, TB.caps[0])));
+          }
+          const qa = S.mode === 5 ? r(t, TB.queue[0] + 0.3, TB.queue[0] + 0.8) * (1 - r(t, TB.tunnel[0] - 0.3, TB.tunnel[0])) : 0;
+          if (qa > 0) {
+            g.save(); g.globalAlpha = qa; g.strokeStyle = "rgba(244,241,234,0.7)"; g.lineWidth = 2;
+            g.beginPath(); g.moveTo(300, 760); g.lineTo(W - 300, 760); g.stroke();
+            for (let k = 0; k < 3; k++) { const x = W / 2 + (k - 1) * 560; g.beginPath(); g.arc(x, 760, 7, 0, 7); g.fillStyle = TEAL; g.fill(); }
+            g.font = '500 17px "JBM"'; g.fillStyle = OFF; g.textAlign = "center";
+            ["now", "later", "later still"].forEach((s, k) => g.fillText(s, W / 2 + (k - 1) * 560, 800));
+            g.restore();
+          }
+          S.ph.forEach((ph, k) => {
+            if (ph[3] < 0.98 || ph[2] < 0.05) return;
+            const capU = S.mode === 4 ? r(t, TB.caps[k], TB.caps[k] + 1.6) : 1;
+            caption(g, k, ph, capU * (S.mode === 5 ? 1 - r(t, TB.tunnel[0] - 0.4, TB.tunnel[0] - 0.1) : 1));
+            g.save(); g.globalAlpha = 0.5 * (1 - r(t, TB.tunnel[0] - 0.3, TB.tunnel[0])); g.strokeStyle = OFF; g.lineWidth = 1.5;
+            g.beginPath(); g.roundRect(ph[0] - 190 * ph[2], ph[1] - 338 * ph[2], 380 * ph[2], 676 * ph[2], 34 * ph[2]); g.stroke(); g.restore();
+            if (S.mode === 4) {
+              const la = r(t, TB.caps[k] - 0.2, TB.caps[k] + 0.2);
+              g.save(); g.globalAlpha = la; g.font = '500 16px "JBM"'; g.fillStyle = TEAL; g.textAlign = "center";
+              g.fillText(TB.caps_text[k].kind.toUpperCase(), ph[0], ph[1] + 338 + 34); g.restore();
+            }
+          });
+        }
+      }
+
+      // ---------------- the type
+      const mmss = (x) => `${Math.floor(x / 60)}:${String(Math.round(x % 60)).padStart(2, "0")}`;
+      const HUD = [[0, `${mmss(TB.trackDur)} · one video`], [T.minute[0], "energy · a second at a time"], [T.vertical[0], "1080 × 1920"], [T.link[0], "one file, one link"],
+        [T.phones[0], "three captions"], [T.queue[0], "queued, spaced out"], [T.title, ""]];
+      let lastLn = "";
+      function paint(t) {
+        const S = scene(t);
+        if (gl) drawGL(S, t);
+        overlay(t, S);
+        // the line for this part
+        let ln = null; for (const L of TB.lines) if (t >= L[0] && t < L[1]) ln = L;
+        const el = $("#ln");
+        if (ln) {
+          if (ln[2] !== lastLn) { el.textContent = ln[2]; lastLn = ln[2]; }
+          const u = r(t, ln[0], ln[0] + 0.5);
+          el.style.opacity = (u * (1 - r(t, ln[1] - 0.25, ln[1]))).toFixed(3);
+          el.style.clipPath = `inset(0 ${(100 * (1 - eExpo(u))).toFixed(1)}% 0 0)`;
+          el.style.transform = `translateY(${(14 * (1 - eOut(u))).toFixed(1)}px)`;
+        } else el.style.opacity = 0;
+        let st = HUD[0][1]; for (const [a, s] of HUD) if (t >= a) st = s;
+        $("#hud-st").textContent = st;
+        const hudO = r(t, 0.4, 0.9) * (1 - r(t, T.title - 0.2, T.title));
+        $("#hud-l").style.opacity = hudO; $("#hud-r").style.opacity = hudO;
+        // a flash on the hard cuts, a veil in from black
+        let fl = 0; for (const c of TB.cuts) if (t >= c && t < c + 0.12) fl = Math.max(fl, 0.22 * (1 - (t - c) / 0.12));
+        $("#flash").style.opacity = fl.toFixed(3);
+        $("#veil").style.opacity = (1 - eOut(r(t, 0.0, 0.45))).toFixed(3);
+        // the mark
+        const ca = r(t, T.mark - 0.15, T.mark + 0.1);
+        $("#card").style.opacity = ca.toFixed(3);
+        const lu = eBack(r(t, T.mark, T.mark + 0.7));
+        $("#c-logo").style.transform = `translateY(${(30 * (1 - lu)).toFixed(1)}px) scale(${(0.94 + 0.06 * lu).toFixed(3)})`;
+        $("#c-logo").style.opacity = r(t, T.mark, T.mark + 0.35).toFixed(3);
+        $("#c-name").style.opacity = r(t, TB.line - 0.4, TB.line).toFixed(3);
+        $("#c-claim").style.opacity = r(t, TB.line, TB.line + 0.5).toFixed(3);
+        $("#c-claim").style.transform = `translateY(${(14 * (1 - eOut(r(t, TB.line, TB.line + 0.6)))).toFixed(1)}px)`;
+        $("#c-url").textContent = TB.url.slice(0, Math.round(TB.url.length * r(t, TB.line + 0.5, TB.line + 1.5)));
+      }
+
+      const tl = gsap.timeline({ paused: true });
+      const clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+
+      async function build() {
+        const load = (src) => { const im = new Image(); im.src = src; return im; };
+        const frames = Array.from({ length: TB.slabN }, (_, k) => load(`assets/img/f${String(k + 1).padStart(3, "0")}.jpg`));
+        const stripImg = load("assets/img/strip.jpg");
+        await Promise.all([...frames.map((im) => im.decode()), stripImg.decode(), $("#c-logo").decode(),
+          document.fonts.load('700 40px "Libre Baskerville"'), document.fonts.load('400 40px "Libre Baskerville"'),
+          document.fonts.load('600 20px "Inter"'), document.fonts.load('400 20px "Inter"'), document.fonts.load('500 20px "JBM"'), document.fonts.load('600 20px "JBM"')]);
+        $("#c-name").textContent = TB.name; $("#c-claim").textContent = TB.claim;
+        initGL(frames, stripImg, makeMask());
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = window.__hf.buildReady || {};
+      window.__hf.buildReady["tideline"] = build();
+    </script>
+  </body>
+</html>
