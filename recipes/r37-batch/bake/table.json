@@ -1,0 +1,922 @@
+{
+ "dur": 33.75,
+ "beat": 0.625,
+ "bpm": 96,
+ "T": {
+  "open": [
+   0.0,
+   4.375
+  ],
+  "read": [
+   4.375,
+   9.375
+  ],
+  "keys": [
+   9.375,
+   14.375
+  ],
+  "dupes": [
+   14.375,
+   19.375
+  ],
+  "wall": [
+   19.375,
+   26.25
+  ],
+  "tunnel": [
+   26.25,
+   30.0
+  ],
+  "title": 30.0,
+  "mark": 31.875,
+  "end": 33.75
+ },
+ "n": 100,
+ "groups": [
+  {
+   "start": 0,
+   "n": 8,
+   "category": "8"
+  },
+  {
+   "start": 8,
+   "n": 12,
+   "category": "8"
+  },
+  {
+   "start": 20,
+   "n": 8,
+   "category": "11"
+  },
+  {
+   "start": 28,
+   "n": 8,
+   "category": "8"
+  },
+  {
+   "start": 36,
+   "n": 8,
+   "category": "11"
+  },
+  {
+   "start": 44,
+   "n": 12,
+   "category": "11"
+  },
+  {
+   "start": 56,
+   "n": 8,
+   "category": "8"
+  },
+  {
+   "start": 64,
+   "n": 16,
+   "category": "8"
+  },
+  {
+   "start": 80,
+   "n": 12,
+   "category": "8"
+  },
+  {
+   "start": 92,
+   "n": 8,
+   "category": "1"
+  }
+ ],
+ "csvName": "batch.csv",
+ "rows": [
+  {
+   "file": "stripes_pattern_9014860d-0000-4000-8000-000000000000_0.jpg",
+   "title": "Soft Stripes Pattern Background with Copy Space, Take 1",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "stripes_pattern_9014860d-0001-4000-8000-000000000001_0.jpg",
+   "title": "Bold Stripes Pattern Background with Copy Space, Take 2",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "stripes_pattern_9014860d-0002-4000-8000-000000000002_0.jpg",
+   "title": "Calm Stripes Pattern Background with Copy Space, Take 3",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "stripes_pattern_9014860d-0003-4000-8000-000000000003_0.jpg",
+   "title": "Bright Stripes Pattern Background with Copy Space, Take 4",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "stripes_pattern_9014860d-0004-4000-8000-000000000004_0.jpg",
+   "title": "Warm Stripes Pattern Background with Copy Space, Take 5",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "stripes_pattern_9014860d-0005-4000-8000-000000000005_0.jpg",
+   "title": "Cool Stripes Pattern Background with Copy Space, Take 6",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "stripes_pattern_9014860d-0006-4000-8000-000000000006_0.jpg",
+   "title": "Clean Stripes Pattern Background with Copy Space, Take 7",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "stripes_pattern_9014860d-0007-4000-8000-000000000007_0.jpg",
+   "title": "Vivid Stripes Pattern Background with Copy Space, Take 8",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "rings_pattern_a2e7c7f7-0000-4000-8000-000000000000_0.jpg",
+   "title": "Soft Rings Pattern Background with Copy Space, Take 1",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "rings_pattern_a2e7c7f7-0001-4000-8000-000000000001_0.jpg",
+   "title": "Bold Rings Pattern Background with Copy Space, Take 2",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "rings_pattern_a2e7c7f7-0002-4000-8000-000000000002_0.jpg",
+   "title": "Calm Rings Pattern Background with Copy Space, Take 3",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "rings_pattern_a2e7c7f7-0003-4000-8000-000000000003_0.jpg",
+   "title": "Bright Rings Pattern Background with Copy Space, Take 4",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "rings_pattern_a2e7c7f7-0004-4000-8000-000000000004_0.jpg",
+   "title": "Warm Rings Pattern Background with Copy Space, Take 5",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "rings_pattern_a2e7c7f7-0005-4000-8000-000000000005_0.jpg",
+   "title": "Cool Rings Pattern Background with Copy Space, Take 6",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "rings_pattern_a2e7c7f7-0006-4000-8000-000000000006_0.jpg",
+   "title": "Clean Rings Pattern Background with Copy Space, Take 7",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "rings_pattern_a2e7c7f7-0007-4000-8000-000000000007_0.jpg",
+   "title": "Vivid Rings Pattern Background with Copy Space, Take 8",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "rings_pattern_a2e7c7f7-0008-4000-8000-000000000008_0.jpg",
+   "title": "Quiet Rings Pattern Background with Copy Space, Take 9",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "rings_pattern_a2e7c7f7-0009-4000-8000-000000000009_0.jpg",
+   "title": "Deep Rings Pattern Background with Copy Space, Take 10",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "rings_pattern_a2e7c7f7-000a-4000-8000-00000000000a_0.jpg",
+   "title": "Light Rings Pattern Background with Copy Space, Take 11",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "rings_pattern_a2e7c7f7-000b-4000-8000-00000000000b_0.jpg",
+   "title": "Muted Rings Pattern Background with Copy Space, Take 12",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "waves_pattern_8fb0f022-0000-4000-8000-000000000000_0.jpg",
+   "title": "Soft Waves Pattern Background with Copy Space, Take 1",
+   "category": "11",
+   "nk": 46
+  },
+  {
+   "file": "waves_pattern_8fb0f022-0001-4000-8000-000000000001_0.jpg",
+   "title": "Bold Waves Pattern Background with Copy Space, Take 2",
+   "category": "11",
+   "nk": 46
+  },
+  {
+   "file": "waves_pattern_8fb0f022-0002-4000-8000-000000000002_0.jpg",
+   "title": "Calm Waves Pattern Background with Copy Space, Take 3",
+   "category": "11",
+   "nk": 46
+  },
+  {
+   "file": "waves_pattern_8fb0f022-0003-4000-8000-000000000003_0.jpg",
+   "title": "Bright Waves Pattern Background with Copy Space, Take 4",
+   "category": "11",
+   "nk": 46
+  },
+  {
+   "file": "waves_pattern_8fb0f022-0004-4000-8000-000000000004_0.jpg",
+   "title": "Warm Waves Pattern Background with Copy Space, Take 5",
+   "category": "11",
+   "nk": 46
+  },
+  {
+   "file": "waves_pattern_8fb0f022-0005-4000-8000-000000000005_0.jpg",
+   "title": "Cool Waves Pattern Background with Copy Space, Take 6",
+   "category": "11",
+   "nk": 46
+  },
+  {
+   "file": "waves_pattern_8fb0f022-0006-4000-8000-000000000006_0.jpg",
+   "title": "Clean Waves Pattern Background with Copy Space, Take 7",
+   "category": "11",
+   "nk": 46
+  },
+  {
+   "file": "waves_pattern_8fb0f022-0007-4000-8000-000000000007_0.jpg",
+   "title": "Vivid Waves Pattern Background with Copy Space, Take 8",
+   "category": "11",
+   "nk": 46
+  },
+  {
+   "file": "dots_pattern_54d4af21-0000-4000-8000-000000000000_0.jpg",
+   "title": "Soft Dots Pattern Background with Copy Space, Take 1",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "dots_pattern_54d4af21-0001-4000-8000-000000000001_0.jpg",
+   "title": "Bold Dots Pattern Background with Copy Space, Take 2",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "dots_pattern_54d4af21-0002-4000-8000-000000000002_0.jpg",
+   "title": "Calm Dots Pattern Background with Copy Space, Take 3",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "dots_pattern_54d4af21-0003-4000-8000-000000000003_0.jpg",
+   "title": "Bright Dots Pattern Background with Copy Space, Take 4",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "dots_pattern_54d4af21-0004-4000-8000-000000000004_0.jpg",
+   "title": "Warm Dots Pattern Background with Copy Space, Take 5",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "dots_pattern_54d4af21-0005-4000-8000-000000000005_0.jpg",
+   "title": "Cool Dots Pattern Background with Copy Space, Take 6",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "dots_pattern_54d4af21-0006-4000-8000-000000000006_0.jpg",
+   "title": "Clean Dots Pattern Background with Copy Space, Take 7",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "dots_pattern_54d4af21-0007-4000-8000-000000000007_0.jpg",
+   "title": "Vivid Dots Pattern Background with Copy Space, Take 8",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "dunes_pattern_65be2f70-0000-4000-8000-000000000000_0.jpg",
+   "title": "Soft Dunes Pattern Background with Copy Space, Take 1",
+   "category": "11",
+   "nk": 46
+  },
+  {
+   "file": "dunes_pattern_65be2f70-0001-4000-8000-000000000001_0.jpg",
+   "title": "Bold Dunes Pattern Background with Copy Space, Take 2",
+   "category": "11",
+   "nk": 46
+  },
+  {
+   "file": "dunes_pattern_65be2f70-0002-4000-8000-000000000002_0.jpg",
+   "title": "Calm Dunes Pattern Background with Copy Space, Take 3",
+   "category": "11",
+   "nk": 46
+  },
+  {
+   "file": "dunes_pattern_65be2f70-0003-4000-8000-000000000003_0.jpg",
+   "title": "Bright Dunes Pattern Background with Copy Space, Take 4",
+   "category": "11",
+   "nk": 46
+  },
+  {
+   "file": "dunes_pattern_65be2f70-0004-4000-8000-000000000004_0.jpg",
+   "title": "Warm Dunes Pattern Background with Copy Space, Take 5",
+   "category": "11",
+   "nk": 46
+  },
+  {
+   "file": "dunes_pattern_65be2f70-0005-4000-8000-000000000005_0.jpg",
+   "title": "Cool Dunes Pattern Background with Copy Space, Take 6",
+   "category": "11",
+   "nk": 46
+  },
+  {
+   "file": "dunes_pattern_65be2f70-0006-4000-8000-000000000006_0.jpg",
+   "title": "Clean Dunes Pattern Background with Copy Space, Take 7",
+   "category": "11",
+   "nk": 46
+  },
+  {
+   "file": "dunes_pattern_65be2f70-0007-4000-8000-000000000007_0.jpg",
+   "title": "Vivid Dunes Pattern Background with Copy Space, Take 8",
+   "category": "11",
+   "nk": 46
+  },
+  {
+   "file": "sunset_pattern_cfeacd8d-0000-4000-8000-000000000000_0.jpg",
+   "title": "Soft Sunset Pattern Background with Copy Space, Take 1",
+   "category": "11",
+   "nk": 46
+  },
+  {
+   "file": "sunset_pattern_cfeacd8d-0001-4000-8000-000000000001_0.jpg",
+   "title": "Bold Sunset Pattern Background with Copy Space, Take 2",
+   "category": "11",
+   "nk": 46
+  },
+  {
+   "file": "sunset_pattern_cfeacd8d-0002-4000-8000-000000000002_0.jpg",
+   "title": "Calm Sunset Pattern Background with Copy Space, Take 3",
+   "category": "11",
+   "nk": 46
+  },
+  {
+   "file": "sunset_pattern_cfeacd8d-0003-4000-8000-000000000003_0.jpg",
+   "title": "Bright Sunset Pattern Background with Copy Space, Take 4",
+   "category": "11",
+   "nk": 46
+  },
+  {
+   "file": "sunset_pattern_cfeacd8d-0004-4000-8000-000000000004_0.jpg",
+   "title": "Warm Sunset Pattern Background with Copy Space, Take 5",
+   "category": "11",
+   "nk": 46
+  },
+  {
+   "file": "sunset_pattern_cfeacd8d-0005-4000-8000-000000000005_0.jpg",
+   "title": "Cool Sunset Pattern Background with Copy Space, Take 6",
+   "category": "11",
+   "nk": 46
+  },
+  {
+   "file": "sunset_pattern_cfeacd8d-0006-4000-8000-000000000006_0.jpg",
+   "title": "Clean Sunset Pattern Background with Copy Space, Take 7",
+   "category": "11",
+   "nk": 46
+  },
+  {
+   "file": "sunset_pattern_cfeacd8d-0007-4000-8000-000000000007_0.jpg",
+   "title": "Vivid Sunset Pattern Background with Copy Space, Take 8",
+   "category": "11",
+   "nk": 46
+  },
+  {
+   "file": "sunset_pattern_cfeacd8d-0008-4000-8000-000000000008_0.jpg",
+   "title": "Quiet Sunset Pattern Background with Copy Space, Take 9",
+   "category": "11",
+   "nk": 46
+  },
+  {
+   "file": "sunset_pattern_cfeacd8d-0009-4000-8000-000000000009_0.jpg",
+   "title": "Deep Sunset Pattern Background with Copy Space, Take 10",
+   "category": "11",
+   "nk": 46
+  },
+  {
+   "file": "sunset_pattern_cfeacd8d-000a-4000-8000-00000000000a_0.jpg",
+   "title": "Light Sunset Pattern Background with Copy Space, Take 11",
+   "category": "11",
+   "nk": 46
+  },
+  {
+   "file": "sunset_pattern_cfeacd8d-000b-4000-8000-00000000000b_0.jpg",
+   "title": "Muted Sunset Pattern Background with Copy Space, Take 12",
+   "category": "11",
+   "nk": 46
+  },
+  {
+   "file": "checker_pattern_59d70fd2-0000-4000-8000-000000000000_0.jpg",
+   "title": "Soft Checker Pattern Background with Copy Space, Take 1",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "checker_pattern_59d70fd2-0001-4000-8000-000000000001_0.jpg",
+   "title": "Bold Checker Pattern Background with Copy Space, Take 2",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "checker_pattern_59d70fd2-0002-4000-8000-000000000002_0.jpg",
+   "title": "Calm Checker Pattern Background with Copy Space, Take 3",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "checker_pattern_59d70fd2-0003-4000-8000-000000000003_0.jpg",
+   "title": "Bright Checker Pattern Background with Copy Space, Take 4",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "checker_pattern_59d70fd2-0004-4000-8000-000000000004_0.jpg",
+   "title": "Warm Checker Pattern Background with Copy Space, Take 5",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "checker_pattern_59d70fd2-0005-4000-8000-000000000005_0.jpg",
+   "title": "Cool Checker Pattern Background with Copy Space, Take 6",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "checker_pattern_59d70fd2-0006-4000-8000-000000000006_0.jpg",
+   "title": "Clean Checker Pattern Background with Copy Space, Take 7",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "checker_pattern_59d70fd2-0007-4000-8000-000000000007_0.jpg",
+   "title": "Vivid Checker Pattern Background with Copy Space, Take 8",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "blobs_pattern_896c3e35-0000-4000-8000-000000000000_0.jpg",
+   "title": "Soft Blobs Pattern Background with Copy Space, Take 1",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "blobs_pattern_896c3e35-0001-4000-8000-000000000001_0.jpg",
+   "title": "Bold Blobs Pattern Background with Copy Space, Take 2",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "blobs_pattern_896c3e35-0002-4000-8000-000000000002_0.jpg",
+   "title": "Calm Blobs Pattern Background with Copy Space, Take 3",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "blobs_pattern_896c3e35-0003-4000-8000-000000000003_0.jpg",
+   "title": "Bright Blobs Pattern Background with Copy Space, Take 4",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "blobs_pattern_896c3e35-0004-4000-8000-000000000004_0.jpg",
+   "title": "Warm Blobs Pattern Background with Copy Space, Take 5",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "blobs_pattern_896c3e35-0005-4000-8000-000000000005_0.jpg",
+   "title": "Cool Blobs Pattern Background with Copy Space, Take 6",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "blobs_pattern_896c3e35-0006-4000-8000-000000000006_0.jpg",
+   "title": "Clean Blobs Pattern Background with Copy Space, Take 7",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "blobs_pattern_896c3e35-0007-4000-8000-000000000007_0.jpg",
+   "title": "Vivid Blobs Pattern Background with Copy Space, Take 8",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "blobs_pattern_896c3e35-0008-4000-8000-000000000008_0.jpg",
+   "title": "Quiet Blobs Pattern Background with Copy Space, Take 9",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "blobs_pattern_896c3e35-0009-4000-8000-000000000009_0.jpg",
+   "title": "Deep Blobs Pattern Background with Copy Space, Take 10",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "blobs_pattern_896c3e35-000a-4000-8000-00000000000a_0.jpg",
+   "title": "Light Blobs Pattern Background with Copy Space, Take 11",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "blobs_pattern_896c3e35-000b-4000-8000-00000000000b_0.jpg",
+   "title": "Muted Blobs Pattern Background with Copy Space, Take 12",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "blobs_pattern_896c3e35-000c-4000-8000-00000000000c_0.jpg",
+   "title": "Rich Blobs Pattern Background with Copy Space, Take 13",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "blobs_pattern_896c3e35-000d-4000-8000-00000000000d_0.jpg",
+   "title": "Crisp Blobs Pattern Background with Copy Space, Take 14",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "blobs_pattern_896c3e35-000e-4000-8000-00000000000e_0.jpg",
+   "title": "Gentle Blobs Pattern Background with Copy Space, Take 15",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "blobs_pattern_896c3e35-000f-4000-8000-00000000000f_0.jpg",
+   "title": "Simple Blobs Pattern Background with Copy Space, Take 16",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "honeycomb_pattern_66fc6f84-0000-4000-8000-000000000000_0.jpg",
+   "title": "Soft Honeycomb Pattern Background with Copy Space, Take 1",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "honeycomb_pattern_66fc6f84-0001-4000-8000-000000000001_0.jpg",
+   "title": "Bold Honeycomb Pattern Background with Copy Space, Take 2",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "honeycomb_pattern_66fc6f84-0002-4000-8000-000000000002_0.jpg",
+   "title": "Calm Honeycomb Pattern Background with Copy Space, Take 3",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "honeycomb_pattern_66fc6f84-0003-4000-8000-000000000003_0.jpg",
+   "title": "Bright Honeycomb Pattern Background with Copy Space, Take 4",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "honeycomb_pattern_66fc6f84-0004-4000-8000-000000000004_0.jpg",
+   "title": "Warm Honeycomb Pattern Background with Copy Space, Take 5",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "honeycomb_pattern_66fc6f84-0005-4000-8000-000000000005_0.jpg",
+   "title": "Cool Honeycomb Pattern Background with Copy Space, Take 6",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "honeycomb_pattern_66fc6f84-0006-4000-8000-000000000006_0.jpg",
+   "title": "Clean Honeycomb Pattern Background with Copy Space, Take 7",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "honeycomb_pattern_66fc6f84-0007-4000-8000-000000000007_0.jpg",
+   "title": "Vivid Honeycomb Pattern Background with Copy Space, Take 8",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "honeycomb_pattern_66fc6f84-0008-4000-8000-000000000008_0.jpg",
+   "title": "Quiet Honeycomb Pattern Background with Copy Space, Take 9",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "honeycomb_pattern_66fc6f84-0009-4000-8000-000000000009_0.jpg",
+   "title": "Deep Honeycomb Pattern Background with Copy Space, Take 10",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "honeycomb_pattern_66fc6f84-000a-4000-8000-00000000000a_0.jpg",
+   "title": "Light Honeycomb Pattern Background with Copy Space, Take 11",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "honeycomb_pattern_66fc6f84-000b-4000-8000-00000000000b_0.jpg",
+   "title": "Muted Honeycomb Pattern Background with Copy Space, Take 12",
+   "category": "8",
+   "nk": 46
+  },
+  {
+   "file": "terrain_pattern_c87653b1-0000-4000-8000-000000000000_0.jpg",
+   "title": "Soft Terrain Pattern Background with Copy Space, Take 1",
+   "category": "1",
+   "nk": 46
+  },
+  {
+   "file": "terrain_pattern_c87653b1-0001-4000-8000-000000000001_0.jpg",
+   "title": "Bold Terrain Pattern Background with Copy Space, Take 2",
+   "category": "1",
+   "nk": 46
+  },
+  {
+   "file": "terrain_pattern_c87653b1-0002-4000-8000-000000000002_0.jpg",
+   "title": "Calm Terrain Pattern Background with Copy Space, Take 3",
+   "category": "1",
+   "nk": 46
+  },
+  {
+   "file": "terrain_pattern_c87653b1-0003-4000-8000-000000000003_0.jpg",
+   "title": "Bright Terrain Pattern Background with Copy Space, Take 4",
+   "category": "1",
+   "nk": 46
+  },
+  {
+   "file": "terrain_pattern_c87653b1-0004-4000-8000-000000000004_0.jpg",
+   "title": "Warm Terrain Pattern Background with Copy Space, Take 5",
+   "category": "1",
+   "nk": 46
+  },
+  {
+   "file": "terrain_pattern_c87653b1-0005-4000-8000-000000000005_0.jpg",
+   "title": "Cool Terrain Pattern Background with Copy Space, Take 6",
+   "category": "1",
+   "nk": 46
+  },
+  {
+   "file": "terrain_pattern_c87653b1-0006-4000-8000-000000000006_0.jpg",
+   "title": "Clean Terrain Pattern Background with Copy Space, Take 7",
+   "category": "1",
+   "nk": 46
+  },
+  {
+   "file": "terrain_pattern_c87653b1-0007-4000-8000-000000000007_0.jpg",
+   "title": "Vivid Terrain Pattern Background with Copy Space, Take 8",
+   "category": "1",
+   "nk": 46
+  }
+ ],
+ "first": {
+  "file": "stripes_pattern_9014860d-0000-4000-8000-000000000000_0.jpg",
+  "title": "Soft Stripes Pattern Background with Copy Space, Take 1",
+  "keywords": [
+   "stripes",
+   "diagonal",
+   "bands",
+   "teal",
+   "orange",
+   "lines",
+   "abstract",
+   "pattern",
+   "background",
+   "texture",
+   "design",
+   "graphic",
+   "digital",
+   "modern",
+   "minimal",
+   "geometric",
+   "smooth",
+   "gradient",
+   "bright",
+   "calm",
+   "clean",
+   "simple",
+   "colour",
+   "colourful",
+   "wallpaper",
+   "backdrop",
+   "surface",
+   "layout",
+   "shape",
+   "form",
+   "curve",
+   "light",
+   "shadow",
+   "tone",
+   "hue",
+   "vivid",
+   "decor",
+   "print",
+   "poster",
+   "banner",
+   "template",
+   "copyspace",
+   "horizontal",
+   "wide",
+   "creative",
+   "contemporary"
+  ],
+  "category": "8"
+ },
+ "lift": [
+  [
+   "stripes",
+   420,
+   820
+  ],
+  [
+   "diagonal",
+   1460,
+   150
+  ],
+  [
+   "bands",
+   520,
+   205
+  ],
+  [
+   "teal",
+   1100,
+   880
+  ],
+  [
+   "orange",
+   1030,
+   470
+  ],
+  [
+   "lines",
+   900,
+   300
+  ]
+ ],
+ "checks": [
+  [
+   "46 keywords",
+   100
+  ],
+  [
+   "no repeats",
+   100
+  ],
+  [
+   "lowercase",
+   100
+  ],
+  [
+   "no banned terms",
+   100
+  ],
+  [
+   "title length",
+   100
+  ],
+  [
+   "unique filenames",
+   100
+  ],
+  [
+   "category 1 to 21",
+   100
+  ]
+ ],
+ "errors": 0,
+ "banned": [
+  "stock",
+  "photo",
+  "image",
+  "picture",
+  "download",
+  "preview",
+  "ai",
+  "generated",
+  "generative"
+ ],
+ "lines": [
+  [
+   0.625,
+   4.375,
+   "One folder in,"
+  ],
+  [
+   5.0,
+   9.375,
+   "every image read,"
+  ],
+  [
+   10.0,
+   14.375,
+   "forty-six keywords, in order,"
+  ],
+  [
+   15.0,
+   19.375,
+   "near-duplicates found,"
+  ],
+  [
+   20.0,
+   26.25,
+   "validated first,"
+  ],
+  [
+   26.875,
+   30.0,
+   "then a human checks."
+  ]
+ ],
+ "sweep": [
+  0.625,
+  4.0625
+ ],
+ "scan": [
+  5.0,
+  8.125
+ ],
+ "fly": [
+  9.0,
+  9.75
+ ],
+ "typeTitle": [
+  9.375,
+  10.375
+ ],
+ "pop": [
+  10.0,
+  12.5
+ ],
+ "cat": 12.8125,
+ "melt": [
+  14.375,
+  19.375
+ ],
+ "bands": [
+  15.3125,
+  18.4375
+ ],
+ "scroll": [
+  19.6875,
+  25.9375
+ ],
+ "rules": [
+  20.625,
+  21.4375,
+  22.25,
+  23.0625,
+  23.875,
+  24.6875,
+  25.375
+ ],
+ "verdict": 25.75,
+ "collapse": [
+  26.25,
+  26.875
+ ],
+ "gate": [
+  27.0,
+  30.0
+ ],
+ "portal": [
+  28.125,
+  28.75,
+  29.25
+ ],
+ "titleType": [
+  30.0,
+  31.25
+ ],
+ "line": 32.25,
+ "name": "Adobe Stock Uploader",
+ "claim": "Batch metadata, validated first.",
+ "url": "ai.joaoqueiros.com/systems/adobe-stock-uploader",
+ "cuts": [
+  4.375,
+  9.375,
+  14.375,
+  19.375,
+  26.25,
+  30.0,
+  31.875
+ ]
+}

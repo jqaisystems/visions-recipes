@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <!--
+      R37 · Batch. 33.75 s at 96 bpm (season 5, time as a material, film 2). For the Adobe Stock Uploader, João's
+      system that reads a folder of images and writes upload-ready metadata, validated before upload.
+      A batch is a sequence: eight takes of one idea, then the next idea. So the hundred stills of one real batch sit
+      in one texture array and play as time: a flipbook frozen by a slit into one image; one still read by a scan
+      line, its first keywords lifting out of it as letters that show a later take; forty-six keywords in order
+      under the real title; the whole batch as one strip where the takes of each concept melt into each other and
+      the concepts cut hard; the real CSV as a wall of rows while the uploader's own checks run; one file, a tunnel
+      of stills, and the boxes a human still ticks; type cut out of the batch; the JQ AI SYSTEMS logo.
+      paint(t) sets every uniform from one baked table (assets/table.js, from bake/table.py); a 2D canvas on top
+      draws the type and lines, and a second, offscreen one draws the letters the shader fills with stills.
+    -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/table.js"></script>
+    <style>
+      @font-face { font-family: "Inter"; src: url("assets/fonts/inter-400.woff2") format("woff2"); font-weight: 400; }
+      @font-face { font-family: "Inter"; src: url("assets/fonts/inter-500.woff2") format("woff2"); font-weight: 500; }
+      @font-face { font-family: "Inter"; src: url("assets/fonts/inter-600.woff2") format("woff2"); font-weight: 600; }
+      @font-face { font-family: "Libre Baskerville"; src: url("assets/fonts/libre-baskerville-400.woff2") format("woff2"); font-weight: 400; }
+      @font-face { font-family: "Libre Baskerville"; src: url("assets/fonts/libre-baskerville-700.woff2") format("woff2"); font-weight: 700; }
+      @font-face { font-family: "JBM"; src: url("assets/fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 100 800; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #0B0C0D; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #0B0C0D; color: #F4F1EA; }
+      #ct-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #gl, #ov { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #ct-ui { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      .hud { position: absolute; top: 44px; font: 500 17px "JBM", monospace; letter-spacing: 0.18em; white-space: nowrap; color: #d6d9da; text-transform: uppercase;
+        text-shadow: 0 2px 12px rgba(0, 0, 0, 0.9), 0 0 4px rgba(0, 0, 0, 0.7); }
+      #hud-l { left: 64px; color: #F4F1EA; letter-spacing: 0.26em; }
+      #hud-l span { color: #3fd6c0; }
+      #hud-r { right: 64px; text-transform: none; letter-spacing: 0.1em; }
+      #ln { position: absolute; left: 96px; top: 930px; font: 400 76px/1.05 "Libre Baskerville", serif; letter-spacing: -0.01em; color: #F4F1EA; white-space: nowrap; opacity: 0;
+        text-shadow: 0 6px 40px rgba(0, 0, 0, 0.9), 0 0 14px rgba(0, 0, 0, 0.6); }
+      #flash { position: absolute; inset: 0; background: #f4f6f2; opacity: 0; }
+      #veil { position: absolute; inset: 0; background: #000; opacity: 1; }
+      #card { position: absolute; inset: 0; background: #0B0C0D; opacity: 0; }
+      #c-logo { position: absolute; left: 610px; top: 300px; width: 700px; height: 146px; }
+      #c-name { position: absolute; left: 0; right: 0; top: 540px; text-align: center; font: 600 52px "Inter", sans-serif; color: #F4F1EA; letter-spacing: -0.01em; white-space: nowrap; }
+      #c-claim { position: absolute; left: 0; right: 0; top: 626px; text-align: center; font: 400 38px "Libre Baskerville", serif; color: #c9cfd1; white-space: nowrap; }
+      #c-url { position: absolute; left: 0; right: 0; top: 712px; height: 40px; text-align: center; font: 500 28px "JBM", monospace; color: #3fd6c0; white-space: nowrap; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="33.75" data-width="1920" data-height="1080">
+      <div id="ct-stage" class="clip" data-start="0" data-duration="33.75" data-track-index="0">
+        <canvas id="gl" width="1920" height="1080" data-layout-allow-overflow></canvas>
+        <canvas id="ov" width="1920" height="1080" data-layout-allow-overflow></canvas>
+      </div>
+      <div id="ct-ui" class="clip" data-start="0" data-duration="33.75" data-track-index="1">
+        <div class="hud" id="hud-l" data-layout-allow-occlusion>JQ AI SYSTEMS <span>· adobe stock uploader</span></div>
+        <div class="hud" id="hud-r" data-layout-allow-occlusion><span id="hud-st"></span></div>
+        <div id="ln" data-layout-allow-occlusion></div>
+        <div id="card" data-layout-allow-occlusion>
+          <img id="c-logo" src="assets/brand/your-mark.svg" alt="Your mark">
+          <div id="c-name"></div>
+          <div id="c-claim"></div>
+          <div id="c-url"></div>
+        </div>
+        <div id="flash" data-layout-allow-occlusion></div>
+        <div id="veil" data-layout-allow-occlusion></div>
+      </div>
+      <audio id="score" src="assets/bgm/score.wav" data-start="0" data-duration="33.75" data-track-index="7" data-volume="0.9"></audio>
+    </div>
+
+    <script>
+      // one pass: every pixel picks its own still from the batch
+      const FS = `#version 300 es
+precision highp float;
+precision highp sampler2DArray;
+uniform sampler2DArray uSlab;
+uniform sampler2D uHero, uMask;
+uniform vec2 uRes;
+uniform float uTime, uMode, uN;
+uniform float uP[12];
+uniform float uGs[16], uGn[16];
+uniform float uGc;
+out vec4 fragColor;
+
+const vec3 INK = vec3(0.043, 0.047, 0.051);
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float hash1(float x) { return fract(sin(x * 91.345) * 47453.5453); }
+vec3 S(vec2 uv, float k) { return texture(uSlab, vec3(clamp(uv, 0.001, 0.999), clamp(floor(k + 0.5), 0.0, uN - 1.0))).rgb; }
+// the batch as one image: each column of the frame is a different still, in the CSV's order
+float colStill(float x) { return clamp(floor(x / uRes.x * uN), 0.0, uN - 1.0); }
+vec3 slitGlow(float d) { d = abs(d); return vec3(1.0, 0.97, 0.92) * (exp(-d / 2.0) * 1.3 + exp(-d / 30.0) * 0.25) + vec3(0.25, 0.85, 0.75) * exp(-d / 120.0) * 0.12; }
+// the letters drawn offscreen: coverage in red, the still they show in green, their shadow in blue
+vec3 letters(vec2 P, vec3 col, float lift) {
+  vec4 mk = texture(uMask, P / uRes);
+  col *= 1.0 - 0.72 * mk.b;
+  if (mk.r > 0.004) {
+    vec3 lt = 0.42 + 0.78 * S(P / uRes + vec2(0.0, lift), floor(mk.g / max(mk.r, 1e-3) * 255.0 + 0.5));
+    col = mix(col, lt, mk.r);
+  }
+  return col;
+}
+
+// ---------------- I · the flipbook, frozen by a slit
+vec3 mFlip(vec2 P) {
+  vec2 uv = P / uRes;
+  float x = uP[0];
+  vec3 c;
+  if (P.x > x) c = S(uv, uP[1]);
+  else {
+    float d = x - P.x, w = 220.0;
+    c = S(uv, colStill(P.x));
+    if (d < w) c = mix(S(uv + vec2(d / uRes.x * 0.2, 0.0), mix(uP[1], colStill(P.x), d / w)), c, smoothstep(0.0, w, d));
+  }
+  if (x > -10.0 && x < uRes.x + 10.0) c += slitGlow(P.x - x);
+  return c * uP[2];
+}
+// ---------------- II, III · one still read, its words lifted out
+vec3 mRead(vec2 P) {
+  float z = uP[2];
+  vec2 uv = (P - 0.5 * uRes) / z / uRes + 0.5;
+  vec3 c = texture(uHero, uv).rgb;
+  float y = uP[0];
+  // read: everything above the scan line settles darker, so what was lifted out of it can be seen
+  float done = smoothstep(y + 4.0, y - 60.0, P.y);
+  c = mix(c, c * vec3(0.36, 0.42, 0.42), done * uP[1]);
+  if (y > -10.0 && y < uRes.y + 10.0) c += slitGlow(P.y - y) * 0.9;
+  c = mix(c, c * 0.24, uP[3]);
+  return letters(P, c, 0.0);
+}
+// ---------------- IV · the strip: the takes of each concept melt into each other, the concepts cut hard
+vec3 mDupes(vec2 P) {
+  vec2 uv = P / uRes;
+  float x0 = 0.0, w = 0.0, gs = 0.0, gn = 1.0, gi = 0.0;
+  for (int k = 0; k < 16; k++) {
+    if (float(k) >= uGc) break;
+    float wk = uGn[k] / uN * uRes.x;
+    if (P.x >= x0 && P.x < x0 + wk) { w = wk; gs = uGs[k]; gn = uGn[k]; gi = float(k); break; }
+    x0 += wk;
+  }
+  float u = (P.x - x0) / max(w, 1.0);
+  // each column runs through the takes of its concept: time across the band, a wave down it
+  float v = u * 1.2 + uP[0] * 1.1 + gi * 0.37 + sin(P.y / 180.0 + gi * 1.7 + uP[0] * 0.8) * 0.45 * uP[3];
+  float a = mod(floor(v), gn), f = smoothstep(0.15, 0.85, fract(v));
+  vec3 c = mix(S(uv, gs + a), S(uv, gs + mod(a + 1.0, gn)), f);
+  float lit = uP[2] < 0.0 ? 1.0 : (gi <= uP[1] ? 1.0 : 0.38);
+  c *= mix(1.0, lit, uP[2] < 0.0 ? 0.0 : 1.0);
+  float edge = min(P.x - x0, x0 + w - P.x);
+  c *= mix(0.15, 1.0, smoothstep(0.0, 3.0, edge));
+  return mix(c, c * 0.2, uP[4]);
+}
+// ---------------- V · the CSV as a wall of rows, each showing its own still, displaced in time
+vec3 mWall(vec2 P) {
+  const float RH = 54.0, WX = 1300.0;
+  float sq = uP[2];                                   // the wall closes into one line
+  float cy = 0.5 * uRes.y, yy = cy + (P.y - cy) / max(1.0 - sq, 1e-3);
+  if (abs(P.y - cy) > (1.0 - sq) * cy + 1.0) return INK;
+  float ry = yy + uP[0] - 120.0, r = floor(ry / RH);
+  if (P.x > WX || r < 0.0 || r >= uN || yy < 144.0) return INK + 0.012;
+  float fy = fract(ry / RH);
+  float drift = 0.11 * sin(uTime * 0.9 + r * 0.73) + 0.05 * sin(uTime * 2.1 + r * 1.9);
+  vec2 uv = vec2(0.08 + P.x / WX * 0.84 + drift, 0.5 + (fy - 0.5) * 0.22 + 0.08 * sin(r * 2.3));
+  vec3 c = S(uv, r) * 0.34;
+  c *= smoothstep(0.0, 0.05, fy) * smoothstep(1.0, 0.95, fy);
+  c *= 1.0 - 0.6 * smoothstep(860.0, 960.0, yy) * smoothstep(1000.0, 800.0, P.x);   // room for the line
+  c = mix(c, vec3(1.0), sq * 0.9 * smoothstep(1.0, 0.0, abs(P.y - cy)));
+  return c;
+}
+// ---------------- VI · a tunnel of stills: each ring of depth is the next still of the batch
+vec3 gate(vec2 P) {
+  float y = P.y - 0.5 * uRes.y, ay = abs(y) + 0.5;
+  float z = 240.0 / ay;
+  float u = (P.x - 0.5 * uRes.x) / ay * 0.42, v = z * 0.11 + uP[5];
+  vec2 uv = vec2(1.0 - abs(1.0 - mod(u * 0.5 + 0.5, 2.0)), fract(v));
+  if (y < 0.0) uv.y = 1.0 - uv.y;
+  float k = mod(floor(v) * 7.0 + (y < 0.0 ? 50.0 : 0.0), uN);
+  vec3 c = vec3(S(uv + vec2(0.006 * uP[6], 0.0), k).r, S(uv, k).g, S(uv - vec2(0.006 * uP[6], 0.0), k).b);
+  c *= smoothstep(0.0, 0.7, ay / (0.5 * uRes.y)) * 1.2 + 0.05;
+  c += vec3(0.9, 1.0, 0.96) * (exp(-ay / 3.0) * 1.5 + exp(-ay / 40.0) * 0.3);
+  return c;
+}
+vec3 mTunnel(vec2 P) {
+  vec3 col = mWall(P);
+  float g = uP[4];
+  if (g > 0.0) {
+    float ay = abs(P.y - 0.5 * uRes.y), e = g * 0.5 * uRes.y;
+    if (ay < e + 2.0) col = mix(col, gate(P), smoothstep(e + 2.0, e - 30.0, ay));
+  }
+  return mix(col, col * 0.3, uP[7]);
+}
+// ---------------- VII · type cut out of the batch
+vec3 mTitle(vec2 P) {
+  vec2 uv = P / uRes;
+  vec3 bg = mix(INK, S(uv, colStill(P.x)), 0.16 * (1.0 - uP[1]));
+  vec4 mk = texture(uMask, uv);
+  vec3 c = bg * (1.0 - 0.6 * mk.b);
+  if (mk.r > 0.004) c = mix(c, S(uv, floor(mk.g / max(mk.r, 1e-3) * 255.0 + 0.5)) * 1.15 + 0.03, mk.r);
+  return mix(c, INK, uP[1]);
+}
+
+void main() {
+  vec2 P = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y);
+  vec3 col;
+  if (uMode < 0.5) col = mFlip(P);
+  else if (uMode < 1.5) col = mRead(P);
+  else if (uMode < 2.5) col = mDupes(P);
+  else if (uMode < 3.5) col = mWall(P);
+  else if (uMode < 4.5) col = mTunnel(P);
+  else col = mTitle(P);
+  vec2 sv = (P - 0.5 * uRes) / uRes.y;
+  col *= 1.0 - 0.28 * dot(sv, sv);
+  col = col / (1.0 + max(col - 1.0, 0.0));
+  col += (hash(gl_FragCoord.xy + fract(uTime * 7.0) * 91.0) - 0.5) / 120.0;
+  fragColor = vec4(col, 1.0);
+}
+`;
+    </script>
+
+    <script>
+      const TB = window.TABLE, T = TB.T, DUR = TB.dur, BEAT = TB.beat, N = TB.n;
+      const W = 1920, H = 1080;
+      const $ = (s) => document.querySelector(s);
+      const cl = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x)), r = (t, a, b) => cl((t - a) / (b - a)), lerp = (a, b, u) => a + (b - a) * u;
+      const E = (n) => gsap.parseEase(n), eOut = E("power3.out"), eIO = E("power3.inOut"), eExpo = E("expo.out"), eExpoIO = E("expo.inOut"), eBack = E("back.out(1.6)"),
+        eIn = E("power3.in"), eSine = E("sine.inOut"), eP2 = E("power2.inOut");
+      const b = (x) => x * BEAT;
+      const TEAL = "#3fd6c0", OFF = "#F4F1EA", RED = "#ff8a6a";
+      const KW = TB.first.keywords;
+      // the keyword grid: six columns, eight rows
+      const GX0 = 120, GCW = 288, GY0 = 318, GRH = 58;
+      const slot = (i) => [GX0 + (i % 6) * GCW, GY0 + Math.floor(i / 6) * GRH];
+      const WALL_X = 1300, RH = 54;
+
+      function scene(t) {
+        const S = { mode: 0, p: new Array(12).fill(0) };
+        const p = S.p;
+        if (t < T.read[0]) {
+          S.mode = 0;
+          const u = r(t, TB.sweep[0], TB.sweep[1]);
+          p[0] = t < TB.sweep[0] ? -40 : lerp(-20, W + 20, u);
+          p[1] = Math.min(N - 1, Math.floor(u * N));
+          p[2] = eOut(r(t, 0, 0.6));
+        } else if (t < T.dupes[0]) {
+          S.mode = 1;
+          p[0] = lerp(-20, H + 40, eSine(r(t, TB.scan[0], TB.scan[1])));
+          p[1] = 1;
+          p[2] = 1 + 0.035 * eSine(r(t, T.read[0], T.keys[0]));
+          p[3] = 0.92 * eIO(r(t, TB.fly[0], TB.fly[1]));
+        } else if (t < T.wall[0]) {
+          S.mode = 2;
+          p[0] = (t - T.dupes[0]);
+          const hb = r(t, TB.bands[0], TB.bands[1]) * TB.groups.length;
+          p[1] = Math.floor(hb) ; p[2] = t < TB.bands[0] ? -1 : (t > TB.bands[1] + 0.05 ? -1 : 1);
+          p[3] = eIO(r(t, T.dupes[0], T.dupes[0] + 1.5));
+          p[4] = 0;
+        } else if (t < T.tunnel[0]) {
+          S.mode = 3;
+          p[0] = wallScroll(t);
+        } else if (t < T.title) {
+          S.mode = 4;
+          p[0] = wallScroll(t);
+          p[2] = eExpoIO(r(t, TB.collapse[0], TB.collapse[1]));
+          p[4] = eExpo(r(t, TB.gate[0], TB.gate[0] + 0.9));
+          const tg = Math.max(0, t - TB.gate[0]);
+          p[5] = 1.4 * tg + 0.5 * tg * tg;
+          p[6] = Math.exp(-tg * 3);
+          p[7] = 0.55 * eIO(r(t, TB.portal[0] - 0.2, TB.portal[0] + 0.3));
+        } else {
+          S.mode = 5;
+          p[1] = eIO(r(t, T.mark - 0.35, T.mark + 0.2));
+        }
+        return S;
+      }
+      const wallMax = N * RH - H + 240;
+      const wallScroll = (t) => wallMax * eIO(r(t, TB.scroll[0], TB.scroll[1]));
+
+      // ---------------- WebGL2
+      let gl, P1, U = {}, maskTex, maskC;
+      const UNI = ["uSlab", "uHero", "uMask", "uRes", "uTime", "uMode", "uN", "uP", "uGs", "uGn", "uGc"];
+      function initGL(stills, hero) {
+        gl = $("#gl").getContext("webgl2", { antialias: false, alpha: false, depth: false, stencil: false, preserveDrawingBuffer: true });
+        const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+        P1 = gl.createProgram();
+        gl.attachShader(P1, sh(gl.VERTEX_SHADER, "#version 300 es\nin vec2 p; void main(){ gl_Position = vec4(p, 0.0, 1.0); }"));
+        gl.attachShader(P1, sh(gl.FRAGMENT_SHADER, FS));
+        gl.bindAttribLocation(P1, 0, "p"); gl.linkProgram(P1);
+        if (!gl.getProgramParameter(P1, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(P1));
+        for (const n of UNI) U[n] = gl.getUniformLocation(P1, n);
+        const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+        const lin = (target) => { gl.texParameteri(target, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(target, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+          gl.texParameteri(target, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(target, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); };
+        const fw = stills[0].naturalWidth, fh = stills[0].naturalHeight;
+        gl.activeTexture(gl.TEXTURE0); const slab = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D_ARRAY, slab);
+        gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, fw, fh, stills.length);
+        stills.forEach((im, k) => gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, k, fw, fh, 1, gl.RGBA, gl.UNSIGNED_BYTE, im));
+        lin(gl.TEXTURE_2D_ARRAY);
+        gl.activeTexture(gl.TEXTURE1); const he = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, he);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, hero); lin(gl.TEXTURE_2D);
+        gl.activeTexture(gl.TEXTURE2); maskTex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, maskTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, maskC); lin(gl.TEXTURE_2D);
+        gl.useProgram(P1);
+        gl.uniform1i(U.uSlab, 0); gl.uniform1i(U.uHero, 1); gl.uniform1i(U.uMask, 2);
+        gl.uniform2f(U.uRes, W, H); gl.uniform1f(U.uN, N);
+        const gs = new Float32Array(16), gn = new Float32Array(16).fill(1);
+        TB.groups.forEach((g, k) => { gs[k] = g.start; gn[k] = g.n; });
+        gl.uniform1fv(U.uGs, gs); gl.uniform1fv(U.uGn, gn); gl.uniform1f(U.uGc, TB.groups.length);
+        gl.viewport(0, 0, W, H);
+      }
+      function drawGL(S, t) {
+        gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, maskTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, maskC);
+        gl.uniform1f(U.uTime, t); gl.uniform1f(U.uMode, S.mode);
+        gl.uniform1fv(U.uP, new Float32Array(S.p));
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+      }
+
+      // ---------------- the letters the shader fills: red is coverage, green the still, blue the shadow
+      const groupOf = (i) => TB.groups.find((g) => i >= g.start && i < g.start + g.n);
+      function maskLetters(t, S) {
+        const g = maskC.getContext("2d");
+        g.globalCompositeOperation = "source-over"; g.fillStyle = "#000"; g.fillRect(0, 0, W, H);
+        const items = [];   // { txt, font, x, y, still, align }
+        if (S.mode === 1) {
+          // the lifted words: each shows a later take of the same concept through its letters
+          const G0 = TB.groups[0];
+          TB.lift.forEach(([w, x, y], k) => {
+            const ts = TB.scan[0] + (y + 20) / (H + 60) * (TB.scan[1] - TB.scan[0]);
+            const u = eBack(r(t, ts, ts + 0.6)); if (u <= 0) return;
+            const fl = eExpoIO(r(t, TB.fly[0] + k * 0.05, TB.fly[1] + k * 0.05));
+            const [sx, sy] = slot(k);
+            const size = lerp(lerp(40, 92, u), 30, fl);
+            items.push({ txt: w, font: `600 ${size.toFixed(1)}px "Inter"`, x: lerp(x, sx + 46, fl), y: lerp(y - 26 * u, sy, fl),
+              still: G0.start + 1 + (k % (G0.n - 1)), align: fl > 0.5 ? "left" : "center", fade: 1 - r(t, TB.fly[1] - 0.25, TB.fly[1] + 0.1) });
+          });
+        } else if (S.mode === 5) {
+          const u = r(t, TB.titleType[0], TB.titleType[1]);
+          titleLetters().forEach((L, k) => {
+            const on = eOut(cl(u * 1.6 * 22 - k)); if (on <= 0) return;
+            items.push({ txt: L.ch, font: L.font, x: L.x, y: L.y + 30 * (1 - on), still: L.still, align: "left", fade: on });
+          });
+        }
+        if (!items.length) return;
+        g.textBaseline = "middle";
+        // shadows first, so the letters of one word never darken the next
+        g.save(); g.filter = "blur(14px)";
+        for (const it of items) { g.font = it.font; g.textAlign = it.align; g.fillStyle = `rgba(0,0,255,${0.9 * it.fade})`; g.fillText(it.txt, it.x, it.y + 6); }
+        g.restore();
+        g.globalCompositeOperation = "lighter";
+        for (const it of items) {
+          g.font = it.font; g.textAlign = it.align;
+          g.fillStyle = `rgba(255,${it.still},0,${it.fade})`;
+          g.fillText(it.txt, it.x, it.y);
+        }
+        g.globalCompositeOperation = "source-over";
+      }
+      let TL = null;
+      function titleLetters() {
+        if (TL) return TL;
+        const g = maskC.getContext("2d"); TL = [];
+        const word = (txt, font, y, track, i0) => {
+          g.font = font; const ws = [...txt].map((ch) => g.measureText(ch).width + track), tot = ws.reduce((a, v) => a + v, 0) - track;
+          let x = W / 2 - tot / 2;
+          [...txt].forEach((ch, k) => { if (ch !== " ") TL.push({ ch, font, x, y, still: (i0 + TL.length * 23) % N }); x += ws[k]; });
+        };
+        word("Adobe Stock", '700 230px "Libre Baskerville"', 430, -3, 0);
+        word("Uploader", '600 190px "Inter"', 660, -3, 11);
+        return TL;
+      }
+
+      // ---------------- the overlay: lines, chips, the grid, the wall's type, the checks
+      const ov = () => $("#ov").getContext("2d");
+      function chip(g, txt, x, y, col, a, size = 18) {
+        if (a <= 0) return;
+        g.save(); g.globalAlpha = a; g.font = `600 ${size}px "JBM"`; const w = g.measureText(txt).width + 26;
+        g.fillStyle = "rgba(11,12,13,0.84)"; g.strokeStyle = col; g.lineWidth = 1.5;
+        g.beginPath(); g.roundRect(x - w / 2, y - size, w, size * 2, 9); g.fill(); g.stroke();
+        g.fillStyle = OFF; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(txt, x, y + 1); g.restore();
+      }
+      const trunc = (g, s, w) => { if (g.measureText(s).width <= w) return s; while (s.length && g.measureText(s + "…").width > w) s = s.slice(0, -1); return s + "…"; };
+      function overlay(t, S) {
+        const g = ov(); g.clearRect(0, 0, W, H);
+        g.textBaseline = "middle";
+        if (S.mode === 0) {
+          const a = r(t, TB.sweep[1], TB.sweep[1] + 0.3);
+          chip(g, `100 stills · one image`, W / 2, 140, TEAL, a);
+          const live = r(t, TB.sweep[0], TB.sweep[0] + 0.3) * (1 - a);
+          if (live > 0 && S.p[0] > 0) chip(g, `${String(S.p[1] + 1).padStart(3, "0")} / ${N}`, Math.min(W - 120, S.p[0] + 90), 980, OFF, live, 16);
+        } else if (S.mode === 1) {
+          // the scan's counter
+          const sa = r(t, TB.scan[0], TB.scan[0] + 0.3) * (1 - r(t, TB.scan[1], TB.scan[1] + 0.3));
+          if (sa > 0) chip(g, "reading 001 / 100", W / 2, 140, TEAL, sa, 16);
+          // III: the real title, the grid of forty-six, the first ten, the category
+          const k3 = r(t, TB.fly[0], TB.fly[1]);
+          if (t >= TB.typeTitle[0]) {
+            const n = Math.round(TB.first.title.length * r(t, TB.typeTitle[0], TB.typeTitle[1]));
+            g.save(); g.font = '400 44px "Libre Baskerville"'; g.fillStyle = OFF; g.textAlign = "left";
+            g.shadowColor = "rgba(0,0,0,0.8)"; g.shadowBlur = 16;
+            g.fillText(TB.first.title.slice(0, n), GX0, 200); g.restore();
+            g.save(); g.font = '500 16px "JBM"'; g.fillStyle = "rgba(244,241,234,0.7)"; g.textAlign = "left";
+            g.globalAlpha = r(t, TB.typeTitle[0], TB.typeTitle[0] + 0.3);
+            g.fillText(`TITLE · ${TB.first.title.length} CHARACTERS`, GX0, 146); g.restore();
+          }
+          if (k3 > 0) {
+            const nPop = Math.floor(lerp(6, 46, r(t, TB.pop[0], TB.pop[1])) + 1e-6);
+            for (let i = 0; i < KW.length; i++) {
+              const flown = i < 6;
+              let a;
+              if (flown) a = r(t, TB.fly[1] - 0.25, TB.fly[1] + 0.1);
+              else { const ti = lerp(TB.pop[0], TB.pop[1], (i - 6) / 40); a = r(t, ti, ti + 0.12); }
+              if (a <= 0) continue;
+              const [x, y] = slot(i), first10 = i < 10;
+              g.save(); g.globalAlpha = a;
+              g.font = '500 15px "JBM"'; g.fillStyle = first10 ? TEAL : "rgba(244,241,234,0.5)"; g.textAlign = "left";
+              g.fillText(String(i + 1).padStart(2, "0"), x, y + 1);
+              g.font = '600 30px "Inter"'; g.fillStyle = first10 ? OFF : "rgba(244,241,234,0.78)";
+              g.fillText(KW[i], x + 46, y);
+              g.restore();
+            }
+            // the first ten, bracketed
+            const ba = r(t, TB.pop[0] + 0.9, TB.pop[0] + 1.3);
+            if (ba > 0) {
+              g.save(); g.globalAlpha = ba; g.strokeStyle = TEAL; g.lineWidth = 2; g.shadowColor = TEAL; g.shadowBlur = 10;
+              const x0 = GX0 - 18, y0 = GY0 - 30, x1 = GX0 + 6 * GCW - 30, y1 = GY0 + GRH + 28;
+              g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y0); g.lineTo(x1, y0 + GRH); g.lineTo(GX0 + 4 * GCW - 18, y0 + GRH);
+              g.lineTo(GX0 + 4 * GCW - 18, y1); g.lineTo(x0, y1); g.closePath(); g.stroke(); g.restore();
+              g.save(); g.globalAlpha = ba; g.font = '600 16px "JBM"'; g.fillStyle = TEAL; g.textAlign = "right";
+              g.fillText("THE FIRST TEN · THE TITLE'S OWN WORDS", x1, y0 - 18); g.restore();
+            }
+            const ca = r(t, TB.cat, TB.cat + 0.3);
+            chip(g, `${nPop} / 46 · unique · lowercase`, GX0 + 210, 820, OFF, ca);
+            chip(g, `category ${TB.first.category}`, GX0 + 560, 820, TEAL, r(t, TB.cat + 0.3, TB.cat + 0.6));
+          }
+        } else if (S.mode === 2) {
+          // each concept lights up, with its real count
+          let x0 = 0;
+          TB.groups.forEach((gr, k) => {
+            const w = gr.n / N * W, tk = lerp(TB.bands[0], TB.bands[1], k / TB.groups.length);
+            const a = r(t, tk, tk + 0.15);
+            if (a > 0) {
+              g.save(); g.globalAlpha = a * (1 - 0.6 * r(t, TB.bands[1] + 0.2, TB.bands[1] + 0.6)); g.strokeStyle = TEAL; g.lineWidth = 2;
+              g.strokeRect(x0 + 2, 96, w - 4, H - 192); g.restore();
+              chip(g, `×${gr.n}`, x0 + w / 2, 140, TEAL, a, 17);
+            }
+            x0 += w;
+          });
+          chip(g, `${TB.groups.length} concepts · near-duplicates grouped`, W / 2, 900, OFF, r(t, TB.bands[1] + 0.2, TB.bands[1] + 0.5));
+        } else if (S.mode === 3 || S.mode === 4) {
+          wallType(g, t, S);
+          if (S.mode === 4) {
+            // one file
+            const fa = r(t, TB.collapse[1] - 0.3, TB.collapse[1]) * (1 - r(t, TB.gate[0] + 0.6, TB.gate[0] + 1.0));
+            chip(g, `${TB.csvName} · ${N} rows`, W / 2, H / 2 - 70, TEAL, fa);
+            portal(g, t);
+          }
+        }
+      }
+      function wallType(g, t, S) {
+        const sq = S.mode === 4 ? S.p[2] : 0;
+        const a = 1 - r(t, TB.collapse[0], TB.collapse[0] + 0.35);
+        if (a <= 0) return;
+        const sc = S.p[0];
+        g.save(); g.globalAlpha = a;
+        g.beginPath(); g.rect(0, 144, WALL_X, H - 144); g.clip();
+        // the header row
+        g.font = '600 15px "JBM"'; g.fillStyle = TEAL; g.textAlign = "left";
+        const r0 = Math.max(0, Math.floor((sc - 120) / RH) - 1), r1 = Math.min(N - 1, r0 + 24);
+        for (let i = r0; i <= r1; i++) {
+          const y = 120 + i * RH - sc + RH / 2;
+          if (y < -RH || y > H + RH) continue;
+          const row = TB.rows[i];
+          g.font = '500 15px "JBM"'; g.fillStyle = "rgba(244,241,234,0.55)";
+          g.fillText(String(i + 1).padStart(3, "0"), 40, y);
+          g.fillStyle = "rgba(244,241,234,0.62)";
+          g.fillText(trunc(g, row.file, 300), 100, y);
+          g.font = '500 20px "Inter"'; g.fillStyle = OFF;
+          g.fillText(trunc(g, row.title, 610), 430, y);
+          g.font = '500 15px "JBM"'; g.fillStyle = TEAL; g.textAlign = "right";
+          g.fillText(`${row.nk} tags`, 1170, y); g.fillText(`cat ${row.category}`, 1270, y); g.textAlign = "left";
+        }
+        // room for the line
+        const fade = g.createLinearGradient(0, 860, 0, 990); fade.addColorStop(0, "rgba(11,12,13,0)"); fade.addColorStop(1, "rgba(11,12,13,0.88)");
+        g.fillStyle = fade; g.fillRect(0, 860, 1050, H - 860);
+        g.restore();
+        // the header bar
+        g.save(); g.globalAlpha = a; g.fillStyle = "rgba(11,12,13,0.92)"; g.fillRect(0, 96, WALL_X, 48);
+        g.font = '600 15px "JBM"'; g.fillStyle = TEAL; g.textAlign = "left";
+        g.fillText("Filename", 100, 121); g.fillText("Title", 430, 121); g.textAlign = "right"; g.fillText("Keywords", 1170, 121); g.fillText("Category", 1270, 121);
+        g.restore();
+        // the checks, one rule at a time
+        const pa = a * r(t, T.wall[0] + 0.2, T.wall[0] + 0.6);
+        g.save(); g.globalAlpha = pa; g.textAlign = "left";
+        g.font = '600 16px "JBM"'; g.fillStyle = "rgba(244,241,234,0.7)"; g.fillText("THE UPLOADER'S CHECKS", 1380, 200);
+        TB.checks.forEach(([name, n], k) => {
+          const tk = TB.rules[k], u = r(t, tk, tk + 0.35), y = 270 + k * 74;
+          g.font = '500 28px "Inter"'; g.fillStyle = u > 0 ? OFF : "rgba(244,241,234,0.35)"; g.fillText(name, 1430, y);
+          // the box and its tick
+          g.strokeStyle = u > 0 ? TEAL : "rgba(244,241,234,0.35)"; g.lineWidth = 2; g.strokeRect(1380, y - 15, 30, 30);
+          if (u > 0) {
+            g.strokeStyle = TEAL; g.lineWidth = 4; g.beginPath();
+            const p1 = [1386, y], p2 = [1393, y + 8], p3 = [1406, y - 9], uu = eOut(u);
+            g.moveTo(...p1); if (uu < 0.4) g.lineTo(lerp(p1[0], p2[0], uu / 0.4), lerp(p1[1], p2[1], uu / 0.4));
+            else { g.lineTo(...p2); g.lineTo(lerp(p2[0], p3[0], (uu - 0.4) / 0.6), lerp(p2[1], p3[1], (uu - 0.4) / 0.6)); }
+            g.stroke();
+            g.font = '500 18px "JBM"'; g.fillStyle = TEAL; g.textAlign = "right"; g.fillText(`${Math.round(n * eOut(u))} / ${N}`, 1860, y); g.textAlign = "left";
+          }
+          if (name === "no banned terms" && u > 0) {
+            g.font = '500 14px "JBM"'; let x = 1430;
+            TB.banned.forEach((w, j) => {
+              const wu = r(t, tk + 0.1 + j * 0.06, tk + 0.25 + j * 0.06); if (wu <= 0) return;
+              g.globalAlpha = pa * wu; g.fillStyle = "rgba(255,138,106,0.85)"; g.fillText(w, x, y + 32);
+              const ww = g.measureText(w).width; g.strokeStyle = RED; g.lineWidth = 1.5; g.beginPath(); g.moveTo(x - 2, y + 32); g.lineTo(x + ww + 2, y + 32); g.stroke();
+              x += ww + 12;
+            });
+            g.globalAlpha = pa;
+          }
+        });
+        g.restore();
+        const va = a * r(t, TB.verdict, TB.verdict + 0.3);
+        if (va > 0) {
+          g.save(); g.globalAlpha = va; g.font = '400 52px "Libre Baskerville"'; g.fillStyle = OFF; g.textAlign = "left";
+          g.fillText(`${N} rows · `, 1380, 830); const w0 = g.measureText(`${N} rows · `).width;
+          g.fillStyle = TEAL; g.fillText(`${TB.errors} errors`, 1380 + w0, 830); g.restore();
+        }
+      }
+      function portal(g, t) {
+        const a = r(t, TB.portal[0], TB.portal[0] + 0.4);
+        if (a <= 0) return;
+        const items = ["made with generative AI tools", "people and property are fictional"];
+        g.save(); g.globalAlpha = a;
+        g.font = '600 16px "JBM"'; g.fillStyle = "rgba(244,241,234,0.8)"; g.textAlign = "center"; g.shadowColor = "rgba(0,0,0,0.9)"; g.shadowBlur = 12;
+        g.fillText("IN THE PORTAL, BY HAND", W / 2, 380);
+        items.forEach((s, k) => {
+          const y = 450 + k * 70, u = eOut(r(t, TB.portal[1 + k], TB.portal[1 + k] + 0.3));
+          g.font = '500 34px "Inter"'; const tw = g.measureText(s).width, x0 = W / 2 - (tw + 60) / 2;
+          g.fillStyle = "rgba(11,12,13,0.7)"; g.fillRect(x0 - 24, y - 32, tw + 108, 64);
+          g.strokeStyle = OFF; g.lineWidth = 2.5; g.strokeRect(x0, y - 17, 34, 34);
+          if (u > 0) { g.strokeStyle = TEAL; g.lineWidth = 5; g.beginPath(); g.moveTo(x0 + 6, y); g.lineTo(x0 + 14, y + 9);
+            g.lineTo(lerp(x0 + 14, x0 + 30, u), lerp(y + 9, y - 12, u)); g.stroke(); }
+          g.fillStyle = OFF; g.textAlign = "left"; g.fillText(s, x0 + 60, y + 1);
+        });
+        g.restore();
+      }
+
+      // ---------------- the type
+      const HUD = [[0, "100 stills · one folder"], [T.read[0], "vision · one image at a time"], [T.keys[0], `46 keywords · category ${TB.first.category}`],
+        [T.dupes[0], `${TB.groups.length} concepts`], [T.wall[0], "validator"], [T.tunnel[0], "portal review"], [T.title, ""]];
+      let lastLn = "";
+      function paint(t) {
+        const S = scene(t);
+        maskLetters(t, S);
+        if (gl) drawGL(S, t);
+        overlay(t, S);
+        let ln = null; for (const L of TB.lines) if (t >= L[0] && t < L[1]) ln = L;
+        const el = $("#ln");
+        if (ln) {
+          if (ln[2] !== lastLn) { el.textContent = ln[2]; lastLn = ln[2]; }
+          const u = r(t, ln[0], ln[0] + 0.5);
+          el.style.opacity = (u * (1 - r(t, ln[1] - 0.25, ln[1]))).toFixed(3);
+          el.style.clipPath = `inset(0 ${(100 * (1 - eExpo(u))).toFixed(1)}% 0 0)`;
+          el.style.transform = `translateY(${(14 * (1 - eOut(u))).toFixed(1)}px)`;
+        } else el.style.opacity = 0;
+        let st = HUD[0][1]; for (const [a, s] of HUD) if (t >= a) st = s;
+        $("#hud-st").textContent = st;
+        const hudO = r(t, 0.4, 0.9) * (1 - r(t, T.title - 0.2, T.title));
+        $("#hud-l").style.opacity = hudO; $("#hud-r").style.opacity = hudO;
+        let fl = 0; for (const c of TB.cuts) if (t >= c && t < c + 0.12) fl = Math.max(fl, 0.2 * (1 - (t - c) / 0.12));
+        $("#flash").style.opacity = fl.toFixed(3);
+        $("#veil").style.opacity = (1 - eOut(r(t, 0.0, 0.45))).toFixed(3);
+        const ca = r(t, T.mark - 0.15, T.mark + 0.1);
+        $("#card").style.opacity = ca.toFixed(3);
+        const lu = eBack(r(t, T.mark, T.mark + 0.7));
+        $("#c-logo").style.transform = `translateY(${(30 * (1 - lu)).toFixed(1)}px) scale(${(0.94 + 0.06 * lu).toFixed(3)})`;
+        $("#c-logo").style.opacity = r(t, T.mark, T.mark + 0.35).toFixed(3);
+        $("#c-name").style.opacity = r(t, TB.line - 0.4, TB.line).toFixed(3);
+        $("#c-claim").style.opacity = r(t, TB.line, TB.line + 0.5).toFixed(3);
+        $("#c-claim").style.transform = `translateY(${(14 * (1 - eOut(r(t, TB.line, TB.line + 0.6)))).toFixed(1)}px)`;
+        $("#c-url").textContent = TB.url.slice(0, Math.round(TB.url.length * r(t, TB.line + 0.5, TB.line + 1.5)));
+      }
+
+      const tl = gsap.timeline({ paused: true });
+      const clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+
+      async function build() {
+        const load = (src) => { const im = new Image(); im.src = src; return im; };
+        const stills = Array.from({ length: N }, (_, k) => load(`assets/img/s${String(k + 1).padStart(3, "0")}.jpg`));
+        const hero = load("assets/img/hero.jpg");
+        await Promise.all([...stills.map((im) => im.decode()), hero.decode(), $("#c-logo").decode(),
+          document.fonts.load('700 40px "Libre Baskerville"'), document.fonts.load('400 40px "Libre Baskerville"'),
+          document.fonts.load('600 20px "Inter"'), document.fonts.load('500 20px "Inter"'), document.fonts.load('500 20px "JBM"'), document.fonts.load('600 20px "JBM"')]);
+        $("#c-name").textContent = TB.name; $("#c-claim").textContent = TB.claim;
+        maskC = document.createElement("canvas"); maskC.width = W; maskC.height = H;
+        initGL(stills, hero);
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = window.__hf.buildReady || {};
+      window.__hf.buildReady["batch"] = build();
+    </script>
+  </body>
+</html>

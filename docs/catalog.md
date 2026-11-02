@@ -106,6 +106,14 @@ Made for: Imagined Worlds · Stills. Stack: Three.js, TSL, GSAP, Python (score).
 
 ## Products and systems
 
+### R37 · Batch
+
+A film for a stock-metadata tool that plays a folder of stills as time: a hundred real images in one texture array, so a slit freezes the batch into one picture, keywords lift out of a still as letters showing a later take, and near-duplicates melt into each other while the concepts cut hard.
+
+Made for: Adobe Stock Uploader · batch metadata, validated first. Stack: WebGL2, GSAP, Python (CSV, checks, table, score), FFmpeg.
+
+[Recipe and poster](../recipes/r37-batch/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r37-batch-v1)
+
 ### R36 · Tideline
 
 A film for a music-to-social pipeline that uses time as its material: real footage in one texture array, where every pixel picks its own moment, so a whole video becomes a strip of time, the slits outside a vertical crop fall away through time, and three phones show one wave at three moments.
