@@ -106,6 +106,14 @@ Made for: Imagined Worlds · Stills. Stack: Three.js, TSL, GSAP, Python (score).
 
 ## Products and systems
 
+### R38 · Twice
+
+A film for a meeting copilot that plays a conversation as time: the app's own screens of a demo call in one texture array, so the brief writes out of a slit, the hard question is held in time, and rehearsal and the live call share one beat before a slit sweeps it all live.
+
+Made for: Klatea · every big conversation, rehearsed before it happens. Stack: WebGL2, GSAP, Python (shots, table, score), FFmpeg.
+
+[Recipe and poster](../recipes/r38-twice/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r38-twice-v1)
+
 ### R37 · Batch
 
 A film for a stock-metadata tool that plays a folder of stills as time: a hundred real images in one texture array, so a slit freezes the batch into one picture, keywords lift out of a still as letters showing a later take, and near-duplicates melt into each other while the concepts cut hard.

@@ -1,0 +1,317 @@
+{
+ "n": 56,
+ "w": 1600,
+ "h": 900,
+ "shots": {
+  "prep": [
+   0,
+   6
+  ],
+  "brief": [
+   6,
+   8
+  ],
+  "objections": [
+   14,
+   6
+  ],
+  "roleplay": [
+   20,
+   8
+  ],
+  "live": [
+   28,
+   16
+  ],
+  "debrief": [
+   44,
+   8
+  ],
+  "next": [
+   52,
+   4
+  ]
+ },
+ "frames": [
+  {
+   "k": 0,
+   "shot": "prep",
+   "note": "prep.png"
+  },
+  {
+   "k": 1,
+   "shot": "prep",
+   "note": "prep.png"
+  },
+  {
+   "k": 2,
+   "shot": "prep",
+   "note": "prep.png"
+  },
+  {
+   "k": 3,
+   "shot": "prep",
+   "note": "prep.png"
+  },
+  {
+   "k": 4,
+   "shot": "prep",
+   "note": "prep.png"
+  },
+  {
+   "k": 5,
+   "shot": "prep",
+   "note": "prep.png"
+  },
+  {
+   "k": 6,
+   "shot": "brief",
+   "note": "brief.png"
+  },
+  {
+   "k": 7,
+   "shot": "brief",
+   "note": "brief.png"
+  },
+  {
+   "k": 8,
+   "shot": "brief",
+   "note": "brief.png"
+  },
+  {
+   "k": 9,
+   "shot": "brief",
+   "note": "brief.png"
+  },
+  {
+   "k": 10,
+   "shot": "brief",
+   "note": "brief.png"
+  },
+  {
+   "k": 11,
+   "shot": "brief",
+   "note": "brief.png"
+  },
+  {
+   "k": 12,
+   "shot": "brief",
+   "note": "brief.png"
+  },
+  {
+   "k": 13,
+   "shot": "brief",
+   "note": "brief.png"
+  },
+  {
+   "k": 14,
+   "shot": "objections",
+   "note": "objections.png"
+  },
+  {
+   "k": 15,
+   "shot": "objections",
+   "note": "objections.png"
+  },
+  {
+   "k": 16,
+   "shot": "objections",
+   "note": "objections.png"
+  },
+  {
+   "k": 17,
+   "shot": "objections",
+   "note": "objections.png"
+  },
+  {
+   "k": 18,
+   "shot": "objections",
+   "note": "objections.png"
+  },
+  {
+   "k": 19,
+   "shot": "objections",
+   "note": "objections.png"
+  },
+  {
+   "k": 20,
+   "shot": "roleplay",
+   "note": "roleplay.png"
+  },
+  {
+   "k": 21,
+   "shot": "roleplay",
+   "note": "roleplay.png"
+  },
+  {
+   "k": 22,
+   "shot": "roleplay",
+   "note": "roleplay.png"
+  },
+  {
+   "k": 23,
+   "shot": "roleplay",
+   "note": "roleplay.png"
+  },
+  {
+   "k": 24,
+   "shot": "roleplay",
+   "note": "roleplay.png"
+  },
+  {
+   "k": 25,
+   "shot": "roleplay",
+   "note": "roleplay.png"
+  },
+  {
+   "k": 26,
+   "shot": "roleplay",
+   "note": "roleplay.png"
+  },
+  {
+   "k": 27,
+   "shot": "roleplay",
+   "note": "roleplay.png"
+  },
+  {
+   "k": 28,
+   "shot": "live",
+   "note": "00.png"
+  },
+  {
+   "k": 29,
+   "shot": "live",
+   "note": "01.png"
+  },
+  {
+   "k": 30,
+   "shot": "live",
+   "note": "02.png"
+  },
+  {
+   "k": 31,
+   "shot": "live",
+   "note": "03.png"
+  },
+  {
+   "k": 32,
+   "shot": "live",
+   "note": "04.png"
+  },
+  {
+   "k": 33,
+   "shot": "live",
+   "note": "05.png"
+  },
+  {
+   "k": 34,
+   "shot": "live",
+   "note": "06.png"
+  },
+  {
+   "k": 35,
+   "shot": "live",
+   "note": "07.png"
+  },
+  {
+   "k": 36,
+   "shot": "live",
+   "note": "08.png"
+  },
+  {
+   "k": 37,
+   "shot": "live",
+   "note": "09.png"
+  },
+  {
+   "k": 38,
+   "shot": "live",
+   "note": "10.png"
+  },
+  {
+   "k": 39,
+   "shot": "live",
+   "note": "11.png"
+  },
+  {
+   "k": 40,
+   "shot": "live",
+   "note": "12.png"
+  },
+  {
+   "k": 41,
+   "shot": "live",
+   "note": "13.png"
+  },
+  {
+   "k": 42,
+   "shot": "live",
+   "note": "14.png"
+  },
+  {
+   "k": 43,
+   "shot": "live",
+   "note": "15.png"
+  },
+  {
+   "k": 44,
+   "shot": "debrief",
+   "note": "debrief.png"
+  },
+  {
+   "k": 45,
+   "shot": "debrief",
+   "note": "debrief.png"
+  },
+  {
+   "k": 46,
+   "shot": "debrief",
+   "note": "debrief.png"
+  },
+  {
+   "k": 47,
+   "shot": "debrief",
+   "note": "debrief.png"
+  },
+  {
+   "k": 48,
+   "shot": "debrief",
+   "note": "debrief.png"
+  },
+  {
+   "k": 49,
+   "shot": "debrief",
+   "note": "debrief.png"
+  },
+  {
+   "k": 50,
+   "shot": "debrief",
+   "note": "debrief.png"
+  },
+  {
+   "k": 51,
+   "shot": "debrief",
+   "note": "debrief.png"
+  },
+  {
+   "k": 52,
+   "shot": "next",
+   "note": "next.png"
+  },
+  {
+   "k": 53,
+   "shot": "next",
+   "note": "next.png"
+  },
+  {
+   "k": 54,
+   "shot": "next",
+   "note": "next.png"
+  },
+  {
+   "k": 55,
+   "shot": "next",
+   "note": "next.png"
+  }
+ ]
+}
