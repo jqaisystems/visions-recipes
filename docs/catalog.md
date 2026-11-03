@@ -106,6 +106,14 @@ Made for: Imagined Worlds · Stills. Stack: Three.js, TSL, GSAP, Python (score).
 
 ## Products and systems
 
+### R39 · Echo
+
+A film for a meeting copilot drawn as ink that remembers where it has been: one feedback buffer, so a voice becomes ridgelines, the brief's words leave trails, and the rehearsed question's ripple meets the live objection's in a moiré.
+
+Made for: Klatea · every big conversation, rehearsed before it happens. Stack: WebGL2, GSAP, Python (table, score), FFmpeg.
+
+[Recipe and poster](../recipes/r39-echo/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r39-echo-v1)
+
 ### R38 · Twice
 
 A film for a meeting copilot that plays a conversation as time: the app's own screens of a demo call in one texture array, so the brief writes out of a slit, the hard question is held in time, and rehearsal and the live call share one beat before a slit sweeps it all live.

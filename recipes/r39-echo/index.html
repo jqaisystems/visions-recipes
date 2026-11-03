@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <!--
+      R39 · Echo. 33.75 s at 112 bpm (season 6, ink feedback, film 1). Made for Klatea, a preparation studio and live
+      meeting copilot whose promise is that the hard moment of a call happens twice. No screens: the film is one page
+      that remembers. One WebGL2 feedback buffer carries the page from frame to frame, flows it, fades it towards paper
+      and lays the new marks over it, so everything that moves leaves its own history behind, as ink and never as glow.
+      A voice drawn as ridgelines receding into the page; the brief's words slamming in and flying into a list; the
+      client's question in rehearsal, its impact rippling out in sage; the client's objection live, its ripple in ink
+      meeting the rehearsed one in a moiré; two voices drawn as two pens in spirals, talk time as a ring; everything
+      pulled into one column and the score landing as ink; the ridgelines again for the next call; your mark.
+      The ink restarts from paper at three anchors, so any frame is rebuilt the same way from its anchor.
+      paint(t) reads one baked table (assets/table.js, from bake/table.py).
+    -->
+   <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/table.js"></script>
+    <style>
+      @font-face { font-family: "Fraunces"; src: url("assets/fonts/Fraunces-latin.woff2") format("woff2"); font-weight: 100 900; font-style: normal; }
+      @font-face { font-family: "Fraunces"; src: url("assets/fonts/Fraunces-Italic.ttf") format("truetype"); font-weight: 100 900; font-style: italic; }
+      @font-face { font-family: "Plex"; src: url("assets/fonts/IBMPlexMono-Regular.ttf") format("truetype"); font-weight: 400; }
+      @font-face { font-family: "Plex"; src: url("assets/fonts/IBMPlexMono-Medium.ttf") format("truetype"); font-weight: 500; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #F4F1EA; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #F4F1EA; color: #20272A; }
+      #ct-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #gl, #ov { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #ct-ui { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      .hud { position: absolute; top: 38px; font: 500 16px "Plex", monospace; letter-spacing: 0.18em; white-space: nowrap; color: #646C6A; text-transform: uppercase; }
+      #hud-l { left: 200px; color: #114353; }
+      #hud-l span { color: #646C6A; }
+      #hud-r { right: 200px; }
+      #rail { position: absolute; left: 112px; top: 520px; width: 0; height: 0; }
+      #rail div { position: absolute; left: 0; top: 0; transform: translate(-50%, -50%) rotate(-90deg); font: 500 16px "Plex", monospace; letter-spacing: 0.32em; color: #646C6A; white-space: nowrap; }
+      #ln { position: absolute; left: 200px; top: 984px; font: 500 64px/1.05 "Fraunces", serif; letter-spacing: -0.015em; color: #114353; white-space: nowrap; opacity: 0; paint-order: stroke fill; -webkit-text-stroke: 14px #F4F1EA; }
+      #ln em { font-style: italic; color: #6B8A67; -webkit-text-stroke: 14px #F4F1EA; }
+      #flash { position: absolute; inset: 0; background: #FFFDF8; opacity: 0; }
+      #veil { position: absolute; inset: 0; background: #F4F1EA; opacity: 1; }
+      #card { position: absolute; inset: 0; background: #F4F1EA; opacity: 0; }
+      #c-logo { position: absolute; left: 580px; top: 330px; width: 760px; height: 135px; }
+      #c-claim { position: absolute; left: 0; right: 0; top: 540px; text-align: center; font: 500 50px "Fraunces", serif; color: #114353; white-space: nowrap; letter-spacing: -0.01em; }
+      #c-claim em { font-style: italic; color: #6B8A67; }
+      #c-url { position: absolute; left: 0; right: 0; top: 650px; height: 34px; text-align: center; font: 500 26px "Plex", monospace; color: #114353; white-space: nowrap; letter-spacing: 0.04em; }
+      #c-beta { position: absolute; left: 0; right: 0; top: 712px; text-align: center; font: 500 18px "Plex", monospace; letter-spacing: 0.28em; color: #D64550; white-space: nowrap; text-transform: uppercase; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="33.75" data-width="1920" data-height="1080">
+      <div id="ct-stage" class="clip" data-start="0" data-duration="33.75" data-track-index="0">
+        <canvas id="gl" width="1920" height="1080" data-layout-allow-overflow></canvas>
+        <canvas id="ov" width="1920" height="1080" data-layout-allow-overflow></canvas>
+      </div>
+      <div id="ct-ui" class="clip" data-start="0" data-duration="33.75" data-track-index="1">
+        <div class="hud" id="hud-l" data-layout-allow-occlusion>Klatea <span>· discovery call · demo scenario</span></div>
+        <div class="hud" id="hud-r" data-layout-allow-occlusion><span id="hud-st"></span></div>
+        <div id="rail" data-layout-allow-occlusion><div id="rail-t"></div></div>
+        <div id="ln" data-layout-allow-occlusion></div>
+        <div id="card" data-layout-allow-occlusion>
+          <img id="c-logo" src="assets/brand/your-mark.svg" alt="Your mark">
+          <div id="c-claim"></div>
+          <div id="c-url"></div>
+          <div id="c-beta"></div>
+        </div>
+        <div id="flash" data-layout-allow-occlusion></div>
+        <div id="veil" data-layout-allow-occlusion></div>
+      </div>
+      <audio id="score" src="assets/bgm/score.wav" data-start="0" data-duration="33.75" data-track-index="7" data-volume="0.9"></audio>
+    </div>
+
+    <script>
+      // the step: the page of the last frame, flowed, faded towards paper, with this frame's marks laid over it
+      const SIM_FS = `#version 300 es
+precision highp float;
+uniform sampler2D uPrev, uMarks;
+uniform vec2 uRes, uVP, uC;
+uniform float uT, uPersp, uCurl, uSwirl, uPull, uFade;
+out vec4 fragColor;
+const vec3 PAPER = vec3(0.957, 0.945, 0.918);
+void main() {
+  vec2 uv = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y) / uRes;     // screen uv, y down
+  vec2 src = uv;
+  // the page recedes towards a vanishing point: a voice becomes a landscape of ridgelines
+  src = uVP + (src - uVP) * (1.0 + 0.010 * uPersp);
+  // a slow drift, so trails flow like ink in water
+  src -= uCurl * 0.0016 * vec2(sin(uv.y * 11.0 + uT * 0.9) + 0.6 * sin(uv.y * 23.0 - uT * 1.7), cos(uv.x * 9.0 - uT * 0.7) + 0.6 * cos(uv.x * 19.0 + uT * 1.3));
+  // a swirl round the centre: two voices wind into a spiral
+  vec2 q = (src - uC) * vec2(1.7778, 1.0);
+  float a = uSwirl * 0.032 * exp(-length(q) * 1.1);
+  q = mat2(cos(a), -sin(a), sin(a), cos(a)) * q;
+  src = uC + q / vec2(1.7778, 1.0);
+  // everything pulled into one column
+  src.x = uC.x + (src.x - uC.x) * (1.0 + 0.05 * uPull);
+  vec3 prev = (src.x < 0.0 || src.y < 0.0 || src.x > 1.0 || src.y > 1.0) ? PAPER : texture(uPrev, vec2(src.x, 1.0 - src.y)).rgb;
+  prev = mix(prev, PAPER, uFade);
+  vec4 m = texture(uMarks, uv);
+  fragColor = vec4(mix(prev, m.rgb, m.a), 1.0);
+}`;
+      const DISP_FS = `#version 300 es
+precision highp float;
+uniform sampler2D uState;
+uniform vec2 uRes;
+uniform float uTime;
+out vec4 fragColor;
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+void main() {
+  vec2 uv = gl_FragCoord.xy / uRes;
+  vec3 c = texture(uState, uv).rgb;
+  c += (hash(gl_FragCoord.xy + fract(uTime * 7.0) * 91.0) - 0.5) / 150.0;
+  fragColor = vec4(c, 1.0);
+}`;
+      const VS = "#version 300 es\nin vec2 p; void main(){ gl_Position = vec4(p, 0.0, 1.0); }";
+    </script>
+
+    <script>
+      const TB = window.TABLE, T = TB.T, DUR = TB.dur, BEAT = TB.beat;
+      const W = 1920, H = 1080, SW = 960, SH = 540, DT = 1 / 30;
+      const $ = (s) => document.querySelector(s);
+      const cl = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x)), r = (t, a, b) => cl((t - a) / (b - a)), lerp = (a, b, u) => a + (b - a) * u;
+      const E = (n) => gsap.parseEase(n), eOut = E("power3.out"), eIO = E("power3.inOut"), eExpo = E("expo.out"), eExpoIO = E("expo.inOut"), eBack = E("back.out(1.7)"), eSine = E("sine.inOut");
+      const b = (x) => x * BEAT;
+      const INK = "#114353", SAGE = "#6B8A67", CORAL = "#D64550", PAPER = "#F4F1EA", MUTED = "#646C6A", HAIR = "#DDD8CB", CARD = "#FFFDF8";
+      const C = [960, 520];
+      const envAt = (t) => TB.env[Math.max(0, Math.min(TB.env.length - 1, Math.round(t * 30)))];
+      const anchorOf = (t) => { let a = 0; for (const x of TB.anchors) if (t >= x - 1e-6) a = x; return a; };
+
+      // ---------------- the flow of the page at time τ
+      function flow(tau) {
+        const F = { persp: 0, curl: 0, swirl: 0, pull: 0, fade: 0.004, vp: [0.5, 0.36], c: [C[0] / W, C[1] / H] };
+        if (tau < T.prep[0]) { F.persp = 1; F.fade = 0.003; }
+        else if (tau < T.rehearse[0]) { F.persp = 1 - r(tau, T.prep[0], T.prep[0] + 1.0); F.curl = r(tau, T.prep[0], T.prep[0] + 0.8); F.fade = 0.012; }
+        else if (tau < T.duet[0]) {
+          F.fade = 0.0025 + 0.09 * r(tau, TB.settle, TB.settle + 0.5) - 0.08 * r(tau, TB.settle + 0.9, TB.settle + 1.2);
+          F.curl = 0.25 * r(tau, TB.oImpact, TB.oImpact + 1);
+        } else if (tau < T.debrief[0]) { F.swirl = 1; F.fade = 0.006; }
+        else if (tau < T.loop[0]) {
+          F.swirl = 1 - r(tau, T.debrief[0], T.debrief[0] + 0.5);
+          F.pull = r(tau, TB.pull[0], TB.pull[0] + 0.4) * (1 - r(tau, TB.pull[1], TB.pull[1] + 0.4));
+          F.fade = tau < TB.pull[1] ? 0.008 : (tau < TB.pull[1] + 0.25 ? 0.06 : 0.01); F.curl = tau < TB.pull[1] + 0.25 ? 0 : 0.5;
+        } else { F.persp = 1; F.fade = 0.005; }
+        return F;
+      }
+
+      // ---------------- the marks: what the pen lays down at time τ (sim) or what is crisp at time t (overlay)
+      function voice(tau) { return 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(tau * 5.3) * Math.sin(tau * 2.1 + 1.0)); }
+      function ridgePts(tau) {
+        const pts = [], v = voice(tau), y0 = 820;
+        for (let x = 140; x <= 1780; x += 8) {
+          const A = 190 * Math.exp(-(((x - 960) / 380) ** 2)) * v;
+          const n = 0.5 * Math.sin(x * 0.031 + tau * 7.1) + 0.3 * Math.sin(x * 0.071 - tau * 11.3) + 0.2 * Math.sin(x * 0.013 + tau * 3.0);
+          pts.push([x, y0 - A * (0.55 + 0.45 * n) - 4 * Math.sin(x * 0.21 + tau * 31) * Math.exp(-(((x - 960) / 260) ** 2))]);
+        }
+        return pts;
+      }
+      function ridge(g, tau, lw) {
+        const pts = ridgePts(tau);
+        g.beginPath(); g.moveTo(pts[0][0], H + 20);
+        for (const [x, y] of pts) g.lineTo(x, y);
+        g.lineTo(pts[pts.length - 1][0], H + 20); g.closePath();
+        g.fillStyle = PAPER; g.fill();
+        g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
+        g.strokeStyle = INK; g.lineWidth = lw; g.lineJoin = "round"; g.stroke();
+      }
+      // the brief: each word slams in at the centre, then flies to its slot
+      const SLOT = (j) => [j % 2 ? 1030 : 470, 650 + Math.floor(j / 2) * 72];
+      function wordState(t, ts, j, g) {
+        if (t < ts) return null;
+        const fly = eExpoIO(r(t, ts + 0.2, ts + 0.47));
+        const size = lerp(150, 42, fly);
+        g.font = `500 ${size}px "Fraunces"`;
+        const w = g.measureText(TB.words[j][1]).width;
+        g.font = '500 42px "Fraunces"';
+        const ws = g.measureText(TB.words[j][1]).width;
+        const [sx, sy] = SLOT(j);
+        const cx = lerp(W / 2, sx + ws / 2, fly), cy = lerp(400, sy, fly);
+        const punch = 1 + 0.45 * (1 - eOut(r(t, ts, ts + 0.2)));
+        return { cx, cy, size: size * punch, a: r(t, ts, ts + 0.04), fly };
+      }
+      // big kinetic lines: the question and the objection, word by word
+      function lineLayout(g, items, lines, size, ys) {
+        g.font = `500 ${size}px "Fraunces"`;
+        const out = [];
+        const full = {}; items.forEach(([, w], k) => { (full[lines[k]] = full[lines[k]] || []).push(w); });
+        const x0 = {}; for (const L in full) x0[L] = W / 2 - g.measureText(full[L].join(" ")).width / 2;
+        const used = {};
+        items.forEach(([ts, w], k) => {
+          const L = lines[k], pre = (used[L] || []).join(" ");
+          const x = x0[L] + (pre ? g.measureText(pre + " ").width : 0);
+          (used[L] = used[L] || []).push(w);
+          out.push({ ts, w, x, y: ys[L] });
+        });
+        return out;
+      }
+      const QL = [0, 0, 1, 1], OL = [0, 1, 2];
+      const penPos = (u, who) => {
+        const s = cl(u / (T.duet[1] - T.duet[0]));
+        return who === 0
+          ? [C[0] + (292 - 150 * s) * Math.cos(-1.55 * u + 2.0), C[1] + (282 - 150 * s) * 0.82 * Math.sin(-1.55 * u + 2.0)]
+          : [C[0] + (90 + 160 * s) * Math.cos(2.1 * u), C[1] + (90 + 160 * s) * 0.82 * Math.sin(2.1 * u + 0.4)];
+      };
+
+      function simMarks(g, tau, n) {
+        g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, SW, SH);
+        g.setTransform(SW / W, 0, 0, SH / H, 0, 0);
+        g.textBaseline = "middle";
+        // ridgelines: a ridge every third step, each one occluding what's behind it
+        for (const [a, z] of TB.ridges) if (tau >= a && tau < z && n % 3 === 0) ridge(g, tau, 3);
+        // the brief's words: a trail while they fly, speed lines as they land
+        TB.words.forEach(([ts, w], j) => {
+          if (tau < ts || tau > ts + 0.7 || tau >= T.rehearse[0]) return;
+          const s = wordState(tau, ts, j, g); if (!s) return;
+          g.save(); g.globalAlpha = s.fly > 0.08 && s.fly < 1 ? 0.15 : 0.0; g.font = `500 ${s.size}px "Fraunces"`; g.fillStyle = INK; g.textAlign = "center";
+          g.fillText(w, s.cx, s.cy); g.restore();
+          if (tau - ts < 0.05) {
+            g.save(); g.strokeStyle = INK; g.lineWidth = 4; g.globalAlpha = 0.55;
+            for (let k = 0; k < 16; k++) { const an = k / 16 * Math.PI * 2 + j; g.beginPath(); g.moveTo(W / 2 + Math.cos(an) * 260, 400 + Math.sin(an) * 130); g.lineTo(W / 2 + Math.cos(an) * 620, 400 + Math.sin(an) * 300); g.stroke(); }
+            g.restore();
+          }
+        });
+        // the question and the objection: a ghost of each word as it lands, which the page keeps
+        const ghost = (items, size, col) => items.forEach((it) => { if (tau >= it.ts && tau < it.ts + 0.07) { g.save(); g.globalAlpha = 0.22; g.font = `500 ${size}px "Fraunces"`; g.fillStyle = col; g.textAlign = "left"; g.fillText(it.w, it.x, it.y); g.restore(); } });
+        ghost(lineLayout(g, TB.question, QL, 170, [430, 620]), 170, SAGE);
+        ghost(lineLayout(g, TB.objection, OL, 128, [380, 520, 660]), 128, INK);
+        // the ripples: rings laid down as they spread, so each impact leaves its own field
+        const rings = (t0, t1, c, col) => { if (tau >= t0 && tau < t1) { g.save(); g.strokeStyle = col; g.lineWidth = 9; g.beginPath(); g.arc(c[0], c[1], 20 + 720 * (tau - t0), 0, Math.PI * 2); g.stroke(); g.restore(); } };
+        rings(TB.qImpact, TB.qImpact + 3.6, TB.qC, SAGE);
+        rings(TB.oImpact, TB.settle, TB.oC, INK);
+        // the duet: two pens, each as heavy as its own voice
+        if (tau >= T.duet[0] && tau < T.debrief[0] + 0.3) {
+          const u = tau - T.duet[0], e = envAt(tau);
+          [[0, SAGE, e[0]], [1, INK, e[1]]].forEach(([who, col, v]) => {
+            const p0 = penPos(u - DT, who), p1 = penPos(u, who);
+            g.save(); g.strokeStyle = col; g.lineCap = "round"; g.lineWidth = 4 + 36 * v; g.beginPath(); g.moveTo(...p0); g.lineTo(...p1); g.stroke(); g.restore();
+          });
+        }
+        // the debrief: its lines pressed into the page as they land
+        if (tau >= TB.db[0][0] + 0.25 && tau < TB.db[0][0] + 0.35) { g.save(); g.globalAlpha = 0.5; g.font = '500 300px "Fraunces"'; g.fillStyle = INK; g.textAlign = "right"; g.fillText("8", W / 2 - 10, 420); g.restore(); }
+        TB.db.forEach(([ts, txt]) => { if (tau >= ts && tau < ts + 0.08 && txt !== "score" && !txt.startsWith("follow-up")) { g.save(); g.globalAlpha = 0.25; g.font = '500 54px "Fraunces"'; g.fillStyle = INK; g.textAlign = "center"; g.fillText(txt, W / 2, dbY(txt)); g.restore(); } });
+      }
+      const dbY = (txt) => ({ "Two-week pilot on one entity": 640, "Security review is their gating step": 730, "follow-up email · drafted": 830 }[txt] || 0);
+
+      // ---------------- WebGL2: two float buffers, ping-pong
+      let gl, PS, PD, US = {}, UD = {}, tex = [], fbo = [], cur = 0, marksTex, simC, simG, simAnchor = -1, simN = 0;
+      function initGL() {
+        gl = $("#gl").getContext("webgl2", { antialias: false, alpha: false, depth: false, stencil: false, preserveDrawingBuffer: true });
+        if (!gl.getExtension("EXT_color_buffer_float")) throw new Error("EXT_color_buffer_float is needed for the ink buffer");
+        const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+        const prog = (fs) => { const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs)); gl.bindAttribLocation(p, 0, "p"); gl.linkProgram(p);
+          if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p)); return p; };
+        PS = prog(SIM_FS); PD = prog(DISP_FS);
+        for (const n of ["uPrev", "uMarks", "uRes", "uVP", "uC", "uT", "uPersp", "uCurl", "uSwirl", "uPull", "uFade"]) US[n] = gl.getUniformLocation(PS, n);
+        for (const n of ["uState", "uRes", "uTime"]) UD[n] = gl.getUniformLocation(PD, n);
+        const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+        const lin = () => { gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); };
+        for (let k = 0; k < 2; k++) {
+          tex[k] = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex[k]);
+          gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA16F, SW, SH); lin();
+          fbo[k] = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fbo[k]);
+          gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex[k], 0);
+        }
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        marksTex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, marksTex); lin();
+        simC = document.createElement("canvas"); simC.width = SW; simC.height = SH; simG = simC.getContext("2d", { willReadFrequently: false });
+      }
+      function resetSim(anchor) {
+        for (let k = 0; k < 2; k++) { gl.bindFramebuffer(gl.FRAMEBUFFER, fbo[k]); gl.viewport(0, 0, SW, SH); gl.clearColor(0.957, 0.945, 0.918, 1); gl.clear(gl.COLOR_BUFFER_BIT); }
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        simAnchor = anchor; simN = 0; cur = 0;
+      }
+      function stepSim() {
+        simN += 1;
+        const tau = simAnchor + simN * DT, F = flow(tau);
+        simMarks(simG, tau, simN);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, marksTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, simC);
+        const dst = 1 - cur;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo[dst]); gl.viewport(0, 0, SW, SH);
+        gl.useProgram(PS);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex[cur]);
+        gl.uniform1i(US.uPrev, 0); gl.uniform1i(US.uMarks, 1);
+        gl.uniform2f(US.uRes, SW, SH); gl.uniform2f(US.uVP, ...F.vp); gl.uniform2f(US.uC, ...F.c);
+        gl.uniform1f(US.uT, tau); gl.uniform1f(US.uPersp, F.persp); gl.uniform1f(US.uCurl, F.curl); gl.uniform1f(US.uSwirl, F.swirl);
+        gl.uniform1f(US.uPull, F.pull); gl.uniform1f(US.uFade, cl(F.fade, 0, 1));
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        cur = dst;
+      }
+      // the page at time t: rebuilt from its anchor when needed, otherwise stepped on
+      function simTo(t) {
+        const a = anchorOf(t);
+        const target = Math.floor((t - a) / DT + 1e-6);
+        if (a !== simAnchor || target < simN) resetSim(a);
+        while (simN < target) stepSim();
+      }
+      function display(t) {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, W, H);
+        gl.useProgram(PD);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex[cur]);
+        gl.uniform1i(UD.uState, 0); gl.uniform2f(UD.uRes, W, H); gl.uniform1f(UD.uTime, t);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+      }
+
+      // ---------------- the crisp layer
+      const ov = () => $("#ov").getContext("2d");
+      function label(g, txt, x, y, col, a, align = "left", size = 15) {
+        if (a <= 0) return; g.save(); g.globalAlpha = a; g.font = `500 ${size}px "Plex"`; g.fillStyle = col; g.textAlign = align; g.textBaseline = "middle";
+        g.letterSpacing = "0.2em"; g.fillText(txt, x, y); g.restore();
+      }
+      function chip(g, txt, x, y, col, a, size = 16) {
+        if (a <= 0) return;
+        g.save(); g.globalAlpha = a; g.font = `500 ${size}px "Plex"`; g.letterSpacing = "0.06em"; const w = g.measureText(txt).width + 30;
+        g.fillStyle = CARD; g.strokeStyle = col; g.lineWidth = 2;
+        g.beginPath(); g.roundRect(x - w / 2, y - size - 2, w, size * 2 + 4, 6); g.fill(); g.stroke();
+        g.fillStyle = col; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(txt, x, y + 1); g.restore();
+      }
+      function liveDot(g, x, y, a) { if (a <= 0) return; g.save(); g.globalAlpha = a; g.fillStyle = CORAL; g.beginPath(); g.arc(x, y, 7, 0, 7); g.fill(); g.restore(); }
+      function overlay(t) {
+        const g = ov(); g.clearRect(0, 0, W, H); g.textBaseline = "middle";
+        // the newest ridge, crisp
+        for (const [a, z] of TB.ridges) if (t >= a && t < z) { const tq = a + Math.floor((t - a) / (3 * DT)) * 3 * DT; ridge(g, tq, 3); }
+        // the brief
+        if (t >= T.prep[0] && t < T.rehearse[0] + 0.3) {
+          const fo = 1 - r(t, T.rehearse[0] - 0.25, T.rehearse[0] + 0.1);
+          TB.words.forEach(([ts, w], j) => {
+            const s = wordState(t, ts, j, g); if (!s) return;
+            g.save(); g.globalAlpha = s.a * fo; g.font = `500 ${s.size}px "Fraunces"`; g.fillStyle = INK; g.textAlign = "center"; g.fillText(w, s.cx, s.cy); g.restore();
+            if (s.fly > 0.98) { const [sx, sy] = SLOT(j); label(g, String(j + 1).padStart(2, "0"), sx - 54, sy + 2, SAGE, fo); }
+          });
+          label(g, "THE BRIEF · RESEARCHED FOR YOU", 416, 594, SAGE, r(t, TB.words[7][0] + 0.5, TB.words[7][0] + 0.9) * fo);
+        }
+        // the question, in rehearsal
+        if (t >= T.rehearse[0] && t < T.twice[0] + 0.2) {
+          const fo = 1 - r(t, b(23.6), b(24.8));
+          const qa = r(t, b(17.4), b(17.9)) * fo;
+          if (qa > 0) { g.save(); g.globalAlpha = qa; g.fillStyle = PAPER; g.fillRect(W / 2 - 190, 252, 380, 36); g.restore(); }
+          label(g, "THE CLIENT · IN REHEARSAL", W / 2, 270, SAGE, qa, "center");
+          lineLayout(g, TB.question, QL, 170, [430, 620]).forEach((it) => {
+            if (t < it.ts) return;
+            const u = eOut(r(t, it.ts, it.ts + 0.22));
+            g.save(); g.globalAlpha = r(t, it.ts, it.ts + 0.04) * fo; g.font = '500 170px "Fraunces"'; g.fillStyle = it.w === "anonymized," ? SAGE : INK;
+            if (it.w === "anonymized,") g.font = 'italic 500 170px "Fraunces"';
+            g.textAlign = "left"; g.translate(it.x, it.y + 60 * (1 - u)); g.lineJoin = "round"; g.strokeStyle = PAPER; g.lineWidth = 16 * r(t, TB.qImpact, TB.qImpact + 0.3); if (g.lineWidth > 0.5) g.strokeText(it.w, 0, 0); g.fillText(it.w, 0, 0); g.restore();
+          });
+          g.save(); g.globalAlpha = r(t, b(20.2), b(20.7)) * fo; g.font = '500 34px "Fraunces"'; g.fillStyle = MUTED; g.textAlign = "center"; g.fillText(TB.qSmall, W / 2, 760); g.restore();
+        }
+        // the objection, live
+        if (t >= T.twice[0] && t < T.duet[0]) {
+          const fo = 1 - r(t, TB.settle, TB.settle + 0.5);
+          const la = r(t, b(25.3), b(25.8));
+          if (la * fo > 0) { g.save(); g.globalAlpha = la * fo; g.fillStyle = PAPER; g.fillRect(W / 2 - 170, 232, 340, 36); g.restore(); }
+          label(g, "THE CLIENT · LIVE", W / 2 + 14, 250, INK, la * fo, "center");
+          g.save(); g.font = '500 15px "Plex"'; g.letterSpacing = "0.2em"; const lw = g.measureText("THE CLIENT · LIVE").width; g.restore();
+          liveDot(g, W / 2 - lw / 2 - 12, 250, la * fo);
+          lineLayout(g, TB.objection, OL, 128, [380, 520, 660]).forEach((it) => {
+            if (t < it.ts) return;
+            const u = eOut(r(t, it.ts, it.ts + 0.2));
+            g.save(); g.globalAlpha = r(t, it.ts, it.ts + 0.04) * fo; g.font = '500 128px "Fraunces"'; g.fillStyle = INK; g.textAlign = "left";
+            g.translate(it.x - 80 * (1 - u), it.y); g.lineJoin = "round"; g.strokeStyle = PAPER; g.lineWidth = 18; g.strokeText(it.w, 0, 0); g.fillText(it.w, 0, 0); g.restore();
+          });
+          chip(g, "help from the prep · one tap away", W / 2, 800, SAGE, r(t, TB.help, TB.help + 0.3) * fo);
+          // after the field settles: the two echoes, named
+        }
+        // the duet
+        if (t >= T.duet[0] && t < T.debrief[0] + 0.4) {
+          const fo = 1 - r(t, T.debrief[0], T.debrief[0] + 0.4);
+          const u = t - T.duet[0], e = envAt(t);
+          [[0, SAGE, e[0], "THEM"], [1, INK, e[1], "YOU"]].forEach(([who, col, v, nm]) => {
+            const [x, y] = penPos(u, who);
+            g.save(); g.globalAlpha = fo; g.fillStyle = col; g.beginPath(); g.arc(x, y, 6 + 14 * v, 0, 7); g.fill(); g.restore();
+            label(g, nm, x + 28, y - 26, col, fo);
+          });
+          // talk time, as a ring
+          const m = eOut(r(t, T.duet[0] + 0.3, T.duet[1] - 0.5)), R0 = 330, a0 = -Math.PI / 2;
+          g.save(); g.globalAlpha = fo; g.lineWidth = 10; g.lineCap = "butt";
+          g.strokeStyle = HAIR; g.beginPath(); g.arc(C[0], C[1], R0, 0, Math.PI * 2); g.stroke();
+          g.strokeStyle = INK; g.beginPath(); g.arc(C[0], C[1], R0, a0, a0 + Math.PI * 2 * TB.talk[0] / 100 * m); g.stroke();
+          g.strokeStyle = SAGE; g.beginPath(); g.arc(C[0], C[1], R0, a0 - Math.PI * 2 * TB.talk[1] / 100 * m, a0); g.stroke();
+          g.restore();
+          label(g, `YOU ${Math.round(TB.talk[0] * m)}%`, C[0] + 14, C[1] - R0 - 30, INK, fo);
+          label(g, `THEM ${Math.round(TB.talk[1] * m)}%`, C[0] - 14, C[1] - R0 - 30, SAGE, fo, "right");
+          // the translation, on the machine
+          const ta = r(t, TB.trans, TB.trans + 0.3) * fo;
+          if (ta > 0) {
+            const sw = r(t, TB.trans + 0.55, TB.trans + 0.78);
+            g.save(); g.globalAlpha = ta * (1 - sw); g.font = '500 44px "Segoe UI", "Arial", sans-serif'; g.fillStyle = INK; g.textAlign = "center"; g.direction = "rtl";
+            g.translate(0, -18 * sw); g.fillText(TB.arabic, W / 2, 920); g.restore();
+            const n = Math.round(TB.english.length * r(t, TB.trans + 0.8, TB.trans + 1.5));
+            g.save(); g.globalAlpha = ta * sw; g.font = '500 44px "Fraunces"'; g.fillStyle = INK; g.textAlign = "center"; g.fillText(TB.english.slice(0, n), W / 2, 920); g.restore();
+            label(g, "AR → EN · TRANSLATED ON YOUR MACHINE", W / 2, 876, SAGE, ta, "center");
+          }
+        }
+        // the debrief
+        if (t >= T.debrief[0] && t < T.loop[0] + 0.3) {
+          const fo = 1 - r(t, T.loop[0] - 0.2, T.loop[0] + 0.2);
+          label(g, "DEBRIEF · DISCOVERY CALL", W / 2, 230, SAGE, r(t, TB.db[0][0] - 0.3, TB.db[0][0]) * fo, "center");
+          TB.db.forEach(([ts, txt]) => {
+            const u = eExpo(r(t, ts, ts + 0.5)); if (u <= 0) return;
+            g.save(); g.globalAlpha = fo;
+            if (txt === "score") {
+              g.beginPath(); g.rect(0, 0, W, H); g.clip();
+              g.font = '500 300px "Fraunces"'; g.fillStyle = INK; g.textAlign = "right"; g.translate(0, 50 * (1 - u)); g.globalAlpha = fo * u;
+              g.fillText("8", W / 2 - 10, 420);
+              g.font = 'italic 500 96px "Fraunces"'; g.fillStyle = SAGE; g.textAlign = "left"; g.fillText("/10", W / 2 + 10, 450);
+              g.restore(); label(g, "HOW IT WENT", W / 2 + 14, 530, MUTED, u * fo); return;
+            }
+            if (txt.startsWith("follow-up")) { g.restore(); chip(g, txt, W / 2, dbY(txt), INK, u * fo, 18); return; }
+            g.font = '500 54px "Fraunces"'; const w = g.measureText(txt).width;
+            g.beginPath(); g.rect(W / 2 - w / 2 - 4, dbY(txt) - 50, (w + 8) * u, 100); g.clip();
+            g.fillStyle = INK; g.textAlign = "center"; g.fillText(txt, W / 2, dbY(txt)); g.restore();
+          });
+        }
+      }
+
+      // ---------------- one frame
+      let lastLn = "", lastRail = "", lastHud = "";
+      function shake(t) {
+        let x = 0, y = 0, s = 1;
+        const hits = [[TB.qImpact, 14], [TB.oImpact, 20], ...TB.words.map(([ts]) => [ts, 5]), ...TB.objection.map(([ts]) => [ts, 6]), ...TB.question.map(([ts]) => [ts, 4])];
+        for (const [h, amp] of hits) {
+          const d = t - h; if (d < 0 || d > 0.5) continue;
+          const k = Math.exp(-d * 9) * amp;
+          x += k * Math.sin(d * 71); y += k * Math.cos(d * 59); s += 0.0012 * k;
+        }
+        return `translate(${x.toFixed(2)}px, ${y.toFixed(2)}px) scale(${s.toFixed(4)})`;
+      }
+      function paint(t) {
+        if (gl) { simTo(t); display(t); }
+        overlay(t);
+        $("#ct-stage").style.transform = shake(t);
+        let ln = null; for (const L of TB.lines) if (t >= L[0] && t < L[1]) ln = L;
+        const el = $("#ln");
+        if (ln) {
+          if (ln[2] !== lastLn) { el.innerHTML = ln[2]; lastLn = ln[2]; }
+          const u = r(t, ln[0], ln[0] + 0.5);
+          el.style.opacity = (u * (1 - r(t, ln[1] - 0.25, ln[1]))).toFixed(3);
+          el.style.clipPath = `inset(-20px ${(100 * (1 - eExpo(u))).toFixed(1)}% -20px 0)`;
+          el.style.transform = `translateY(${(12 * (1 - eOut(u))).toFixed(1)}px)`;
+        } else el.style.opacity = 0;
+        let st = TB.hud[0][1]; for (const [a, s] of TB.hud) if (t >= a) st = s;
+        if (st !== lastHud) { $("#hud-st").textContent = st; lastHud = st; }
+        let rl = TB.rail[0][1]; for (const [a, s] of TB.rail) if (t >= a) rl = s;
+        if (rl !== lastRail) { $("#rail-t").textContent = rl; lastRail = rl; }
+        const hudO = r(t, 0.4, 0.9) * (1 - r(t, T.mark - 0.2, T.mark));
+        $("#hud-l").style.opacity = hudO; $("#hud-r").style.opacity = hudO; $("#rail").style.opacity = hudO;
+        let fl = 0; for (const c of TB.cuts) if (t >= c && t < c + 0.12) fl = Math.max(fl, 0.4 * (1 - (t - c) / 0.12));
+        for (const h of [TB.qImpact, TB.oImpact]) if (t >= h && t < h + 0.1) fl = Math.max(fl, 0.55 * (1 - (t - h) / 0.1));
+        $("#flash").style.opacity = fl.toFixed(3);
+        $("#veil").style.opacity = (1 - eOut(r(t, 0.0, 0.4))).toFixed(3);
+        $("#card").style.opacity = r(t, T.mark - 0.15, T.mark + 0.15).toFixed(3);
+        const lu = eBack(r(t, T.mark + 0.1, T.mark + 0.8));
+        $("#c-logo").style.transform = `translateY(${(26 * (1 - lu)).toFixed(1)}px) scale(${(0.95 + 0.05 * lu).toFixed(3)})`;
+        $("#c-logo").style.opacity = r(t, T.mark + 0.1, T.mark + 0.45).toFixed(3);
+        $("#c-claim").style.opacity = r(t, TB.line - 0.6, TB.line).toFixed(3);
+        $("#c-claim").style.transform = `translateY(${(14 * (1 - eOut(r(t, TB.line - 0.6, TB.line)))).toFixed(1)}px)`;
+        $("#c-url").textContent = TB.url.slice(0, Math.round(TB.url.length * r(t, TB.line + 0.1, TB.line + 0.8)));
+        $("#c-beta").style.opacity = r(t, TB.line + 0.8, TB.line + 1.1).toFixed(3);
+      }
+
+      const tl = gsap.timeline({ paused: true });
+      const clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+
+      async function build() {
+        await Promise.all([$("#c-logo").decode(), document.fonts.load('500 40px "Fraunces"'), document.fonts.load('italic 500 40px "Fraunces"'),
+          document.fonts.load('500 20px "Plex"'), document.fonts.load('400 20px "Plex"')]);
+        $("#c-claim").innerHTML = TB.claim;
+        $("#c-beta").textContent = TB.beta;
+        initGL();
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = window.__hf.buildReady || {};
+      window.__hf.buildReady["echo"] = build();
+    </script>
+  </body>
+</html>
