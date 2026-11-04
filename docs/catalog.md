@@ -106,6 +106,14 @@ Made for: Imagined Worlds · Stills. Stack: Three.js, TSL, GSAP, Python (score).
 
 ## Products and systems
 
+### R40 · One Take
+
+A film for a system in development, flown in one take: twelve worlds, each with its own colours and motion, a camera that dives through a shape in one to land in the next, and a pull-back that reveals all twelve were tiles on one wall.
+
+Made for: Client Portal Automation · a portal that updates itself, in development. Stack: Canvas 2D, GSAP, Python (table, score), FFmpeg.
+
+[Recipe and poster](../recipes/r40-one-take/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r40-one-take-v1)
+
 ### R39 · Echo
 
 A film for a meeting copilot drawn as ink that remembers where it has been: one feedback buffer, so a voice becomes ridgelines, the brief's words leave trails, and the rehearsed question's ripple meets the live objection's in a moiré.

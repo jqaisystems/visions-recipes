@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <!--
+      R40 · One Take. 33.75 s at 128 bpm, 72 beats. For Client Portal Automation, in development.
+      Status lives in twelve places, so the film flies through twelve worlds with no cut: the camera dives through a
+      shape in one world to arrive in the next. At the drop it rockets backwards and all twelve were tiles on one wall.
+      The wall folds into one record. One Canvas 2D stage, stateless: paint(t) draws any frame exactly, and every frame
+      is accumulated from sub-frames for real motion blur.
+    -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/table.js"></script>
+    <style>
+      @font-face { font-family: "Archivo"; src: url("assets/fonts/Archivo.ttf") format("truetype"); font-weight: 100 900; }
+      @font-face { font-family: "JBM"; src: url("assets/fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 100 800; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #111110; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #111110; }
+      #ct-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #stage { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #logo { position: absolute; left: -2000px; top: 0; width: 926px; height: 193px; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="33.75" data-width="1920" data-height="1080">
+      <div id="ct-stage" class="clip" data-start="0" data-duration="33.75" data-track-index="0">
+        <canvas id="stage" width="1920" height="1080" data-layout-allow-overflow></canvas>
+        <img id="logo" src="assets/brand/your-mark.svg" alt="Your mark" data-layout-allow-overflow>
+      </div>
+      <audio id="score" src="assets/bgm/score.wav" data-start="0" data-duration="33.75" data-track-index="7" data-volume="0.9"></audio>
+    </div>
+
+    <script>
+      const TB = window.TABLE, DUR = TB.dur, BEAT = TB.beat, WS = TB.worlds;
+      const W = 1920, H = 1080, TAU = Math.PI * 2, SUB = 16, SHUTTER = 1 / 60;
+      const $ = (s) => document.querySelector(s);
+      const INK = "#111110", BONE = "#E9E4D6", TEAL = "#00A89D", BLUE = "#0099D6", NAVY = "#0B2A5B", AQUA = "#8CE8DE", GOLD = "#FFC23C", CORAL = "#FF5A3C";
+      const cl = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x)), r = (t, a, b) => cl((t - a) / (b - a)), lerp = (a, b, u) => a + (b - a) * u;
+      const E = (n) => gsap.parseEase(n), eO = E("power3.out"), eI = E("power2.in"), eIO = E("power3.inOut"), eB = E("back.out(2.2)"), eBn = E("bounce.out"), eEl = E("elastic.out(1,0.45)"), eX = E("expo.out"), eXIO = E("expo.inOut");
+
+      // ---------------- drawing helpers
+      function bg(g, c) { g.fillStyle = c; g.fillRect(-6000, -6000, 14000, 14000); }
+      function font(g, w, s, fam = "Archivo") { g.font = `${w} ${s}px "${fam}"`; }
+      function txt(g, s, x, y, size, col, o = {}) {
+        g.save(); font(g, o.w || 900, size, o.fam || "Archivo"); g.fillStyle = col; g.textAlign = o.a || "left"; g.textBaseline = "middle";
+        g.letterSpacing = o.ls || (o.fam ? "0.12em" : `${-size * 0.018}px`); g.wordSpacing = o.fam ? "0px" : `${size * 0.1}px`; if (o.alpha !== undefined) g.globalAlpha *= o.alpha; g.fillText(s, x, y); g.restore();
+      }
+      function fit(g, s, cx, cy, width, col, wg = 900) {
+        g.save(); font(g, wg, 100); g.letterSpacing = "-2.5px"; const m = g.measureText(s).width; const size = 100 * width / m;
+        font(g, wg, size); g.letterSpacing = `${-2.5 * size / 100}px`; g.fillStyle = col; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(s, cx, cy); g.restore();
+      }
+      // a word whose letters pop up in turn from a mask line
+      function pop(g, s, x, y, size, col, u, stag = 0.06) {
+        g.save(); font(g, 900, size); g.letterSpacing = `${-size * 0.025}px`; g.textBaseline = "middle"; g.fillStyle = col; g.textAlign = "left";
+        g.beginPath(); g.rect(x - 40, y - size * 0.62, 4000, size * 1.24); g.clip();
+        for (let i = 0; i < s.length; i++) {
+          const a = eB(r(u, i * stag, i * stag + 0.4)); if (a <= 0) continue;
+          const px = x + g.measureText(s.slice(0, i)).width + size * 0.22 * (s.slice(0, i).split(" ").length - 1); g.fillText(s[i], px, y + size * 1.2 * (1 - a));
+        }
+        g.restore();
+      }
+      function shape(g, s, x, y, R) {
+        g.beginPath();
+        if (s === "t") { for (let i = 0; i < 3; i++) { const a = i * TAU / 3; const px = x + 2 * R * Math.cos(a), py = y + 2 * R * Math.sin(a); i ? g.lineTo(px, py) : g.moveTo(px, py); } g.closePath(); }
+        else if (s === "s") g.roundRect(x - R, y - R, 2 * R, 2 * R, R * 0.14);
+        else g.arc(x, y, R, 0, TAU);
+      }
+      function fillShape(g, s, x, y, R, c) { shape(g, s, x, y, R); g.fillStyle = c; g.fill(); }
+      function card(g, x, y, w, h, rad, c) { g.fillStyle = c; g.beginPath(); g.roundRect(x, y, w, h, rad); g.fill(); }
+      function line(g, x0, y0, x1, y1, c, lw) { g.strokeStyle = c; g.lineWidth = lw; g.lineCap = "round"; g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke(); }
+
+      // ---------------- the worlds. Each has a portal: the shape the camera dives through.
+      const PORTALS = {
+        dot: { x: 1400, y: 540, r: 150, s: "c", rot: 0 },
+        0: { x: 960, y: 590, r: 92, s: "c", rot: 0 },
+        1: { x: 960, y: 640, r: 40, s: "c", rot: -Math.PI / 2 },
+        2: { x: 960, y: 480, r: 150, s: "t", rot: Math.PI / 3 },
+        3: { x: 470, y: 640, r: 180, s: "s", rot: 0 },
+        4: { x: 960, y: 570, r: 90, s: "s", rot: Math.PI / 2 },
+        5: { x: 960, y: 610, r: 90, s: "c", rot: 0 },
+        6: { x: 960, y: 620, r: 110, s: "c", rot: -Math.PI / 4 },
+        7: { x: 960, y: 540, r: 80, s: "c", rot: Math.PI },
+        8: { x: 1500, y: 770, r: 130, s: "c", rot: Math.PI / 6 },
+        9: { x: 1660, y: 680, r: 90, s: "c", rot: 0 },
+        10: { x: 1640, y: 540, r: 100, s: "c", rot: -Math.PI / 2 },
+      };
+      function pin(g, x, y, R, c) {
+        g.fillStyle = c; g.beginPath(); g.arc(x, y, R, 0, TAU); g.fill();
+        g.beginPath(); g.moveTo(x - R * 0.86, y + R * 0.5); g.lineTo(x, y + R * 2.1); g.lineTo(x + R * 0.86, y + R * 0.5); g.closePath(); g.fill();
+      }
+      const DRAW = [
+        // email: the letter slides home, the flap closes, the seal stamps
+        (g, u) => {
+          bg(g, BLUE);
+          const land = eBn(r(u, -0.1, 0.8)), yo = lerp(-950, 0, land);
+          const sq = 1 + 0.05 * Math.sin(r(u, 0.45, 0.9) * Math.PI);
+          g.save(); g.translate(960, 860 + yo); g.scale(sq, 2 - sq); g.translate(-960, -860);
+          const x0 = 510, x1 = 1410, y0 = 300, y1 = 860;
+          card(g, x0, y0, 900, 560, 18, "#C9C4B5");
+          const lt = eIO(r(u, 0.5, 1.1));
+          card(g, x0 + 70, lerp(40, y0 + 40, lt), 760, 480, 8, AQUA);
+          for (let i = 0; i < 4; i++) { g.fillStyle = NAVY; g.fillRect(x0 + 120, lerp(100, y0 + 100, lt) + i * 56, 660 - i * 120, 22); }
+          g.fillStyle = BONE; g.beginPath(); g.moveTo(x0, y0 + 10); g.lineTo(x0, y1 - 18); g.quadraticCurveTo(x0, y1, x0 + 18, y1); g.lineTo(x1 - 18, y1); g.quadraticCurveTo(x1, y1, x1, y1 - 18); g.lineTo(x1, y0 + 10); g.lineTo(960, 590); g.closePath(); g.fill();
+          const fl = eIO(r(u, 1.0, 1.55));
+          g.fillStyle = fl > 0.5 ? "#F4F0E4" : "#A8A394"; g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y0); g.lineTo(960, lerp(10, 590, fl)); g.closePath(); g.fill();
+          const sl = eB(r(u, 1.5, 1.85)); if (sl > 0) fillShape(g, "c", 960, 590, 92 * sl, CORAL);
+          g.restore();
+          pop(g, "EMAIL", 90, 965, 190, BONE, u - 0.2);
+        },
+        // chat: bubbles pop and push each other up
+        (g, u) => {
+          bg(g, CORAL);
+          const items = [[0.0, 660, 150, "any update?", BONE, INK, -300], [0.45, 560, 150, "see my email", NAVY, BONE, 300], [0.9, 600, 150, "which one?", BONE, INK, -280], [1.35, 620, 220, "", INK, BONE, 0]];
+          items.forEach(([ts, w, h, s, c, fc, xo], i) => {
+            const a = eB(r(u, ts, ts + 0.35)); if (a <= 0) return;
+            let y = 640; for (let j = i + 1; j < items.length; j++) y -= 195 * eO(r(u, items[j][0], items[j][0] + 0.3)) * (j === 3 ? 1.2 : 1);
+            const x = 960 + xo * (i === 3 ? 0 : 1);
+            g.save(); g.translate(x, y); g.scale(a, a); card(g, -w / 2, -h / 2, w, h, h / 2.4, c);
+            if (s) txt(g, s, 0, 2, 74, fc, { a: "center", w: 800 }); g.restore();
+          });
+          const a = eB(r(u, 1.35, 1.7));
+          if (a > 0) for (let k = 0; k < 3; k++) { const j = k - 1; const hop = k === 1 ? 0 : 16 * Math.sin(u * 14 + k) * (1 - r(u, 1.9, 2.1)); fillShape(g, "c", 960 + j * 130 * a, 640 + hop, 40 * a, k === 1 ? AQUA : BONE); }
+          pop(g, "CHAT", 90, 965, 190, BONE, u - 0.1);
+        },
+        // weekly video: a play mark spins in over rows of moving type
+        (g, u) => {
+          bg(g, INK);
+          for (let i = 0; i < 7; i++) {
+            const dir = i % 2 ? 1 : -1, off = (dir * (u * 180) % 1500);
+            g.save(); font(g, 900, 150); g.strokeStyle = "#2F3B3A"; g.lineWidth = 3; g.textBaseline = "middle"; g.letterSpacing = "-3px";
+            for (let k = -2; k < 3; k++) g.strokeText("WEEKLY VIDEO", k * 1500 + off, 80 + i * 155); g.restore();
+          }
+          const a = eEl(r(u, 0, 1.2)), rt = lerp(-Math.PI, 0, eO(r(u, 0, 0.9)));
+          g.save(); g.translate(960, 480); g.rotate(rt); g.scale(a, a); fillShape(g, "t", 0, 0, 150, TEAL); g.restore();
+          line(g, 300, 880, 1620, 880, "#3A3A38", 12); const pg = r(u, 0, 3);
+          line(g, 300, 880, lerp(300, 1620, pg), 880, CORAL, 12); fillShape(g, "c", lerp(300, 1620, pg), 880, 22, BONE);
+          pop(g, "WEEKLY VIDEO", 300, 985, 92, BONE, u - 0.2, 0.03);
+        },
+        // shared page: the page draws itself on
+        (g, u) => {
+          bg(g, BONE);
+          const fr = eIO(r(u, 0, 0.55));
+          g.save(); g.strokeStyle = INK; g.lineWidth = 7; g.beginPath(); g.roundRect(210, 90, 1500, 900, 26); g.setLineDash([4800 * fr, 4800]); g.stroke(); g.restore();
+          line(g, 210, 150, lerp(210, 1710, eO(r(u, 0.3, 0.7))), 150, INK, 5);
+          for (let k = 0; k < 3; k++) fillShape(g, "c", 248 + k * 34, 120, 10 * eB(r(u, 0.3 + k * 0.08, 0.5 + k * 0.08)), [CORAL, GOLD, TEAL][k]);
+          pop(g, "SHARED PAGE", 270, 258, 130, INK, u - 0.3, 0.035);
+          const a = eB(r(u, 0.6, 1.0)); fillShape(g, "s", 470, 640, 180 * a, TEAL);
+          for (let i = 0; i < 8; i++) { const v = eO(r(u, 0.7 + i * 0.08, 1.2 + i * 0.08)); const w = [860, 780, 820, 620, 860, 740, 800, 500][i]; if (v > 0) line(g, 730, 470 + i * 50, 730 + w * v, 470 + i * 50, i % 4 === 0 ? INK : "#8E8A7E", i % 4 === 0 ? 16 : 10); }
+        },
+        // drive folder: folders inside folders, an endless tunnel
+        (g, u) => {
+          bg(g, TEAL);
+          const ph = eO(r(u, -0.2, 1.3)) * 3;
+          const cols = [GOLD, NAVY, BONE, INK];
+          const folder = (s, c) => { const w = 180 * s, h = 180 * s, t = 34 * s; g.fillStyle = c; g.beginPath(); g.roundRect(960 - w / 2, 570 - h / 2 - t, w * 0.42, t + 20 * s, 12 * s); g.fill(); g.beginPath(); g.roundRect(960 - w / 2, 570 - h / 2, w, h, 16 * s); g.fill(); };
+          for (let j = 9; j >= 1; j--) { const s = Math.pow(1.72, j - 3 + ph); if (s > 18) continue; if (s < 1.05) continue; folder(s, cols[(j % 4 + 4) % 4]); }
+          fillShape(g, "s", 960, 570, 90, GOLD);
+          g.fillStyle = INK; g.fillRect(40, 44, 700, 138);
+          pop(g, "DRIVE FOLDER", 60, 114, 92, BONE, u, 0.03);
+        },
+        // files: a stack of sheets fans and riffles
+        (g, u) => {
+          bg(g, NAVY);
+          g.save(); font(g, 900, 560); g.strokeStyle = AQUA; g.lineWidth = 4; g.textAlign = "center"; g.textBaseline = "middle"; g.letterSpacing = "-14px"; g.globalAlpha = eO(r(u, 0, 0.5)); g.strokeText("FILES", 960, 500); g.restore();
+          const sp = eEl(r(u, 0, 1.2));
+          for (let i = 0; i < 13; i++) {
+            const k = i - 6, order = Math.abs(k), side = k === 0 ? 0 : Math.sign(k);
+            const th = side * (order * 0.12 * sp + 0.03 * Math.sin(u * 7 - order) * sp);
+          }
+          const seq = []; for (let o = 6; o >= 0; o--) { if (o) { seq.push(-o); seq.push(o); } else seq.push(0); }
+          seq.forEach((k) => {
+            const th = k * 0.13 * sp + (k ? 0.035 * Math.sin(u * 8 - Math.abs(k) * 0.9) * sp : 0);
+            g.save(); g.translate(960, 1060); g.rotate(th); g.translate(-960, -1060);
+            card(g, 720, 300, 480, 640, 12, k === 0 ? BONE : (Math.abs(k) % 2 ? "#D6D1C2" : BONE));
+            g.fillStyle = "#8E8A7E"; for (let n = 0; n < 3; n++) g.fillRect(770, 780 + n * 40, 380 - n * 70, 12);
+            g.restore();
+          });
+          fillShape(g, "c", 960, 610, 90 * eB(r(u, 0.5, 0.85)), CORAL);
+        },
+        // feedback: pins drop and squash
+        (g, u) => {
+          bg(g, GOLD);
+          const a = eO(r(u, 0, 0.3)); g.save(); g.translate(960, 180); const sl = lerp(1.5, 1, a); g.scale(sl, sl); g.globalAlpha = a; fit(g, "FEEDBACK", 0, 0, 1720, INK); g.restore();
+          [[300, 56, 0.25, INK], [630, 76, 0.1, NAVY], [960, 110, 0.45, CORAL], [1290, 76, 0.35, NAVY], [1620, 56, 0.2, INK]].forEach(([x, R, ts, c], i) => {
+            const v = eBn(r(u, ts, ts + 0.7)), y = lerp(-300, i === 2 ? 620 : 660, v);
+            const hit = r(u, ts + 0.25, ts + 0.45), sq = 1 + 0.14 * Math.sin(hit * Math.PI);
+            g.save(); g.translate(x, y + R * 2.1); g.scale(sq, 2 - sq); g.translate(-x, -y - R * 2.1); pin(g, x, y, R, c);
+            if (i !== 2) txt(g, String(i < 2 ? i + 1 : i), x, y + 3, R * 1.1, GOLD, { a: "center" }); g.restore();
+          });
+        },
+        // time log: the clock hands whip
+        (g, u) => {
+          bg(g, INK);
+          const n = 60, tick = r(u, -0.2, 0.5);
+          for (let i = 0; i < n * tick; i++) { const a = i / n * TAU - Math.PI / 2, L = i % 5 ? 20 : 54; line(g, 960 + Math.cos(a) * (440 - L), 540 + Math.sin(a) * (440 - L), 960 + Math.cos(a) * 440, 540 + Math.sin(a) * 440, i % 5 ? "#5A5A56" : AQUA, i % 5 ? 4 : 9); }
+          const sp = eIO(r(u, -0.1, 1.2));
+          const m = -Math.PI / 2 + sp * TAU * 4, h = -Math.PI / 2 + sp * TAU * 1.25;
+          line(g, 960, 540, 960 + Math.cos(h) * 230, 540 + Math.sin(h) * 230, BONE, 26);
+          line(g, 960, 540, 960 + Math.cos(m) * 370, 540 + Math.sin(m) * 370, TEAL, 16);
+          fillShape(g, "c", 960, 540, 80, CORAL);
+          pop(g, "TIME", 60, 130, 150, BONE, u, 0.04); pop(g, "LOG", 1500, 950, 150, BONE, u - 0.3, 0.05);
+        },
+        // invoice: the number rolls, the stamp slams
+        (g, u) => {
+          bg(g, BONE);
+          pop(g, "INVOICE", 90, 150, 170, NAVY, u, 0.03);
+          const digits = [0, 0, 0, 4, 2], cw = 200;
+          g.save(); g.beginPath(); g.rect(170, 340, cw * 5 + 40, 400); g.clip();
+          digits.forEach((d, i) => {
+            const v = eIO(r(u, 0, 0.75 + i * 0.1)), roll = (1 - v) * (10 + i * 5) + d;
+            for (let k = Math.floor(roll) - 1; k <= Math.floor(roll) + 1; k++) txt(g, String((k + 100) % 10), 280 + i * cw, 540 + (roll - k) * 360, 380, i >= 3 ? CORAL : NAVY, { a: "center" });
+          });
+          g.restore();
+          g.fillStyle = NAVY; g.fillRect(170, 760, 1040, 10); g.fillRect(170, 800, 680, 10); g.fillRect(170, 840, 420, 10);
+          const s = r(u, 0.95, 1.2);
+          if (s > 0) { const k = lerp(3.2, 1, eO(s)); g.save(); g.translate(1500, 770); g.scale(k, k); g.globalAlpha = r(s, 0, 0.2); fillShape(g, "c", 0, 0, 130, CORAL); g.rotate(-0.26); txt(g, "SENT", 0, 4, 76, BONE, { a: "center" }); g.restore(); }
+        },
+        // handover notes: a scribble traces itself to one dot
+        (g, u) => {
+          bg(g, AQUA);
+          pop(g, "HANDOVER", 90, 130, 150, NAVY, u, 0.025); pop(g, "NOTES", 90, 270, 150, NAVY, u - 0.15, 0.04);
+          const end = eIO(r(u, -0.05, 1.0));
+          g.strokeStyle = INK; g.lineWidth = 15; g.lineJoin = "round"; g.lineCap = "round"; g.beginPath();
+          const pt = (s) => [130 + 1530 * s + 62 * Math.sin(s * 44), 680 + (170 * Math.sin(s * 23) * Math.cos(s * 7)) * (1 - s * s)];
+          for (let i = 0; i <= 400 * end; i++) { const [x, y] = pt(i / 400); i ? g.lineTo(x, y) : g.moveTo(x, y); } g.stroke();
+          fillShape(g, "c", 1660, 680, 90 * eB(r(u, 0.95, 1.2)), CORAL);
+        },
+        // commits: branches shoot across
+        (g, u) => {
+          bg(g, BLUE);
+          const v = eO(r(u, -0.25, 0.42));
+          [[340, 0], [540, 0.05], [760, 0.1]].forEach(([y, d]) => { line(g, 100, y, lerp(100, 1640, eO(r(u, -0.25 + d, 0.42))), y, BONE, 16); });
+          for (let i = 0; i < 7; i++) { const x = 220 + i * 210, a = eB(r(u, -0.2 + i * 0.05, 0.05 + i * 0.05)); [340, 540, 760].forEach((y, k) => { if ((i + k) % 2 === 0) fillShape(g, "c", x, y, 26 * a, k === 1 ? NAVY : BONE); }); }
+          g.strokeStyle = BONE; g.lineWidth = 16; g.beginPath(); g.moveTo(640, 340); g.bezierCurveTo(780, 340, 780, 540, 960 * v + 40, 540); g.stroke();
+          fillShape(g, "c", 1640, 540, 100 * eB(r(u, 0.05, 0.4)), GOLD);
+          pop(g, "COMMITS", 90, 150, 170, BONE, u + 0.25, 0.02);
+        },
+        // uploads: arrows stream up
+        (g, u) => {
+          bg(g, CORAL);
+          for (let c = 0; c < 12; c++) {
+            const x = 80 + c * 160, sp = 1050 + (c * 137) % 620;
+            for (let k = 0; k < 4; k++) {
+              const y = 1240 - (((u + 2) * sp + k * 420 + c * 240) % 1680);
+              g.fillStyle = c % 3 === 1 ? BONE : INK; g.beginPath(); g.moveTo(x, y - 60); g.lineTo(x + 46, y); g.lineTo(x + 18, y); g.lineTo(x + 18, y + 70); g.lineTo(x - 18, y + 70); g.lineTo(x - 18, y); g.lineTo(x - 46, y); g.closePath(); g.fill();
+            }
+          }
+          g.fillStyle = CORAL; g.fillRect(0, 410, W, 260);
+          const a = eX(r(u, -0.2, 0.3)); g.save(); g.translate(960, 540); const s = lerp(1.6, 1, a); g.scale(s, s); fit(g, "UPLOADS", 0, 0, 1760, BONE); g.restore();
+        },
+      ];
+      function drawDot(g, b) {
+        bg(g, INK);
+        const P = PORTALS.dot, fx = P.x, floor = 880;
+        let y, R = 40, sq = 1;
+        if (b < 1) y = lerp(-80, floor, b * b);
+        else if (b < 2) { const x = b - 1; y = floor - 440 * 4 * x * (1 - x); }
+        else y = lerp(floor, P.y, eO(r(b, 2, 2.7)));
+        if (b >= 2) R = lerp(40, P.r, eB(r(b, 2, 2.8)));
+        const hit1 = Math.exp(-Math.abs(b - 1) * 11), hit2 = b < 2.4 ? Math.exp(-Math.abs(b - 2) * 11) : 0;
+        sq = 1 + 0.5 * Math.max(hit1, hit2);
+        const stretch = b < 1 ? 1 + 0.35 * b * b : 1;
+        // the burst: eleven others
+        if (b >= 2) for (let i = 0; i < 11; i++) {
+          const an = i / 11 * TAU + (b - 2) * 0.55, v = eO(r(b, 2, 2.8)), Rr = 290 + 30 * Math.sin(i * 2.1);
+          fillShape(g, "c", fx + Math.cos(an) * Rr * v, y + Math.sin(an) * Rr * v, 24 + (i % 3) * 8, [TEAL, BLUE, GOLD, AQUA, BONE][i % 5]);
+        }
+        g.save(); g.translate(fx, y + (b < 2.3 ? R : 0)); g.scale(sq / stretch, stretch / sq); fillShape(g, "c", 0, b < 2.3 ? -R : 0, R, CORAL); g.restore();
+        if (b < 2.2) { const k = Math.max(hit1, hit2); line(g, fx - 300 * k - 60, floor + 42, fx + 300 * k + 60, floor + 42, "#3A3A38", 4 * k + 0.1); }
+        g.save(); font(g, 500, 34, "JBM"); g.restore();
+        pop(g, "PROJECT STATUS", 110, 220, 90, BONE, b - 2.2, 0.02); pop(g, "LIVES IN", 110, 318, 90, BONE, b - 2.5, 0.03);
+        pop(g, "12", 90, 610, 460, TEAL, b - 3, 0.08); pop(g, "PLACES", 110, 930, 180, BONE, b - 3.4, 0.04);
+      }
+
+      // ---------------- the unbroken camera through the worlds
+      const startB = (k) => (k < 0 ? 0 : WS[k].b);
+      const durB = (k) => (k < 0 ? 6 : WS[k].d);
+      const dive = (k) => { const d = durB(k); return d >= 3 ? 1.0 : (d >= 2 ? 0.8 : 0.5); };
+      const drawScene = (k, g, u) => (k < 0 ? drawDot(g, u) : DRAW[k](g, u));
+      function worlds(g, b) {
+        let k = -1; for (let i = 0; i < WS.length; i++) if (b >= WS[i].b) k = i;
+        const end = startB(k) + durB(k), u = b - startB(k), P = k < 0 ? PORTALS.dot : PORTALS[k];
+        if (!P || b < end - dive(k)) { drawScene(k, g, u); return; }
+        const v = eIO(r(b, end - dive(k), end)), w = P.r / 0.6, Z = W / w, z = Math.pow(Z, v);
+        const open = eO(r(v, 0.02, 0.3));
+        g.save();
+        g.translate(lerp(P.x, 960, v), lerp(P.y, 540, v)); g.rotate(P.rot * v); g.scale(z, z); g.translate(-P.x, -P.y);
+        drawScene(k, g, u);
+        g.save(); shape(g, P.s, P.x, P.y, P.r * open); g.clip();
+        g.translate(P.x, P.y); g.rotate(-P.rot); g.scale(w / W, w / W); g.translate(-960, -540);
+        drawScene(k + 1, g, b - startB(k + 1));
+        g.restore(); g.restore();
+      }
+
+      // ---------------- the drop: back to the wall, which folds into one record
+      const TW = 462.5, TH = 260, GAP = 14, TY0 = 136;
+      const tileX = (i) => GAP + (i % 4) * (TW + GAP), tileY = (i) => TY0 + Math.floor(i / 4) * (TH + GAP);
+      function tile(g, i, b) {
+        g.save(); g.beginPath(); g.rect(0, 0, TW, TH); g.clip(); g.scale(TW / W, TH / H);
+        const u = i === 11 ? b - WS[11].b : ((b - WS[i].b) % 4 + 4) % 4; DRAW[i](g, u); g.restore();
+      }
+      const SHEET = [150, 90, 700, 900];
+      function sheetRows(g, b, x, y, w, h, a) {
+        card(g, x, y, w, h, 14, BONE);
+        txt(g, "PROJECT RECORD", x + 44, y + 74, 54, INK, { w: 900 });
+        txt(g, "ONE PER PROJECT · DEMO", x + 46, y + 124, 17, "#6A665C", { fam: "JBM", w: 500 });
+        WS.forEach((wd, i) => {
+          const ts = 35 + i * 0.1 + 0.8, v = eB(r(b, ts, ts + 0.3)); if (v <= 0) return;
+          const ry = y + 180 + i * 56;
+          g.save(); g.translate(x + 44, ry); g.scale(v, v); fillShape(g, "c", 12, 0, 12, [TEAL, BLUE, GOLD, CORAL][i % 4]); g.restore();
+          txt(g, wd.name, x + 88, ry + 1, 30, INK, { fam: "JBM", w: 500, ls: "0.02em", alpha: r(b, ts, ts + 0.2) });
+          line(g, x + 420, ry, x + 420 + 220 * eO(r(b, ts, ts + 0.5)) * (0.5 + 0.5 * ((i * 7) % 5) / 4), ry, "#B5B0A2", 8);
+        });
+      }
+      function drop(g, b) {
+        bg(g, INK);
+        const v = eXIO(r(b, 33, 35));
+        if (b < 35) {
+          const cx = tileX(11) + TW / 2, cy = tileY(11) + TH / 2, Zt = W / TW, z = Math.pow(Zt, 1 - v);
+          g.save(); g.translate(lerp(960, cx, v), lerp(540, cy, v)); g.scale(z, z); g.translate(-cx, -cy);
+          for (let i = 0; i < 12; i++) { g.save(); g.translate(tileX(i), tileY(i)); tile(g, i, b); g.restore(); }
+          g.restore(); if (v > 0.7) { txt(g, "ALL TWELVE. ALL AT ONCE.", 960, 70, 30, BONE, { fam: "JBM", w: 500, a: "center", alpha: r(v, 0.7, 0.95) }); }
+          return;
+        }
+        // the teal comes up from the sheet
+        const wipe = eIO(r(b, 36.2, 37)); if (wipe > 0) { g.fillStyle = TEAL; g.beginPath(); g.arc(SHEET[0] + SHEET[2] / 2, 540, 2300 * wipe, 0, TAU); g.fill(); }
+        const sa = eB(r(b, 35.1, 35.6));
+        // the tiles fall into the sheet in turn
+        for (let i = 11; i >= 0; i--) {
+          const ts = 35 + i * 0.1, p = eIO(r(b, ts, ts + 0.8));
+          if (p >= 1) continue;
+          const cx = lerp(tileX(i) + TW / 2, SHEET[0] + SHEET[2] / 2, p), cy = lerp(tileY(i) + TH / 2, 540, p), s = lerp(1, 0.22, p);
+          g.save(); g.translate(cx, cy); g.rotate((i - 5.5) * 0.09 * Math.sin(p * Math.PI)); g.scale(s * Math.abs(Math.cos(p * Math.PI * 1.0 * 0.5 + 0)) + 0.02, s); g.translate(-TW / 2, -TH / 2); tile(g, i, b); g.restore();
+        }
+        if (sa > 0) { const cx = SHEET[0] + SHEET[2] / 2; g.save(); g.translate(cx, 540); g.scale(sa, sa); g.translate(-cx, -540); sheetRows(g, b, SHEET[0], SHEET[1], SHEET[2], SHEET[3]); g.restore(); }
+        [["ONE", 37], ["RECORD", 37.5], ["PER", 38], ["PROJECT.", 38.5]].forEach(([s, ts], i) => { const a = eX(r(b, ts, ts + 0.3)); if (a <= 0) return; g.save(); g.translate(960, 220 + i * 215); const k = lerp(1.35, 1, a); g.scale(k, k); g.globalAlpha = r(b, ts, ts + 0.06); txt(g, s, 0, 0, 178, INK); g.restore(); });
+      }
+
+      // ---------------- new project: one press, five cards
+      const CW = 320, CH = 440;
+      function newProject(g, b) {
+        bg(g, TEAL);
+        const w = eIO(r(b, 40, 40.8)); if (w > 0) { g.fillStyle = NAVY; g.beginPath(); g.arc(960, 540, 2300 * w, 0, TAU); g.fill(); }
+        const m = eIO(r(b, 40, 41));
+        const up = eIO(r(b, 41.9, 42.6));
+        const bx = lerp(SHEET[0], 960 - 300, m), by = lerp(SHEET[1], lerp(540 - 70, 110, up) , m), bw = lerp(SHEET[2], 600, m), bh = lerp(SHEET[3], 140, m);
+        const press = Math.exp(-Math.abs(b - 41.5) * 10) * (b > 41.1 ? 1 : 0);
+        for (let i = 0; i < 3; i++) { const q = r(b, 41.5 + i * 0.12, 42.6 + i * 0.12); if (q > 0 && q < 1) { g.strokeStyle = AQUA; g.lineWidth = 8 * (1 - q); g.beginPath(); g.roundRect(960 - 300 - 700 * eO(q), 470 - 300 * eO(q), 600 + 1400 * eO(q), 140 + 600 * eO(q), 70 + 200 * q); g.stroke(); } }
+        g.save(); g.translate(bx + bw / 2, by + bh / 2); g.scale(1 + 0.1 * press, 1 - 0.22 * press); g.translate(-bx - bw / 2, -by - bh / 2);
+        card(g, bx, by, bw, bh, lerp(14, 70, m), m < 1 ? BONE : GOLD); txt(g, "NEW PROJECT", bx + bw / 2, by + bh / 2 + 3, 72, INK, { a: "center", alpha: r(b, 40.7, 41) }); g.restore();
+        const gather = eIO(r(b, 49, 49.9));
+        TB.cards.forEach((name, j) => {
+          const ts = 42 + j, p = r(b, ts, ts + 0.8); if (p <= 0) return;
+          const mv = eIO(p), fl = eIO(r(p, 0.1, 0.8));
+          const tx = lerp(960 + (j - 2) * 352, 960, gather), ty = lerp(600, 540, gather);
+          const x = lerp(960, tx, mv), y = lerp(180, ty, mv);
+          g.save(); g.translate(x, y); g.rotate(lerp(j % 2 ? -0.5 : 0.5, (j - 2) * 0.025, mv) * (1 - gather));
+          const c = Math.cos(fl * Math.PI); g.scale(Math.max(Math.abs(c), 0.02), 1 + 0.06 * Math.sin(fl * Math.PI));
+          if (c > 0) { card(g, -CW / 2, -CH / 2, CW, CH, 16, TEAL); fillShape(g, "c", 0, 0, 44, BONE); }
+          else {
+            card(g, -CW / 2, -CH / 2, CW, CH, 16, BONE);
+            txt(g, String(j + 1).padStart(2, "0"), -CW / 2 + 28, -CH / 2 + 46, 24, CORAL, { fam: "JBM", w: 600 });
+            const ws = name.split(" "), ln = ws;
+            ln.forEach((s, n) => txt(g, s, -CW / 2 + 26, -CH / 2 + 116 + n * 56, 52, INK, { w: 800 }));
+            for (let n = 0; n < 5; n++) { const v = eO(r(p, 0.75, 1.0 + n * 0.08)); line(g, -CW / 2 + 30, 40 + n * 36, -CW / 2 + 30 + (250 - (n * 57) % 130) * v, 40 + n * 36, "#B5B0A2", 10); }
+          }
+          g.restore();
+        });
+        const la = r(b, 46.6, 47) * (1 - r(b, 48.8, 49.2));
+        if (la > 0) { pop(g, "ONE TRIGGER. FIVE DOCUMENTS.", 300, 960, 72, BONE, b - 46.6, 0.012); }
+      }
+
+      // ---------------- Friday
+      function panel(g, j, x, y, w, h, a) {
+        const P = TB.panes[j];
+        g.save(); g.translate(x + w / 2, y + h / 2); g.scale(a, a); g.translate(-x - w / 2, -y - h / 2);
+        card(g, x, y, w, h, 18, BONE);
+        const c0 = [TEAL, BLUE, NAVY][j];
+        card(g, x + 24, y + 24, w - 48, 260, 10, c0);
+        const cx = x + w / 2, cy = y + 154;
+        if (j === 0) { card(g, cx - 130, cy - 82, 260, 164, 8, BONE); g.fillStyle = "#C9C4B5"; g.beginPath(); g.moveTo(cx - 130, cy - 82); g.lineTo(cx + 130, cy - 82); g.lineTo(cx, cy + 10); g.closePath(); g.fill(); }
+        if (j === 1) { for (let n = 0; n < 4; n++) line(g, cx - 170, cy - 76 + n * 50, cx + 170 - n * 60, cy - 76 + n * 50, BONE, n ? 12 : 26); }
+        if (j === 2) { g.save(); g.translate(cx - 10, cy); fillShape(g, "t", 0, 0, 44, GOLD); g.restore(); }
+        txt(g, P.label.toUpperCase(), x + 30, y + 322, 17, "#5C584E", { fam: "JBM", w: 600 });
+        const ws = P.text.split(" "); let ln = "", yy = y + 378;
+        g.save(); font(g, 800, 38); g.fillStyle = INK; g.textBaseline = "middle"; g.letterSpacing = "-0.5px";
+        for (const wd of ws) { if (g.measureText(ln + wd).width > w - 60) { g.fillText(ln, x + 30, yy); yy += 46; ln = ""; } ln += wd + " "; } g.fillText(ln, x + 30, yy);
+        g.restore(); g.restore();
+      }
+      function friday(g, b) {
+        if (b < 52) {
+          const i = Math.floor((b - 50) * 2), u = (b - 50) * 2 - i;
+          bg(g, [BLUE, TEAL, GOLD, NAVY][i]);
+          const fl = eO(cl(u * 2.2));
+          g.save(); g.translate(960, 540); g.scale(1, lerp(0.05, 1, fl)); fit(g, TB.days[i], 0, 0, 1500, i === 2 ? INK : BONE); g.restore();
+          return;
+        }
+        bg(g, CORAL);
+        const m = eIO(r(b, 54, 54.9)), a = eX(r(b, 52, 52.4));
+        const sh = Math.exp(-(b - 52) * 6) * 26;
+        g.save(); g.translate(Math.sin(b * 41) * sh, Math.cos(b * 37) * sh);
+        g.translate(lerp(960, 510, m), lerp(540, 120, m)); const k = lerp(lerp(1.7, 1, a), 0.48, m); g.scale(k, k); fit(g, "FRIDAY", 0, 0, 1800, BONE); g.restore();
+        TB.panes.forEach((p, j) => {
+          const ts = 55 + j * 1.0, v = eB(r(b, ts, ts + 0.6)); if (v <= 0) return;
+          const out = r(b, ts, ts + 0.6);
+          panel(g, j, 80 + j * 600, lerp(1100, 245, eO(out)), 560, 590, 1);
+        });
+        const la = r(b, 58.2, 58.6);
+        if (la > 0) pop(g, "EVERY FRIDAY, IN THEIR FORMAT.", 80, 960, 76, INK, b - 58.2, 0.012);
+        txt(g, TB.status, 1840, 120, 22, BONE, { fam: "JBM", w: 600, a: "right", alpha: r(b, 55, 55.5) });
+      }
+
+      // ---------------- the close: back to the dot
+      function close(g, b) {
+        bg(g, INK);
+        const col = eIO(r(b, 62, 62.9));
+        if (col < 1) {
+          g.fillStyle = CORAL; g.beginPath(); g.arc(960, 540, 1300 * (1 - col), 0, TAU); g.fill();
+          g.save(); g.translate(960, 540); g.scale(1 - col, 1 - col); g.translate(-960, -540); friday(g, 61.99); g.restore();
+        }
+        if (b >= 62.8 && b < 66) {
+          const floor = 760; let y = 540, R = 44, sx = 1;
+          if (b < 63.4) { const x = r(b, 62.8, 63.4); y = lerp(540, floor, x * x); }
+          else if (b < 64.2) { const x = r(b, 63.4, 64.2); y = floor - 260 * 4 * x * (1 - x); }
+          else y = lerp(floor, 540, eO(r(b, 64.2, 64.7)));
+          const h1 = Math.exp(-Math.abs(b - 63.4) * 12), h2 = b < 64.5 ? Math.exp(-Math.abs(b - 64.2) * 12) : 0; sx = 1 + 0.5 * Math.max(h1, h2);
+          R = lerp(44, 1300, eIO(r(b, 64.4, 65.4)));
+          g.save(); g.translate(960, y); g.scale(R < 60 ? sx : 1, R < 60 ? 2 - sx : 1); fillShape(g, "c", 0, 0, R, TEAL); g.restore();
+          const R2 = lerp(0, 1300, eIO(r(b, 64.8, 65.8))); if (R2 > 0) fillShape(g, "c", 960, 540, R2, INK);
+        }
+        const lg = eB(r(b, 65.2, 65.9));
+        if (lg > 0) { g.save(); g.translate(960, 400); const s = lerp(0.92, 1, lg); g.scale(s, s); g.globalAlpha = r(b, 65.2, 65.45); g.drawImage($("#logo"), -310, -64.5, 620, 129); g.restore(); }
+        const c = r(b, 66.6, 67.2);
+        if (c > 0) { g.save(); g.translate(0, 18 * (1 - eO(c))); g.globalAlpha = c; txt(g, TB.claim, 960, 590, 78, BONE, { a: "center", w: 800 }); g.restore(); }
+        const ur = TB.url.slice(0, Math.round(TB.url.length * r(b, 67.4, 68.3))); txt(g, ur, 960, 700, 30, BONE, { fam: "JBM", w: 500, a: "center", ls: "0.04em" });
+        txt(g, TB.status, 960, 765, 20, AQUA, { fam: "JBM", w: 600, a: "center", ls: "0.28em", alpha: r(b, 68.3, 68.8) });
+      }
+
+      // ---------------- a whole scene at beat b
+      function hud(g, b) {
+        if (b >= 62 || b < 6 || (b >= 33 && b < 40)) return;
+        const pc = b < 32, cur = pc ? WS.filter((w) => b >= w.b).length : 0;
+        const dark = pc ? [0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0][Math.max(0, cur - 1)] : 0;
+        const c = dark ? INK : BONE;
+        if (b < 40) { txt(g, "CLIENT PORTAL AUTOMATION", 1830, 1030, 16, c, { fam: "JBM", w: 500, a: "right" }); }
+        if (pc) txt(g, `${String(cur).padStart(2, "0")} / 12`, 1830, 50, 22, c, { fam: "JBM", w: 600, a: "right" });
+        if (b >= 42 && b < 49.5) txt(g, "ONBOARDING · WORKING LOCALLY", 1860, 60, 18, AQUA, { fam: "JBM", w: 600, a: "right", alpha: r(b, 42, 42.4) });
+      }
+      function scene(g, t) {
+        const b = t / BEAT;
+        g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.textBaseline = "middle";
+        if (b < 33) worlds(g, b);
+        else if (b < 40) drop(g, b);
+        else if (b < 50) newProject(g, b);
+        else if (b < 62) friday(g, b);
+        else close(g, b);
+        g.setTransform(1, 0, 0, 1, 0, 0); hud(g, b);
+      }
+
+      // ---------------- real motion blur: every frame accumulated from sub-frames
+      let A, AG;
+      function paint(t) {
+        const g = $("#stage").getContext("2d");
+        for (let i = 0; i < SUB; i++) {
+          scene(AG, Math.min(DUR - 1e-3, t + SHUTTER * i / SUB));
+          g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1 / (i + 1); g.drawImage(A, 0, 0);
+        }
+        g.globalAlpha = 1;
+      }
+
+      const tl = gsap.timeline({ paused: true });
+      const clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+
+      async function build() {
+        await Promise.all([$("#logo").decode(), document.fonts.load('900 40px "Archivo"'), document.fonts.load('800 40px "Archivo"'), document.fonts.load('500 20px "JBM"'), document.fonts.load('600 20px "JBM"')]);
+        A = document.createElement("canvas"); A.width = W; A.height = H; AG = A.getContext("2d");
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = window.__hf.buildReady || {};
+      window.__hf.buildReady["one-take"] = build();
+    </script>
+  </body>
+</html>
