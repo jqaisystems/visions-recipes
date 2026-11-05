@@ -1,0 +1,1 @@
+window.TABLE = {"dur": 34.56, "beat": 0.48, "bpm": 125, "beats": 72};

@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <!--
+      R42 · Blackout. 33.6 s at 100 bpm, 56 beats (season 6, ink feedback, film 2). For Codex Control Center, which keeps
+      the record and not the words. So the film is blackout poetry: a fictional session log fills a page, wet ink floods
+      everything private, and only the times and event types survive, as islands of paper. They become the dashboard.
+      One WebGL2 feedback buffer holds ink, water, resist and red ink. Ink moves by a reaction-diffusion step over a paper
+      fibre texture, so its front stays crisp and feathers instead of blurring. A crisp 2D layer of type is composited in
+      the same shader, so a stamp's ripple bends everything. The ink restarts at two anchors, so any frame is rebuilt the
+      same way. paint(t) reads one baked table (assets/table.js, from bake/table.py).
+    -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/table.js"></script>
+    <style>
+      @font-face { font-family: "Archivo"; src: url("assets/fonts/Archivo.ttf") format("truetype"); font-weight: 100 900; font-stretch: 62% 125%; }
+      @font-face { font-family: "JBM"; src: url("assets/fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 100 800; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #EDE8DC; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #EDE8DC; }
+      #ct-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #stage { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #logo { position: absolute; left: -2000px; top: 0; width: 926px; height: 193px; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="33.6" data-width="1920" data-height="1080">
+      <div id="ct-stage" class="clip" data-start="0" data-duration="33.6" data-track-index="0">
+        <canvas id="stage" width="1920" height="1080" data-layout-allow-overflow></canvas>
+        <img id="logo" src="assets/brand/your-mark.svg" alt="Your mark" data-layout-allow-overflow>
+      </div>
+      <audio id="score" src="assets/bgm/score.wav" data-start="0" data-duration="33.6" data-track-index="7" data-volume="0.9"></audio>
+    </div>
+
+    <script>
+      const VS = "#version 300 es\nin vec2 p; void main(){ gl_Position = vec4(p, 0.0, 1.0); }";
+      // the paper, baked once: R porosity, G fine tooth, B slow pools, A a noise per column for the run-off
+      const FIB_FS = `#version 300 es
+precision highp float;
+uniform vec2 uRes;
+out vec4 o;
+float h(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float n(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y); }
+float fbm(vec2 p){ float a = 0.5, s = 0.0; for (int i = 0; i < 5; i++) { s += a * n(p); p = mat2(1.6, 1.2, -1.2, 1.6) * p + 3.1; a *= 0.5; } return s; }
+void main(){
+  vec2 uv = gl_FragCoord.xy / uRes, q = uv * vec2(1.7778, 1.0);
+  float fib = 0.0;
+  for (int i = 0; i < 4; i++) { float an = float(i) * 0.81 + 0.3; mat2 m = mat2(cos(an), -sin(an), sin(an), cos(an));
+    vec2 d = m * q; fib = max(fib, 1.0 - abs(2.0 * n(vec2(d.x * 14.0, d.y * 150.0)) - 1.0)); }
+  float por = smoothstep(0.22, 0.78, 0.55 * fbm(q * 16.0) + 0.45 * pow(fib, 3.0));
+  float tooth = fbm(q * 240.0);
+  float pools = smoothstep(0.26, 0.72, fbm(q * 3.4 + 7.0));
+  float streak = smoothstep(0.25, 0.75, 0.6 * n(vec2(uv.x * 70.0, 1.3)) + 0.4 * n(vec2(uv.x * 260.0, 4.7)));
+  o = vec4(por, tooth, pools, streak);
+}`;
+      // the step. State: R ink, G water, B resist, A red ink.
+      const SIM_FS = `#version 300 es
+precision highp float;
+uniform sampler2D uPrev, uFib, uM, uM2;
+uniform vec2 uTex, uBC;
+uniform float uFirst, uSoak, uFlood, uBR, uResFade, uWash, uRedFade;
+out vec4 o;
+void main(){
+  vec2 uv = gl_FragCoord.xy * uTex;
+  vec4 f = texture(uFib, uv);
+  float por = f.r, str = f.a;
+  // the wash: a front of water running down the page, with fingers ahead of it
+  float behind = 0.0;
+  if (uWash > -0.5) {
+    float fr = uWash + 0.05 * (f.b - 0.5);
+    behind = max(smoothstep(0.0, 0.03, fr - uv.y), 0.8 * smoothstep(0.0, 0.02, fr + 0.16 * str * str - uv.y) * step(0.62, str));
+  }
+  vec2 src = uv;
+  src.y -= behind * uTex.y * (1.5 + 5.0 * str);
+  src.x += behind * uTex.x * 0.8 * (f.b - 0.5);
+  vec4 c = texture(uPrev, src);
+  vec4 nb = 0.25 * (texture(uPrev, src + vec2(uTex.x, 0.0)) + texture(uPrev, src - vec2(uTex.x, 0.0)) + texture(uPrev, src + vec2(0.0, uTex.y)) + texture(uPrev, src - vec2(0.0, uTex.y)));
+  float wet = c.g;
+  float gate = clamp(abs(uSoak) + wet * 1.5, 0.0, 1.0);
+  // reaction-diffusion: the front stays crisp and is pushed on by the water, faster along the fibres
+  float a = mix(clamp(0.5 - (uSoak + 0.42 * wet) * (0.15 + 0.85 * por), 0.03, 0.97), 0.93, behind);
+  float I = c.r + mix(0.05, 0.9, por * por) * gate * (nb.r - c.r);
+  I += gate * 0.95 * I * (1.0 - I) * (I - a);
+  // the flood rises out of the slow pools, and one drop can bloom to fill the page
+  float field = 0.62 * f.b + 0.38 * por;
+  if (uFlood > 0.001) I = max(I, smoothstep(field - 0.015, field + 0.015, uFlood));
+  if (uBR > 0.0) { float d = length((uv - uBC) * vec2(1.7778, 1.0)) + 0.26 * (f.b - 0.5) + 0.07 * (por - 0.5); I = max(I, smoothstep(0.012, -0.012, d - uBR)); }
+  vec4 m = uFirst * texture(uM, uv), m2 = uFirst * texture(uM2, uv);
+  I = max(I, m.r);
+  float res = texture(uPrev, uv).b;
+  res = max(res * (1.0 - uResFade), m.b) * (1.0 - behind);
+  I *= 1.0 - smoothstep(0.32, 0.68, res + (por - 0.5) * 0.45 * step(0.01, res));
+  I *= mix(1.0, 0.958 + 0.03 * str, behind);
+  float w = max(max(nb.g * 0.994, m.g), behind * 0.85);
+  float A = c.a + 0.5 * gate * (nb.a - c.a);
+  A += 0.5 * gate * A * (1.0 - A) * (A - 0.47);
+  A = max(A, m2.r) * (1.0 - uRedFade) * mix(1.0, 0.95, behind);
+  o = vec4(clamp(I, 0.0, 1.0), clamp(w, 0.0, 1.0), res, clamp(A, 0.0, 1.0));
+}`;
+      const DISP_FS = `#version 300 es
+precision highp float;
+uniform sampler2D uS, uFib, uOv;
+uniform vec2 uRes, uPiv, uOff;
+uniform float uZoom, uTime;
+uniform vec3 uRip[3];
+out vec4 o;
+const vec3 PAPER = vec3(0.929, 0.910, 0.863), INK = vec3(0.047, 0.047, 0.055), VERM = vec3(0.910, 0.204, 0.110);
+float h(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+void main(){
+  vec2 uv = gl_FragCoord.xy / uRes; uv.y = 1.0 - uv.y;
+  vec2 px = uv * uRes, disp = vec2(0.0);
+  for (int i = 0; i < 3; i++) { float t = uRip[i].z; if (t < 0.0) continue;
+    vec2 d = px - uRip[i].xy; float l = length(d) + 0.001, R = t * 1500.0, k = (l - R);
+    disp += d / l * 26.0 * exp(-t * 2.4) * exp(-k * k / 12000.0) * cos(k / 24.0); }
+  vec2 s = uPiv + (uv - uPiv) / uZoom + uOff + disp / uRes;
+  vec4 S = texture(uS, s), F = texture(uFib, s);
+  float vis = smoothstep(0.34, 0.62, S.r);
+  vec3 paper = PAPER * (0.975 + 0.05 * F.g);
+  paper *= 1.0 - 0.26 * smoothstep(0.02, 0.32, S.r) - 0.07 * S.g * (0.6 + 0.4 * F.r);
+  vec3 ink = INK + 0.022 * F.g * (0.4 + S.g);
+  vec3 col = mix(paper, ink, vis);
+  col = mix(col, VERM, smoothstep(0.4, 0.58, S.a));
+  vec4 ov = texture(uOv, s);
+  col = col * (1.0 - ov.a) + ov.rgb;
+  col += (h(gl_FragCoord.xy + fract(uTime * 7.0) * 91.0) - 0.5) / 130.0;
+  o = vec4(col, 1.0);
+}`;
+    </script>
+
+    <script>
+      const TB = window.TABLE, DUR = TB.dur, BEAT = TB.beat;
+      const W = 1920, H = 1080, SW = 1280, SH = 720, DT = 1 / 30, ITER = 4, SUB = 8, SHUT = 1 / 60;
+      const $ = (s) => document.querySelector(s);
+      const cl = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x)), r = (t, a, b) => cl((t - a) / (b - a)), lerp = (a, b, u) => a + (b - a) * u;
+      const E = (n) => gsap.parseEase(n), eO = E("power3.out"), eIO = E("power3.inOut"), eX = E("expo.out"), eXIO = E("expo.inOut"), eB = E("back.out(1.9)"), eI = E("power3.in"), eS = E("sine.inOut");
+      const BONE = "#EDE8DC", INK = "#0C0C0E", VERM = "#E8341C", GREY = "#5B5850";
+      const prng = (s) => () => { s |= 0; s = s + 0x6D2B79F5 | 0; let x = Math.imul(s ^ s >>> 15, 1 | s); x = x + Math.imul(x ^ x >>> 7, 61 | x) ^ x; return ((x ^ x >>> 14) >>> 0) / 4294967296; };
+      const HEAVY = (s) => `900 condensed ${s}px "Archivo"`, MONO = (s, w = 500) => `${w} ${s}px "JBM"`;
+      const anchorOf = (t) => (t >= 21.5 * BEAT - 1e-6 ? 21.5 * BEAT : 0);
+
+      // ---------------- the log
+      const N = TB.lines.length, ROWS = TB.rows, RH = 46, Y0 = 72, XT = 72, XE = 262, XP = 560, LOCK = 9.8;
+      const VIS = TB.lines.slice(-ROWS);
+      const head = (B) => 1 + (N - 1) * Math.pow(r(B, 0, LOCK), 2.0);
+      const rowY = (i, S) => Y0 + (i - S) * RH;
+      function drawLog(g, B) {
+        const hd = head(B), S = Math.max(0, hd - ROWS), n = Math.floor(hd);
+        g.save(); g.beginPath(); g.rect(0, 52, W, H); g.clip();
+        g.font = MONO(27); g.textBaseline = "middle"; g.textAlign = "left"; g.fillStyle = INK;
+        for (let i = Math.max(0, Math.floor(S) - 1); i < Math.min(N, n + 1); i++) {
+          const L = TB.lines[i], y = rowY(i, S); if (y < -40 || y > H + 40) continue;
+          const lift = B >= 20 && i >= N - ROWS ? chipL(i - (N - ROWS)) : 1e9;
+          if (i === n && B < LOCK) { const ch = Math.floor((hd - n) * 62), full = L[0] + "  " + L[1].padEnd(14) + "  " + L[2]; g.fillText(full.slice(0, ch), XT, y); continue; }
+          if (B < lift) g.fillText(L[0], XT, y);
+          if (B < lift + 0.3) g.fillText(L[1], XE, y);
+          if (B < 16) g.fillText(L[2].slice(0, 76), XP, y);
+        }
+        g.restore();
+      }
+      // ---------------- the islands: what survives
+      let CH = [];
+      const chipL = (j) => 20 + (j % 7) * 0.05 + Math.floor(j / 7) * 0.12;
+      function buildChips(g) {
+        g.font = MONO(27); CH = [];
+        const counts = {}; const cw = 1040 / TB.types.length;
+        VIS.forEach((L, j) => {
+          const y = rowY(j + N - ROWS, N - ROWS), tw = g.measureText(L[0]).width, ew = g.measureText(L[1]).width;
+          const c = TB.types.indexOf(L[1]); counts[c] = (counts[c] || 0) + 1;
+          CH.push({ j, txt: L[0], kind: "t", x: XT - 10, y: y - 21, w: tw + 20, h: 42, tx: 80 + j * (1040 / ROWS), ty: 756, tw: 1040 / ROWS - 8, th: 34, L: chipL(j) });
+          CH.push({ j, txt: L[1], kind: "e", x: XE - 10, y: y - 21, w: ew + 20, h: 42, tx: 80 + c * cw, ty: 628 - (counts[c] - 1) * 62, tw: cw - 12, th: 54, L: chipL(j) + 0.08 });
+        });
+      }
+      function drawChips(g, B) {
+        const out = eI(r(B, 28, 28.8));
+        CH.forEach((c) => {
+          if (B < c.L) return;
+          const u = eXIO(r(B, c.L, c.L + 1)), pop = 1 + 0.1 * Math.sin(Math.PI * r(B, c.L, c.L + 0.25));
+          const x = lerp(c.x, c.tx, u), y = lerp(c.y, c.ty, u) + 1400 * out, w = lerp(c.w, c.tw, u) * pop, h = lerp(c.h, c.th, u) * pop;
+          g.fillStyle = BONE; g.fillRect(x, y, w, h);
+          if (u < 0.5) { g.globalAlpha = 1 - r(u, 0.25, 0.5); g.font = MONO(27); g.fillStyle = INK; g.textAlign = "left"; g.textBaseline = "middle"; g.fillText(c.txt, x + 10, y + h / 2); g.globalAlpha = 1; }
+        });
+      }
+
+      // ---------------- type
+      function fit(g, s, x, y, w, col, a = "left", max = 900) {
+        g.font = HEAVY(200); const size = Math.min(max, 200 * w / g.measureText(s).width);
+        g.font = HEAVY(size); g.fillStyle = col; g.textAlign = a; g.textBaseline = "alphabetic"; g.fillText(s, x, y); return size;
+      }
+      function pop(g, s, x, y, w, col, B, at, a = "left") {   // letters up from a mask line
+        const u = eX(r(B, at, at + 0.5)); if (u <= 0) return;
+        g.save(); g.font = HEAVY(200); const size = 200 * w / g.measureText(s).width;
+        g.beginPath(); g.rect(-100, y - size * 0.82, W + 200, size * 0.86); g.clip();
+        fit(g, s, x, y + size * 0.9 * (1 - u), w, col, a); g.restore();
+      }
+      function lab(g, s, x, y, col, size = 18, a = "left") { g.font = MONO(size, 600); g.fillStyle = col; g.textAlign = a; g.textBaseline = "middle"; g.letterSpacing = "2px"; g.fillText(s, x, y); g.letterSpacing = "0px"; }
+      function hud(g, B) {
+        if (B >= 50.4) return;
+        if (B >= 10.4 && B < 20.6) { g.font = MONO(17, 600); g.letterSpacing = "2px"; const tw = g.measureText("DEMO DATA").width; g.letterSpacing = "0px"; g.fillStyle = BONE; g.fillRect(1848 - tw - 14, 18, tw + 28, 32); lab(g, "DEMO DATA", 1848, 34, INK, 17, "right"); return; }
+        const onInk = B >= 15 && B < 46;
+        lab(g, TB.name.toUpperCase() + " · DEMO DATA", 72, 34, onInk ? BONE : INK, 17);
+        const mode = B < 10 ? "A SESSION" : B < 20 ? "METADATA ONLY" : B < 28 ? "OBSERVE MODE" : B < 40 ? "CONTROL MODE" : "PUBLISH CHECK";
+        lab(g, mode, 1848, 34, onInk ? BONE : INK, 17, "right");
+      }
+      function tile(g, x, y, w, h, B, at) {   // a tile of paper thrown onto the page
+        const u = eB(r(B, at, at + 0.6)), out = eI(r(B, 28 + (x % 3) * 0.1, 28.8));
+        g.translate(0, (1 - u) * 900 + out * 1400);
+        g.fillStyle = BONE; g.fillRect(x, y, w, h);
+      }
+
+      // ---------------- the sections
+      function sObserve(g, B) {
+        if (B < 20 || B >= 29.2) return;
+        const out = eI(r(B, 28, 28.8));
+        g.save(); g.translate(0, 1400 * out); g.globalAlpha = r(B, 21, 21.5);
+        lab(g, "ACTIVITY · EVENT TYPES", 80, 170, BONE, 20);
+        const cw = 1040 / TB.types.length;
+        TB.types.forEach((ty, c) => { g.font = MONO(15, 600); g.fillStyle = BONE; g.textAlign = "left"; g.textBaseline = "middle"; g.fillText(ty, 80 + c * cw, 704); });
+        lab(g, "SESSIONS · TIMES ONLY", 80, 736, BONE, 16);
+        g.restore();
+        drawChips(g, B);
+        g.save(); tile(g, 1200, 150, 648, 300, B, 21.5);
+        lab(g, "READINESS", 1228, 186, INK, 20); fit(g, String(Math.round(86 * eO(r(B, 21.6, 23)))), 1228, 426, 300, INK, "left", 240); g.restore();
+        g.save(); tile(g, 1200, 470, 648, 150, B, 22);
+        lab(g, "USAGE REMAINING", 1228, 506, INK, 20); g.fillStyle = "#CFC9BA"; g.fillRect(1228, 548, 592, 40); g.fillStyle = INK; g.fillRect(1228, 548, 592 * 0.64 * eXIO(r(B, 22.2, 23.4)), 40); g.restore();
+        g.save(); tile(g, 1200, 640, 648, 150, B, 22.5);
+        lab(g, "WORKSPACES · LABELS, NOT PATHS", 1228, 672, INK, 18);
+        TB.workspaces.forEach((s, i) => { g.globalAlpha = r(B, 23 + i * 0.25, 23.1 + i * 0.25); g.font = MONO(22, 600); g.fillStyle = INK; g.textAlign = "left"; g.fillText(s, 1228 + (i === 1 ? 300 : 0), 716 + (i === 2 ? 40 : 0)); }); g.restore();
+        g.save(); g.translate(0, 1400 * out); pop(g, "NO API KEY TO OBSERVE.", 80, 1020, 1768, BONE, B, 24); g.restore();
+      }
+      let STAMP = {};
+      function makeStamp(word, seed) {
+        const c = document.createElement("canvas"); c.width = 1400; c.height = 420; const g = c.getContext("2d"), R = prng(seed);
+        g.strokeStyle = VERM; g.fillStyle = VERM; g.lineWidth = 22; g.strokeRect(24, 24, 1352, 372);
+        g.font = HEAVY(330); g.textAlign = "center"; g.textBaseline = "alphabetic"; const m = g.measureText(word).width; g.font = HEAVY(330 * Math.min(1, 1240 / m)); g.fillText(word, 700, 330);
+        g.globalCompositeOperation = "destination-out"; g.fillStyle = "#000";
+        for (let i = 0; i < 2600; i++) { g.beginPath(); g.arc(R() * 1400, R() * 420, R() * R() * 4.5, 0, 7); g.fill(); }
+        for (let i = 0; i < 26; i++) { g.save(); g.translate(R() * 1400, R() * 420); g.rotate(R() * 3); g.globalAlpha = 0.5; g.fillRect(-90 * R(), -2, 180 * R(), 3 + 6 * R()); g.restore(); }
+        return c;
+      }
+      const LAND = { a: 32, b: 36 };
+      function card(g, x, y, w, h, tag, title, status, statusCol, B) {
+        g.fillStyle = BONE; g.fillRect(x, y, w, h);
+        lab(g, tag, x + 44, y + 56, INK, 22);
+        g.font = HEAVY(200); const ts = Math.min(h * 0.25, 200 * (w - 88) / g.measureText(title).width); g.font = HEAVY(ts); g.fillStyle = INK; g.textAlign = "left"; g.textBaseline = "alphabetic"; g.fillText(title, x + 40, y + h * 0.33 + ts * 0.3);
+        lab(g, status, x + 44, y + h - 56, statusCol, 22);
+      }
+      function stampOn(g, cv, cx, cy, land, B, rot) {
+        if (B < land - 0.2) return;
+        const u = r(B, land - 0.2, land), s = lerp(2.2, 0.62, u * u * u), a = r(B, land - 0.2, land - 0.1);
+        g.save(); g.globalAlpha = a; g.translate(cx, cy); g.rotate(rot); g.scale(s, s); g.drawImage(cv, -700, -210); g.restore();
+      }
+      function sApprove(g, B) {
+        if (B < 28.5 || B >= 41) return;
+        const X = 240, Yc = 120, CW = 1440, CH2 = 560;
+        // the queue
+        const leave = eXIO(r(B, 30.8, 31.6));
+        TB.tasks.forEach((s, i) => {
+          const at = 29 + i * 0.5; if (B < at) return;
+          const u = eB(r(B, at, at + 0.5)), x0 = 90 + i * 590, y0 = lerp(-500, 330, u);
+          if (i === 0) {
+            const x = lerp(x0, X, leave), y = lerp(y0, Yc, leave), w = lerp(560, CW, leave), h = lerp(300, CH2, leave);
+            const ex = eXIO(r(B, 35.3, 35.9));
+            g.save(); g.translate(0, -1400 * ex);
+            card(g, x, y, w, h, "TASK 01 · " + (B < 32 ? "QUEUED" : B < 35 ? "APPROVED" : "DONE"), s, "SANDBOX: READ-ONLY", INK, B);
+            if (B >= 32.4) { const p = eS(r(B, 32.4, 34.8)); g.fillStyle = "#CFC9BA"; g.fillRect(x + 44, y + h - 112, w - 88, 16); g.fillStyle = INK; g.fillRect(x + 44, y + h - 112, (w - 88) * p, 16); }
+            stampOn(g, STAMP.a, 1180, 535, LAND.a, B, -0.07);
+            g.restore();
+          } else {
+            const o = eI(r(B, 30.8, 31.4));
+            g.save(); g.translate(0, 900 * o); card(g, x0, y0, 560, 300, "TASK 0" + (i + 1) + " · QUEUED", s, "SANDBOX: READ-ONLY", INK, B); g.restore();
+          }
+        });
+        if (B < 31) lab(g, "NOTHING STARTS UNTIL IT'S APPROVED", 960, 800, BONE, 26, "center");
+        // full access arrives, and is refused
+        if (B >= 34.8) {
+          const u = eXIO(r(B, 34.8, 35.7)), fall = eI(r(B, 39.7, 40.6));
+          g.save(); g.translate(lerp(1700, 0, u), 1300 * fall); g.translate(960, 400); g.rotate(fall * 0.14); g.translate(-960, -400);
+          card(g, X, Yc, CW, CH2, "TASK 04 · " + (B < 36 ? "REQUESTED" : "NOT RUN"), "Full access", "SANDBOX: FULL", INK, B);
+          stampOn(g, STAMP.b, 1180, 535, LAND.b, B, 0.06);
+          g.restore();
+        }
+        if (B >= 36.4) { const fo = 1 - r(B, 40, 40.6); g.save(); g.globalAlpha = fo; pop(g, "NOTHING RUNS UNTIL YOU SAY SO.", 80, 1010, 1760, BONE, B, 36.4); g.restore(); }
+      }
+      const PRIV_Y = [210, 345, 480, 615, 750];
+      function sWash(g, B) {
+        if (B < 41.5 || B >= 51.75) return;
+        const K = keepRects();
+        K.forEach((k, i) => {
+          if (B < k.at) return;
+          const u = eO(r(B, k.at, k.at + 0.3));
+          g.font = HEAVY(92); g.fillStyle = INK; g.textAlign = "left"; g.textBaseline = "middle"; g.fillText(TB.keep[i], k.x + 34, k.y + k.h / 2 + 6 + 20 * (1 - u));
+          const tick = eO(r(B, 44.5 + i * 0.5, 44.9 + i * 0.5));
+          if (tick > 0) { g.strokeStyle = INK; g.lineWidth = 15; g.lineCap = "butt"; const x = k.x + k.w - 96, y = k.y + k.h / 2; g.beginPath(); g.moveTo(x, y + 2); g.lineTo(x + 22 * cl(tick * 2), y + 2 + 22 * cl(tick * 2)); if (tick > 0.5) g.lineTo(x + 22 + 42 * (tick - 0.5) * 2, y + 24 - 44 * (tick - 0.5) * 2); g.stroke(); }
+        });
+        if (B >= 47) { pop(g, "CHECKED BEFORE IT'S PUBLIC.", 80, 1020, 1768, INK, B, 47); }
+      }
+      const keepRects = () => TB.keep.map((_, i) => ({ x: 1090, y: 196 + i * 165, w: 760, h: 140, at: 42 + i * 0.5 }));
+      function sClose(g, B) {
+        // the drop
+        if (B >= 49.9 && B < 50.55) { const u = r(B, 49.9, 50.5), y = lerp(-90, 480, u * u), st = 1 + 0.5 * u * u; g.fillStyle = INK; g.beginPath(); g.ellipse(960, y, 34 / st, 34 * st, 0, 0, 7); g.fill(); }
+        if (B < 51.7) return;
+        const u = eO(r(B, 51.7, 52.4)), a = r(B, 51.7, 52);
+        g.save(); g.globalAlpha = a; g.translate(960, 330); const s = lerp(0.94, 1, u); g.scale(s, s); g.drawImage($("#logo"), -310, -64.5, 620, 129); g.restore();
+        fit(g, TB.name, 960, 610, 1180, BONE, "center"); g.save(); g.restore();
+        const nm = r(B, 52.1, 52.5);
+        g.globalAlpha = 1;
+        g.font = MONO(38, 500); g.fillStyle = BONE; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(TB.url.slice(0, Math.round(TB.url.length * nm)), 960, 720);
+        g.globalAlpha = r(B, 52.6, 52.9); lab(g, TB.status, 960, 800, BONE, 26, "center"); g.globalAlpha = 1;
+      }
+      function drawOv(g, t) {
+        const B = t / BEAT;
+        g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, W, H); g.globalAlpha = 1;
+        if (B < 21.4) drawLog(g, B);
+        if (B < 10) TB.big.forEach(([s, at], i) => {
+          const x = i < 2 ? 80 : 80, wd = [640, 1040, 900, 800][i];
+          const xx = i === 1 || i === 3 ? 1840 - wd : 80, yy = i < 2 ? 510 : 990;
+          pop(g, s, xx, yy, wd, INK, B, at);
+        });
+        if (B >= 16.6 && B < 20.2) {
+          const o = 1 - eI(r(B, 19.6, 20.2));
+          g.save(); g.globalAlpha = o; pop(g, "METADATA", 640, 500, 1040, BONE, B, 16.8); pop(g, "ONLY.", 640, 900, 600, BONE, B, 17.3); g.restore();
+        }
+        sObserve(g, B); sApprove(g, B); sWash(g, B); sClose(g, B); hud(g, B);
+      }
+
+      // ---------------- what the pen lays in the page each frame
+      const barR = prng(9), SPL = TB.bursts.map(() => Array.from({ length: 34 }, () => [barR(), barR(), barR()]));
+      const stR = prng(13), SPK = [0, 1].map(() => Array.from({ length: 150 }, () => [stR() * 6.283, Math.pow(stR(), 0.6), stR()]));
+      function marks(g, g2, t) {
+        const B = t / BEAT;
+        g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = "source-over"; g.fillStyle = "#000"; g.fillRect(0, 0, SW, SH);
+        g.setTransform(SW / W, 0, 0, SH / H, 0, 0); g.globalCompositeOperation = "lighter";
+        g2.setTransform(1, 0, 0, 1, 0, 0); g2.fillStyle = "#000"; g2.fillRect(0, 0, SW, SH); g2.setTransform(SW / W, 0, 0, SH / H, 0, 0);
+        // the big words go wet and become the page
+        if (B >= 9.95 && B < 10.1) TB.big.forEach(([s], i) => { const wd = [640, 1040, 900, 800][i], xx = i === 1 || i === 3 ? 1840 - wd : 80, yy = i < 2 ? 510 : 990; g.fillStyle = "rgb(255,255,0)"; g.font = HEAVY(200); const size = 200 * wd / g.measureText(s).width; g.font = HEAVY(size); g.textAlign = "left"; g.textBaseline = "alphabetic"; g.fillText(s, xx, yy); });
+        // the islands
+        if (B >= 9.95 && B < 20) CH.forEach((c) => { if (B < c.L) { g.fillStyle = "rgb(0,0,255)"; g.fillRect(c.x, c.y, c.w, c.h); } });
+        // the bars
+        TB.bursts.forEach((bu, k) => {
+          const d = r(B, bu.b, bu.b + 0.12); if (d <= 0 || B > bu.b + 0.4) return;
+          bu.rows.forEach((row, n) => { const y = rowY(row + N - ROWS, N - ROWS), u = eX(d); g.fillStyle = "rgb(255,255,0)"; g.fillRect(XP - 16, y - 20, (W - XP + 40) * u, 40); });
+          if (B < bu.b + 0.1) SPL[k].forEach(([a, c, e]) => { const row = bu.rows[Math.floor(a * bu.rows.length)], y = rowY(row + N - ROWS, N - ROWS); g.fillStyle = "rgb(255,255,0)"; g.beginPath(); g.arc(XP + c * 1320, y + (e - 0.5) * 120, 1.5 + 7 * e * e, 0, 7); g.fill(); });
+        });
+        // what the publish check is looking at: private words written in the ink, what stays on islands of paper
+        if (B >= 40.8 && B < 44) { TB.private.forEach((s, i) => { if (B < 40.8 + i * 0.5) return; g.fillStyle = "rgb(0,0,255)"; g.font = HEAVY(200); const size = Math.min(150, 200 * 900 / g.measureText(s).width); g.font = HEAVY(size); g.textAlign = "left"; g.textBaseline = "alphabetic"; g.fillText(s, 80, PRIV_Y[i] + 110); });
+          keepRects().forEach((k) => { if (B >= k.at) { g.fillStyle = "rgb(0,0,255)"; g.fillRect(k.x, k.y, k.w, k.h); } }); }
+        // the stamps' splash
+        [[LAND.a, 0], [LAND.b, 1]].forEach(([land, k]) => {
+          const d = B - land; if (d < 0 || d > 0.14) return;
+          g2.fillStyle = "#f00"; g.fillStyle = "rgb(0,255,0)";
+          SPK[k].forEach(([a, rr, e]) => { const R = 760 * rr, x = 1180 + Math.cos(a) * R * 1.3, y = 535 + Math.sin(a) * R * 0.8; g2.beginPath(); g2.arc(x, y, 1.5 + 13 * e * e * e, 0, 7); g2.fill(); g.beginPath(); g.arc(x, y, 16 + 20 * e, 0, 7); g.fill(); });
+        });
+        g.globalCompositeOperation = "source-over";
+      }
+      function simU(tau) {
+        const B = tau / BEAT;
+        const flood = B < 44 ? 1.3 * eS(r(B, 12.2, 17)) : 0;
+        const soak = B < 10 ? 0 : B < 17 ? lerp(0.22, 0.5, r(B, 10, 17)) : B >= 50.5 && B < 54 ? 0.2 : 0;
+        const wash = B >= 44 && B < 49.9 ? lerp(-0.12, 1.3, eS(r(B, 44, 47.2))) : -1;
+        const bloom = B >= 50.5 ? 1.75 * Math.pow(r(B, 50.5, 51.7), 1.8) + 0.03 : 0;
+        return { flood, soak, wash, bloom, res: B >= 20 && B < 21.5 ? 0.25 : 0, red: B >= 39.1 && B < 40.2 ? 0.05 : 0 };
+      }
+
+      // ---------------- WebGL2
+      let gl, PS, PD, US = {}, UD = {}, tex = [], fbo = [], cur = 0, fib, mT, m2T, ovT, mC, mG, m2C, m2G, ovC, ovG, tmpC, tmpG, simA = -1, simN = 0;
+      function initGL() {
+        gl = $("#stage").getContext("webgl2", { antialias: false, alpha: false, depth: false, stencil: false, preserveDrawingBuffer: true });
+        if (!gl.getExtension("EXT_color_buffer_float")) throw new Error("EXT_color_buffer_float is needed for the ink buffer");
+        const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+        const prog = (fs) => { const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs)); gl.bindAttribLocation(p, 0, "p"); gl.linkProgram(p); if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p)); return p; };
+        const PF = prog(FIB_FS); PS = prog(SIM_FS); PD = prog(DISP_FS);
+        for (const n of ["uPrev", "uFib", "uM", "uM2", "uTex", "uBC", "uFirst", "uSoak", "uFlood", "uBR", "uResFade", "uWash", "uRedFade"]) US[n] = gl.getUniformLocation(PS, n);
+        for (const n of ["uS", "uFib", "uOv", "uRes", "uPiv", "uOff", "uZoom", "uTime", "uRip"]) UD[n] = gl.getUniformLocation(PD, n);
+        const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+        const lin = () => { gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); };
+        const mk = () => { const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t); gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA16F, SW, SH); lin(); const f = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, f); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0); return [t, f]; };
+        for (let k = 0; k < 2; k++) [tex[k], fbo[k]] = mk();
+        let fbF; [fib, fbF] = mk();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbF); gl.viewport(0, 0, SW, SH); gl.useProgram(PF); gl.uniform2f(gl.getUniformLocation(PF, "uRes"), SW, SH); gl.drawArrays(gl.TRIANGLES, 0, 3);
+        const t2 = () => { const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t); lin(); return t; };
+        mT = t2(); m2T = t2(); ovT = t2();
+        const cv = (w, h, o) => { const c = document.createElement("canvas"); c.width = w; c.height = h; return [c, c.getContext("2d", o)]; };
+        [mC, mG] = cv(SW, SH, { alpha: false }); [m2C, m2G] = cv(SW, SH, { alpha: false }); [ovC, ovG] = cv(W, H); [tmpC, tmpG] = cv(W, H);
+      }
+      function resetSim(a) {
+        const ink = a > 0 ? 1 : 0;
+        for (let k = 0; k < 2; k++) { gl.bindFramebuffer(gl.FRAMEBUFFER, fbo[k]); gl.viewport(0, 0, SW, SH); gl.clearColor(ink, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); }
+        simA = a; simN = 0; cur = 0;
+      }
+      function stepSim() {
+        simN += 1;
+        const tau = simA + simN * DT, U = simU(tau);
+        marks(mG, m2G, tau);
+        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+        gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, mT); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, mC);
+        gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, m2T); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, m2C);
+        gl.useProgram(PS); gl.viewport(0, 0, SW, SH);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, fib);
+        gl.uniform1i(US.uPrev, 0); gl.uniform1i(US.uFib, 1); gl.uniform1i(US.uM, 2); gl.uniform1i(US.uM2, 3);
+        gl.uniform2f(US.uTex, 1 / SW, 1 / SH); gl.uniform2f(US.uBC, 0.5, 480 / H);
+        gl.uniform1f(US.uSoak, U.soak); gl.uniform1f(US.uFlood, U.flood); gl.uniform1f(US.uBR, U.bloom); gl.uniform1f(US.uResFade, U.res); gl.uniform1f(US.uWash, U.wash); gl.uniform1f(US.uRedFade, U.red);
+        for (let i = 0; i < ITER; i++) {
+          const dst = 1 - cur;
+          gl.bindFramebuffer(gl.FRAMEBUFFER, fbo[dst]);
+          gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex[cur]);
+          gl.uniform1f(US.uFirst, i === 0 ? 1 : 0);
+          gl.drawArrays(gl.TRIANGLES, 0, 3);
+          cur = dst;
+        }
+      }
+      function simTo(t) {
+        const a = anchorOf(t), target = Math.floor((t - a) / DT + 1e-6);
+        if (a !== simA || target < simN) resetSim(a);
+        while (simN < target) stepSim();
+      }
+      // the crisp layer, accumulated from sub-frames so fast moves have real motion blur
+      function overlay(t) {
+        ovG.setTransform(1, 0, 0, 1, 0, 0); ovG.globalCompositeOperation = "source-over"; ovG.clearRect(0, 0, W, H);
+        for (let i = 0; i < SUB; i++) { drawOv(tmpG, t - SHUT * i / SUB); ovG.globalCompositeOperation = "lighter"; ovG.globalAlpha = 1 / SUB; ovG.drawImage(tmpC, 0, 0); }
+        ovG.globalAlpha = 1; ovG.globalCompositeOperation = "source-over";
+      }
+      function camera(t) {
+        const B = t / BEAT;
+        let z = 1 + 0.1 * eS(r(B, 10, 17)) - 0.1 * eXIO(r(B, 19.5, 20.7)), ox = 0, oy = 0;
+        const hits = [[6, 5], [7, 5], [8, 5], [9, 5], ...TB.bursts.map((b) => [b.b, 8]), [16.8, 10], [LAND.a, 30], [LAND.b, 26], [24, 5], [36.4, 5], [50.5, 8]];
+        for (const [h, a] of hits) { const d = t - h * BEAT; if (d < 0 || d > 0.6) continue; const k = Math.exp(-d * 8) * a; ox += k * Math.sin(d * 71); oy += k * Math.cos(d * 59); z += 0.0009 * k; }
+        return { z, ox: ox / W, oy: oy / H };
+      }
+      function display(t) {
+        const c = camera(t), B = t / BEAT;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, W, H); gl.useProgram(PD);
+        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+        gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, ovT); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, ovC);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex[cur]);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, fib);
+        gl.uniform1i(UD.uS, 0); gl.uniform1i(UD.uFib, 1); gl.uniform1i(UD.uOv, 2);
+        gl.uniform2f(UD.uRes, W, H); gl.uniform2f(UD.uPiv, XT / W, 0.5); gl.uniform2f(UD.uOff, c.ox, c.oy); gl.uniform1f(UD.uZoom, c.z); gl.uniform1f(UD.uTime, t);
+        const rp = (land, x, y) => [x, y, B >= land ? (B - land) * BEAT : -1];
+        gl.uniform3fv(UD.uRip, new Float32Array([...rp(LAND.a, 1180, 535), ...rp(LAND.b, 1180, 535), ...rp(50.5, 960, 480)]));
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+      }
+      function paint(t) { simTo(t); overlay(t); display(t); }
+
+      const tl = gsap.timeline({ paused: true });
+      const clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+      async function build() {
+        await Promise.all([$("#logo").decode(), document.fonts.load('900 condensed 40px "Archivo"'), document.fonts.load('500 20px "JBM"'), document.fonts.load('600 20px "JBM"')]);
+        initGL();
+        buildChips(tmpG);
+        STAMP = { a: makeStamp("APPROVE", 21), b: makeStamp("BLOCKED", 22) };
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = window.__hf.buildReady || {};
+      window.__hf.buildReady["blackout"] = build();
+    </script>
+  </body>
+</html>

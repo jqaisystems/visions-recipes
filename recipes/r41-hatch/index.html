@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <!--
+      R41 · Hatch. 34.56 s at 125 bpm. For Codex Control Center, which sees the shape of the activity and not the words.
+      The whole film is one engraved field of lines, like a banknote. Nothing is shaded and nothing is laid on top: 3D forms and big
+      words exist only because the lines swell or bend. One fragment shader, stateless, three sub-frames of motion blur per frame.
+      Type goes in through one canvas: red makes lines swell (ink), blue only bends them (shape with no ink), green is flat small type.
+      The logo is a flat image at the close and is never put through the lines.
+    -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/table.js"></script>
+    <style>
+      @font-face { font-family: "Archivo"; src: url("assets/fonts/Archivo.ttf") format("truetype"); font-weight: 100 900; font-stretch: 62% 125%; }
+      @font-face { font-family: "JBM"; src: url("assets/fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 100 800; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #0b0b0c; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #0b0b0c; }
+      #ct-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #stage { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #logo { position: absolute; left: -2000px; top: 0; width: 926px; height: 193px; }
+      .pre { position: absolute; left: -2000px; top: 0; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="34.56" data-width="1920" data-height="1080">
+      <div id="ct-stage" class="clip" data-start="0" data-duration="34.56" data-track-index="0">
+        <canvas id="stage" width="1920" height="1080" data-layout-allow-overflow></canvas>
+        <img id="logo" src="assets/brand/your-mark.svg" alt="Your mark" data-layout-allow-overflow>
+      </div>
+      <audio id="score" src="assets/bgm/score.wav" data-start="0" data-duration="34.56" data-track-index="7" data-volume="0.9"></audio>
+    </div>
+
+    <script>
+      const VS = "#version 300 es\nin vec2 c; void main(){ gl_Position = vec4(c, 0.0, 1.0); }";
+      const FS = `#version 300 es
+precision highp float;
+uniform sampler2D uT, uLogo;
+uniform vec2 uShake, uC, uFC;
+uniform vec3 uPA, uIA, uPB, uIB, uFlat, uShockA, uShockB;
+uniform float uBar[7];
+uniform int uS, uM0, uM1;
+uniform float uF, uAng, uMix, uBg, uPulse, uDisp, uObjMix, uObjF, uObjD, uA, uB2, uYaw, uPitch, uDist, uTxtTone, uTxtH, uBlueH, uFR, uLA, uTunZ, uTunR, uOpenBoost;
+out vec4 o;
+const vec2 RES = vec2(1920.0, 1080.0);
+mat2 rot(float a){ float c = cos(a), s = sin(a); return mat2(c, -s, s, c); }
+float box(vec3 p, vec3 b, float r){ vec3 q = abs(p) - b + r; return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0) - r; }
+float map(vec3 q) {
+  if (uS == 0) {
+    float l = uB2 * sin(3.1 * q.x + uYaw * 2.0) * sin(3.7 * q.y - uYaw * 1.4) * sin(3.3 * q.z + uYaw);
+    return (length(q) - uA - l) * 0.72;
+  }
+  if (uS == 1) {
+    vec3 g = q - vec3(-0.75, 0.0, 0.0);
+    float d = 1e3;
+    for (int i = 0; i < 7; i++) {
+      float h = max(0.01, uBar[i]);
+      d = min(d, box(g - vec3(float(i) * 0.36 - 1.08, -0.92 + h, 0.1), vec3(0.14, h, 0.34), 0.03));
+    }
+    vec3 c = q - vec3(1.82, -0.02 + uB2, 0.05);
+    c.yz = rot(uA) * c.yz; c.xz = rot(uA * 0.6) * c.xz;
+    float t = length(vec2(length(c.xz) - 0.64, c.y)) - 0.14;
+    return min(d, t);
+  }
+  if (uS == 2) {
+    float fr = min(box(q - vec3(-1.56, 0.0, 0.0), vec3(0.14, 1.72, 0.2), 0.02), box(q - vec3(1.56, 0.0, 0.0), vec3(0.14, 1.72, 0.2), 0.02));
+    fr = min(fr, box(q - vec3(0.0, 1.72, 0.0), vec3(1.7, 0.14, 0.2), 0.02));
+    fr = min(fr, box(q - vec3(0.0, -1.72, 0.0), vec3(1.7, 0.14, 0.2), 0.02));
+    vec3 a = q - vec3(-1.42, 0.0, 0.0); a.xz = rot(uA) * a.xz;
+    vec3 b = q - vec3(1.42, 0.0, 0.0); b.xz = rot(-uA) * b.xz;
+    float da = max(box(a - vec3(0.71, 0.0, 0.0), vec3(0.7, 1.58, 0.07), 0.01), -box(a - vec3(0.71, 0.0, -0.07), vec3(0.5, 1.36, 0.035), 0.01));
+    float db = max(box(b + vec3(0.71, 0.0, 0.0), vec3(0.7, 1.58, 0.07), 0.01), -box(b + vec3(0.71, 0.0, -0.07), vec3(0.5, 1.36, 0.035), 0.01));
+    return min(fr, min(da, db));
+  }
+  // the X
+  vec3 x = q; x.xy = rot(0.7854) * x.xy;
+  return min(box(x, vec3(1.42, 0.34, 0.28), 0.03), box(x, vec3(0.34, 1.42, 0.28), 0.03));
+}
+vec3 normalAt(vec3 q) {
+  const vec2 e = vec2(0.002, 0.0);
+  return normalize(vec3(map(q + e.xyy) - map(q - e.xyy), map(q + e.yxy) - map(q - e.yxy), map(q + e.yyx) - map(q - e.yyx)));
+}
+float field(int m, vec2 p) {
+  if (m == 0) return (rot(uAng) * p).y;
+  if (m == 1) return length(p - uC);
+  if (m == 2) return atan(p.y - uC.y, p.x - uC.x) / 6.2832 * 3.0;
+  if (m == 3) { vec2 d = p - uC; return length(d) * 0.72 + atan(d.y, d.x) / 6.2832 * (3.0 / uF); }
+  vec2 d = rot(uTunR) * (p - uC) * vec2(1.0, 1.25);
+  return 0.28 / max(max(abs(d.x), abs(d.y)), 0.016) * 0.22 + uTunZ;
+}
+vec3 soft(vec2 uv, float lod) {
+  vec2 d = pow(2.0, lod) * 0.8 / RES;
+  vec3 c = textureLod(uT, uv, lod).rgb * 0.25;
+  c += (textureLod(uT, uv + vec2(d.x, 0.0), lod).rgb + textureLod(uT, uv - vec2(d.x, 0.0), lod).rgb + textureLod(uT, uv + vec2(0.0, d.y), lod).rgb + textureLod(uT, uv - vec2(0.0, d.y), lod).rgb) * 0.125;
+  c += (textureLod(uT, uv + d, lod).rgb + textureLod(uT, uv - d, lod).rgb + textureLod(uT, uv + vec2(d.x, -d.y), lod).rgb + textureLod(uT, uv + vec2(-d.x, d.y), lod).rgb) * 0.0625;
+  return c;
+}
+float shock(vec3 s, vec2 p) {
+  if (s.z < 0.0) return 0.0;
+  float r = length(p - s.xy), f = r - s.z * 2.6;
+  return 7.0 * exp(-f * f / 0.012) * exp(-s.z * 2.4);
+}
+float stripe(float x, float w, float aa) {
+  float d = abs(fract(x) - 0.5) * 2.0;
+  float c = 1.0 - smoothstep(w - aa, w + aa, d);
+  return mix(c, clamp(w, 0.0, 1.0), smoothstep(0.6, 1.5, aa));
+}
+void main() {
+  vec2 uv = gl_FragCoord.xy / RES;
+  vec2 p = (uv - 0.5) * vec2(1.7778, 1.0) + uShake;
+  vec2 tuv = uv + vec2(uShake.x / 1.7778, uShake.y);
+  vec3 tx = texture(uT, tuv).rgb;
+  float rh = textureLod(uT, tuv, 3.0).r, bh = soft(tuv, 4.0).b * 0.75 + soft(tuv, 5.5).b * 0.6, gh = textureLod(uT, tuv, 4.0).g;
+  float tone = uBg, disp = 0.0, obj = 0.0, objL = 0.0;
+  if (uS >= 0) {
+    vec3 ro = vec3(0.0, 0.0, -uDist);
+    vec3 rd = normalize(vec3(p, 1.55));
+    ro.yz = rot(uPitch) * ro.yz; rd.yz = rot(uPitch) * rd.yz;
+    float yaw = uS == 0 ? 0.0 : uYaw;
+    ro.xz = rot(yaw) * ro.xz; rd.xz = rot(yaw) * rd.xz;
+    float t = 0.0; bool hit = false;
+    for (int i = 0; i < 64; i++) {
+      float d = map(ro + rd * t);
+      if (d < 0.0012) { hit = true; break; }
+      t += d; if (t > uDist + 7.0) break;
+    }
+    if (hit) {
+      vec3 q = ro + rd * t, n = normalAt(q);
+      float l = clamp(dot(n, normalize(vec3(-0.55, 0.72, -0.5))), 0.0, 1.0);
+      float rim = pow(1.0 - clamp(-dot(n, rd), 0.0, 1.0), 2.5);
+      float shade = clamp(0.92 - 0.8 * l + 0.14 * rim, uS == 3 ? 0.62 : 0.06, 1.0);
+      obj = 1.0;
+      tone = mix(tone, shade, uObjMix);
+      bool door = uS == 2 && abs(q.x) < 1.42 && abs(q.y) < 1.58;
+      if (door) tone = min(1.0, tone + 0.2);
+      objL = uS == 2 ? (door ? (q.x + q.z * 0.8) * 0.9 : q.y * 0.6) : dot(q, normalize(vec3(0.25, 1.0, 0.18)));
+      disp = max(0.0, uDist - t) * uObjD;
+    }
+  }
+  if (uM0 == 4) { vec2 dt = rot(uTunR) * (p - uC) * vec2(1.0, 1.25); tone = mix(0.1, 0.8, smoothstep(0.04, 0.46, max(abs(dt.x), abs(dt.y)))); }
+  disp += (rh * 1.5) * uTxtH + bh * uBlueH;
+  tone = mix(tone, uTxtTone, tx.r);
+  tone = max(tone, uBg * (1.0 - obj)) + uPulse * (0.05 + 0.14 * tone);
+  tone *= 1.0 - smoothstep(0.015, 0.2, gh);
+  vec2 pw = p;
+  float L = mix(field(uM0, pw), field(uM1, pw), uMix) * uF + 0.5;
+  L += disp * uDisp + shock(uShockA, p) + shock(uShockB, p);
+  L = mix(L, objL * uObjF, obj * uObjMix * 0.999);
+  float fw = max(fwidth(L), 0.0005);
+  float main_ = stripe(L, min(tone * 0.88, 1.0), fw * 1.15);
+  float crossW = clamp((tone - 0.56) * 1.15, 0.0, 0.7);
+  float Lx = L * 0.0 + (uM0 == 0 ? (rot(uAng + 1.5708) * p).y : (rot(0.7854) * p).y) * uF;
+  float cross = crossW > 0.0 ? stripe(Lx + 0.5, crossW, max(fwidth(Lx), 0.0005) * 1.15) : 0.0;
+  float ink = max(main_, cross);
+  // the wipe: a front of solid ink, the new colours behind it
+  float s = length(p - uFC) - uFR;
+  vec3 paper = s < 0.0 ? uPB : uPA, inkc = s < 0.0 ? uIB : uIA;
+  ink = max(ink, smoothstep(0.075, 0.015, abs(s)));
+  vec3 col = mix(paper, inkc, ink);
+  col = mix(col, uFlat, tx.g);
+  vec2 q = (uv - vec2(0.5, 0.5 + 180.0 / 1080.0)) * RES / vec2(620.0, 129.0) + 0.5;
+  if (uLA > 0.0 && q.x > 0.0 && q.x < 1.0 && q.y > 0.0 && q.y < 1.0) { vec4 lg = texture(uLogo, vec2(q.x, 1.0 - q.y)); col = mix(col, lg.rgb, lg.a * uLA); }
+  o = vec4(col, 1.0);
+}`;
+    </script>
+
+    <script>
+      const TB = window.TABLE, DUR = TB.dur, BEAT = TB.beat, FPS = 30, SUBS = 3;
+      const $ = (s) => document.querySelector(s);
+      const cl = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x)), r = (t, a, b) => cl((t - a) / (b - a)), lerp = (a, b, u) => a + (b - a) * u;
+      const eo = (u) => 1 - Math.pow(1 - cl(u), 3), ex = (u) => { u = cl(u); return u >= 1 ? 1 : 1 - Math.pow(2, -10 * u); }, ei = (u) => Math.pow(cl(u), 3);
+      const back = (u, k = 1.9) => { u = cl(u) - 1; return u * u * ((k + 1) * u + k) + 1; };
+      const io = (u) => { u = cl(u); return u * u * (3 - 2 * u); };
+      const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255);
+      const BONE = hex("#EDE6D6"), INK = hex("#0B0B0C"), TEAL = hex("#00A89D"), RED = hex("#E8341C"), AMBER = hex("#FFA024");
+      // beat, paper, ink, front centre
+      const CUTS = [[0, BONE, INK, [0, 0]], [8, INK, BONE, [0, 0]], [12, TEAL, INK, [-0.5, 0.2]], [14, BONE, INK, [0.6, -0.2]], [17, INK, TEAL, [0, 0]], [20, BONE, INK, [-0.6, 0.3]], [32, AMBER, INK, [0, 0]], [36.45, INK, BONE, [0, 0]], [42, RED, INK, [0, 0]], [48, BONE, INK, [0.7, 0.3]], [58, INK, BONE, [0, 0]]];
+      const KICKS = [8, 20, 36, 37, 38, 39, 40, 41];
+      let gl, P, U = {}, TEX, LOGO, cv, g;
+      const HEAVY = (s) => `900 ${s}px Archivo`, MONO = (s, w = 600) => `${w} ${s}px JBM`;
+      const URL_TEXT = "ai.joaoqueiros.com";
+
+      function initGL() {
+        const c = $("#stage");
+        gl = c.getContext("webgl2", { antialias: false, alpha: false, depth: false, stencil: false, preserveDrawingBuffer: true });
+        const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+        P = gl.createProgram(); gl.attachShader(P, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(P, sh(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(P);
+        if (!gl.getProgramParameter(P, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(P));
+        gl.useProgram(P);
+        const n = gl.getProgramParameter(P, gl.ACTIVE_UNIFORMS);
+        for (let i = 0; i < n; i++) { const a = gl.getActiveUniform(P, i).name.replace("[0]", ""); U[a] = gl.getUniformLocation(P, a); }
+        const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+        const l = gl.getAttribLocation(P, "c"); gl.enableVertexAttribArray(l); gl.vertexAttribPointer(l, 2, gl.FLOAT, false, 0, 0);
+        TEX = gl.createTexture(); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, TEX);
+        for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
+        LOGO = gl.createTexture(); gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, LOGO);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, $("#logo"));
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.uniform1i(U.uT, 0); gl.uniform1i(U.uLogo, 1);
+        cv = document.createElement("canvas"); cv.width = 1920; cv.height = 1080; g = cv.getContext("2d", { willReadFrequently: false });
+        gl.enable(gl.BLEND);
+      }
+
+      // Type. Red swells the lines, blue only bends them, green is flat small type.
+      const R_ = "rgb(255,0,0)", G_ = "rgb(0,255,0)", B_ = "rgb(0,0,255)";
+      function fit(s, cx, cy, w, col, scale = 1, skew = 0, stretch = "normal") {
+        g.save(); g.fontStretch = stretch; g.font = HEAVY(200); const size = 200 * w / g.measureText(s).width; g.font = HEAVY(size);
+        g.translate(cx, cy); g.transform(1, 0, skew, 1, 0, 0); g.scale(scale, scale); g.fillStyle = col; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(s, 0, size * 0.035); g.restore(); g.fontStretch = "normal"; return size;
+      }
+      function sized(s, cx, cy, size, col) { g.font = HEAVY(size); g.fillStyle = col; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(s, cx, cy); }
+      function lab(s, x, y, size = 20, a = "left", font = MONO) { g.font = font(size); g.fillStyle = G_; g.textAlign = a; g.textBaseline = "middle"; g.fillText(s, x, y); }
+      const slam = (B, at, from = 1.5) => lerp(from, 1, ex(r(B, at, at + 0.5)));
+
+      function drawType(B) {
+        g.globalCompositeOperation = "source-over"; g.fillStyle = "#000"; g.fillRect(0, 0, 1920, 1080); g.globalCompositeOperation = "lighter";
+        if (B >= 8 && B < 12) {
+          const rows = [["09:41", "READ", "PAY REVIEW"], ["09:42", "EDIT", "CLIENT BRIEF"], ["09:44", "RUN", "SECRET PLANS"]];
+          const sc = 80 * io(r(B, 11, 12));
+          rows.forEach((w, i) => {
+            const at = 8 + i; if (B < at) return;
+            const y = 240 + i * 290 - sc, x0 = lerp(-400, 0, ex(r(B, at, at + 0.55)));
+            const melt = r(B, at + 0.75, at + 1.5);
+            g.font = HEAVY(170); g.textBaseline = "middle"; g.textAlign = "left"; g.fillStyle = R_;
+            g.fillText(w[0] + " " + w[1], 74 + x0, y);
+            const m = g.measureText(w[0] + " " + w[1] + "  ").width;
+            const fs = Math.min(170, 170 * (1840 - m - 74) / (g.measureText(w[2]).width));
+            g.font = HEAVY(fs);
+            const a = `rgb(${Math.round(255 * (1 - melt))},0,0)`, b = `rgb(0,0,${Math.round(255 * melt)})`;
+            g.fillStyle = a; g.fillText(w[2], 74 + m + x0, y);
+            g.fillStyle = b; g.fillText(w[2], 74 + m + x0, y);
+          });
+          lab("DEMO DATA", 1842, 56, 22, "right");
+        }
+        if (B >= 12 && B < 14) {
+          fit("SEES THE", 960, 340, 1520, R_, slam(B, 12), -0.12 * (1 - ex(r(B, 12, 12.6))));
+          if (B >= 13) fit("SHAPE", 960, 740, 1640, R_, slam(B, 13), 0.12 * (1 - ex(r(B, 13, 13.6))));
+        }
+        if (B >= 14 && B < 17) {
+          const melt = io(r(B, 14.5, 15.2));
+          const a = `rgb(${Math.round(255 * (1 - melt))},0,0)`, b = `rgb(0,0,${Math.round(255 * melt)})`;
+          for (const c of [a, b]) { fit("NOT THE", 960, 340, 1520, c, slam(B, 14)); fit("WORDS", 960, 740, 1640, c, slam(B, 14)); }
+        }
+        if (B >= 17 && B < 20) {
+          const sq = 1 + 0.03 * (B - 17);
+          fit("METADATA", 960, B < 18.5 ? 540 : 340, 1720, R_, slam(B, 17) * sq, 0);
+          if (B >= 18.5) fit("ONLY", 960, 750, 1180, R_, slam(B, 18.5) * sq, 0);
+        }
+        if (B >= 20 && B < 32) {
+          lab("DEMO DATA", 78, 70, 22);
+          if (B >= 24 && B < 31) { const u = ex(r(B, 24, 24.5)); g.save(); g.globalAlpha = 1; lab("NO API KEY", 78, lerp(1100, 950, u), 104, "left", HEAVY); g.restore(); }
+          if (B >= 26 && B < 31) { const u = ex(r(B, 26, 26.5)); lab("TO OBSERVE", 1842, lerp(1100, 950, u), 104, "right", HEAVY); }
+        }
+        if (B >= 34 && B < 36.4) {
+          fit("APPROVE?", 960, 540, 1020 * (1 + 0.012 * (B - 34)), G_, slam(B, 34, 1.15));
+        }
+        if (B >= 36.8 && B < 42) {
+          const fly = (s, at, n) => { const u = r(B, at, at + n); if (u <= 0 || u >= 1) return; fit(s, 960, 540, 1100, G_, 0.32 * Math.pow(14, Math.pow(u, 1.25))); };
+          fly("READ-ONLY", 37, 2.1); fly("BY DEFAULT", 39.1, 2.3);
+        }
+        if (B >= 42 && B < 48) {
+          if (B < 44.45) { fit("FULL", 960, 350, 1100, R_, slam(B, 42)); if (B >= 43) fit("ACCESS", 960, 730, 1500, R_, slam(B, 43)); }
+          else {
+            const a = ex(r(B, 44.6, 45)); lab("FULL ACCESS", 70 - 40 * (1 - a), 540, 58, "left", HEAVY);
+            if (B >= 45.5) lab("BLOCKED IN V1", 1850 + 40 * (1 - ex(r(B, 45.5, 45.9))), 540, 58, "right", HEAVY);
+          }
+        }
+        if (B >= 48 && B < 58) {
+          const m = r(B, 48, 48.5), Y = 610, xs = [340, 960, 1580];
+          if (B < 49.4 || B >= 55.8) lab("CHECKED BEFORE IT'S PUBLIC", 960, 90, 76, "center", HEAVY);
+          const wd = 1920 * ex(m), x0 = 960 - wd / 2;
+          g.fillStyle = R_; g.fillRect(x0, Y, wd, 16); g.fillRect(x0, Y + 66, wd, 16);
+          for (let x = 0; x < 1920; x += 64) if (x >= x0 && x <= x0 + wd) g.fillRect(x + 12, Y, 20, 82);
+          [["CREDENTIALS", 1500], ["LOGS", 860], ["PATHS", 1160]].forEach(([w, wide], i) => {
+            const at = 49.6 + i * 1.2; if (B < at) return; const u = B - at, yy = -220 + 900 * u * u;
+            if (yy > 1500) return;
+            g.save(); g.beginPath(); g.rect(0, 0, 1920, Y); g.clip(); fit(w, 960, yy, wide, R_); g.restore();
+            g.save(); g.beginPath(); g.rect(0, Y + 82, 1920, 600); g.clip(); fit(w, 960, yy, wide, B_); g.restore();
+          });
+          ["SOURCE", "DOCS", "DEMO"].forEach((w, i) => {
+            const at = 53.4 + i * 0.8; if (B < at) return;
+            const u = B - at, y0 = Y - 66;
+            let yy; if (u < 0.35) yy = -120 + (y0 + 120) * Math.pow(u / 0.35, 2); else { const q = u - 0.35; yy = y0 - 90 * Math.max(0, Math.sin(Math.min(1, q / 0.35) * Math.PI)) * Math.exp(-q * 2); }
+            sized(w, xs[i], yy, 116, R_);
+            if (u >= 0.75) { const ku = ex(r(u, 0.75, 1.15)); g.save(); g.strokeStyle = G_; g.lineWidth = 16; g.lineCap = "round"; g.lineJoin = "round"; g.beginPath(); const tx = xs[i], ty = y0 - 128; g.moveTo(tx - 42, ty); g.lineTo(tx - 42 + 30 * cl(ku * 2), ty + 30 * cl(ku * 2)); if (ku > 0.5) g.lineTo(tx - 12 + 68 * (ku - 0.5) * 2, ty + 30 - 68 * (ku - 0.5) * 2); g.stroke(); g.restore(); }
+          });
+        }
+        if (B >= 62.5) {
+          const a = io(r(B, 62.5, 63.3)); g.globalAlpha = a;
+          lab("Codex Control Center", 960, 650 + 16 * (1 - ex(r(B, 62.5, 63.3))), 86, "center", (s) => `800 ${s}px Archivo`);
+          lab("OPEN SOURCE · MIT", 960, 748, 28, "center"); lab(URL_TEXT, 960, 806, 34, "center", (s) => MONO(s, 500)); g.globalAlpha = 1;
+        }
+      }
+
+      function pair(B) { let i = 0; for (let k = 0; k < CUTS.length; k++) if (B >= CUTS[k][0]) i = k; return i; }
+
+      function state(B) {
+        const f = B - Math.floor(B);
+        const S = { s: -1, m0: 0, m1: 1, mix: 0, F: 46, ang: 0, bg: 0.12, pulse: 0, disp: 3, objMix: 1, objF: 14, objD: 3, A: 1, B2: 0, yaw: 0, pitch: 0, dist: 3.4, txtTone: 1, txtH: 1, blueH: 4, cx: 0, cy: 0, sx: 0, sy: 0, shA: [0, 0, -1], shB: [0, 0, -1], tz: 0, tr: 0, bars: [0, 0, 0, 0, 0, 0, 0], flat: null, la: 0 };
+        const kp = (a) => Math.exp(-(a) * 6);
+        if (B < 8) {
+          S.s = 0;
+          S.A = lerp(0.001, 0.95, io(r(B, 0.4, 3.9))) + (B >= 4 ? 0.09 * Math.exp(-f * 5) : 0) + 0.2 * ex(r(B, 4, 4.5)) * 0;
+          S.objMix = ex(r(B, 3.8, 4.2)); S.objD = 7; S.disp = 2.2; S.objF = 13;
+          S.bg = lerp(0.1, 0.12, r(B, 0, 4));
+          S.mix = back(r(B, 4, 4.9), 1.1); S.m1 = 1; S.ang = 0.1 * ei(r(B, 2, 4));
+          S.B2 = lerp(0, 0.34, ei(r(B, 4.5, 8))); S.yaw = B * 0.8;
+          S.pulse = B >= 4 ? Math.exp(-f * 5) : 0;
+          if (B >= 4) S.shA = [0, 0, (B - 4) * BEAT];
+          if (B >= 6) S.shB = [0, 0, (B - 6) * BEAT];
+          if (B > 7.5) S.A += 0.5 * ei(r(B, 7.5, 8));
+        } else if (B < 12) {
+          S.F = 44; S.bg = 0.13; S.disp = 3; S.txtH = 0.25; S.blueH = 2.0;
+          S.ang = 0.04 * Math.sin(B * 1.2); S.pulse = Math.exp(-f * 5);
+        } else if (B < 14) {
+          S.F = 40; S.bg = 0.14; S.ang = lerp(0.52, 0.32, back(r(B, 12, 12.5))) - (B >= 13 ? 0.64 * back(r(B, 13, 13.5)) : 0);
+          S.disp = 2; S.pulse = Math.exp(-f * 5);
+          S.shA = [-0.5, 0.2, (B - 12) * BEAT];
+        } else if (B < 17) {
+          S.F = 44; S.bg = lerp(0.14, 0.2, r(B, 14.5, 15.2)); S.ang = 0.03 * (B - 14); S.txtH = 0.4; S.blueH = lerp(1.2, 3.4, r(B, 14.5, 15.2)); S.disp = 2.6;
+          S.pulse = Math.exp(-f * 6) * 0.6;
+          S.shA = [0.6, -0.2, (B - 14) * BEAT];
+        } else if (B < 20) {
+          S.m0 = 1; S.mix = 0; S.F = lerp(32, 48, r(B, 17, 20)); S.bg = 0.17; S.disp = 3; S.txtH = 2.2;
+          S.cx = 0.0; S.cy = 0.0; S.pulse = Math.exp(-f * 5);
+          S.shA = [0, 0, (B - 17) * BEAT]; if (B >= 18.5) S.shB = [0, 0, (B - 18.5) * BEAT];
+          S.mix = 0;
+        } else if (B < 32) {
+          S.s = 1; S.F = 42; S.bg = 0.08; S.objF = 16; S.objD = 1.8; S.disp = 2; S.ang = -0.25;
+          const orbit = lerp(-0.72, 0.42, io(r(B, 20, 30))) + 2.4 * ei(r(B, 30, 32));
+          S.yaw = orbit; S.pitch = lerp(0.42, 0.28, r(B, 20, 30)); S.dist = lerp(5.7, 4.7, io(r(B, 20, 30))) + (Math.floor(B) % 2 === 0 && B < 30 ? 0.08 * kp(f) : 0);
+          const H = [0.45, 0.8, 0.58, 1.05, 0.72, 1.28, 0.95];
+          S.bars = H.map((h, i) => {
+            const v = h * back(r(B, 20.3 + i * 0.3, 20.8 + i * 0.3)) * (1 - ei(r(B, 30, 32))) ;
+            return Math.max(0.01, v * (0.88 + 0.12 * Math.sin(B * 1.57 + i * 2.1)) + (B >= 21 && B < 30 ? 0.05 * Math.exp(-f * 5) : 0));
+          });
+          S.A = B * 0.38; S.B2 = (1 - ei(r(B, 30, 32))) ? 0.05 * Math.sin(B * 0.785) : 0; S.pulse = B < 30 ? Math.exp(-f * 5) * 0.5 : 0;
+          S.shA = [-0.6, 0.3, (B - 20) * BEAT];
+        } else if (B < 36.45) {
+          S.s = 2; S.F = 40; S.bg = 0.09; S.objD = 1.4;
+          S.dist = lerp(11, 6.9, ex(r(B, 32, 32.7))) - 0.75 * io(r(B, 33, 36));
+          S.pitch = 0.1 * (1 - r(B, 32, 36)); S.yaw = 0.62 * (1 - io(r(B, 32, 35.6)));
+          S.A = B < 36 ? 0.008 * ei(r(B, 35.5, 36)) * -1 : 1.75 * back(r(B, 36, 36.45), 1.1);
+          S.txtTone = 1; S.txtH = 0.25;
+          S.shA = [0, 0, (B - 32) * BEAT];
+          S.pulse = B < 34 ? Math.exp(-f * 5) * 0.7 : 0;
+          if (B >= 36) { S.shB = [0, 0, (B - 36) * BEAT]; S.dist -= 5.4 * ei(r(B, 36, 36.45)); }
+          S.objF = 19 * Math.max(1, S.dist) / 6.2;
+        } else if (B < 42) {
+          S.m0 = 4; S.F = 16; S.bg = 0.3; S.disp = 1.6; S.txtH = 0.9;
+          const u = r(B, 36.45, 42); S.tz = -(u * 0.85 + 0.9 * ei(u));
+          S.tr = 0.4 * Math.sin(B * 0.75) + 1.8 * ei(r(B, 40.5, 42));
+          S.cx = 0.11 * Math.sin(B * 1.1); S.cy = 0.07 * Math.cos(B * 0.83);
+          S.pulse = Math.exp(-f * 5);
+        } else if (B < 48) {
+          S.F = 38; S.bg = 0.16; S.ang = -0.78 + (B >= 43 ? 0.14 * back(r(B, 43, 43.4)) : 0);
+          S.disp = 2.5; S.txtH = 0.9; S.pulse = Math.exp(-f * 6) * 0.4;
+          S.shA = [0, 0, (B - 42) * BEAT];
+          if (B >= 44.3) {
+            S.s = 3; S.objF = 15; S.objD = 2.4;
+            const u = r(B, 44.1, 44.5); S.dist = lerp(36, 4.75, Math.pow(u, 3)); S.yaw = 0.34 * (1 - back(r(B, 44.5, 45.3))) + 0.1 * Math.sin((B - 44.5) * 0.8);
+            S.pitch = -0.09 + 0.05 * Math.sin((B - 44.5) * 0.6);
+          }
+          if (B >= 44.5) {
+            S.shB = [0, 0, (B - 44.5) * BEAT];
+            const sh = Math.exp(-(B - 44.5) * 3.4); S.sx = sh * 0.028 * Math.sin(B * 71); S.sy = sh * 0.028 * Math.cos(B * 53);
+          }
+          S.ang += B >= 44.5 ? 0.4 * ex(r(B, 44.5, 45)) : 0;
+        } else if (B < 58) {
+          S.F = 42; S.bg = 0.08; S.blueH = 6.2; S.txtH = 0.4; S.disp = 2.2; S.ang = 0;
+          S.pulse = B >= 49 ? Math.exp(-f * 5) * 0.4 : 0;
+          S.shA = [0.7, 0.3, (B - 48) * BEAT];
+          for (const at of [49.6, 50.8, 52]) if (B >= at + 0.96) S.shB = [0, -0.06, (B - at - 0.96) * BEAT];
+          S.mix = 0;
+          if (B >= 56) S.F = lerp(42, 34, ei(r(B, 56, 58)));
+        } else {
+          const u = r(B, 58, 60.2);
+          S.F = Math.max(1, 46 * Math.pow(1 / 46, io(u))); S.bg = lerp(0.3, 0.006, ei(r(B, 58.8, 60.6))); S.bg = Math.max(S.bg, 0.0022);
+          S.ang = 0; S.disp = 0; S.flat = BONE;
+          if (B >= 60.6) S.bg = lerp(0.0022, 0.0022, 1);
+          if (B >= 62) S.shA = [0, 0, -1];
+          S.la = r(B, 62.2, 62.9) * (1 - r(B, 71.4, 71.95));
+          // a line that opens across the frame, centred
+        }
+        return S;
+      }
+
+      function draw(B) {
+        const S = state(B), i = pair(B), cut = CUTS[i], prev = CUTS[Math.max(0, i - 1)];
+        const fr = 2.6 * ex(r(B, cut[0], cut[0] + 0.55));
+        drawType(B);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, TEX);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, cv); gl.generateMipmap(gl.TEXTURE_2D);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+        gl.uniform1i(U.uS, S.s); gl.uniform1i(U.uM0, S.m0); gl.uniform1i(U.uM1, S.m1);
+        const f1 = { uF: S.F, uAng: S.ang, uMix: S.mix, uBg: S.bg, uPulse: S.pulse, uDisp: S.disp, uObjMix: S.objMix, uObjF: S.objF, uObjD: S.objD, uA: S.A, uB2: S.B2, uYaw: S.yaw, uPitch: S.pitch, uDist: S.dist, uTxtTone: S.txtTone, uTxtH: S.txtH, uBlueH: S.blueH, uFR: i === 0 ? 3 : fr, uLA: S.la, uTunZ: S.tz, uTunR: S.tr };
+        for (const k in f1) if (U[k]) gl.uniform1f(U[k], f1[k]);
+        gl.uniform2f(U.uShake, S.sx, S.sy); gl.uniform2f(U.uC, S.cx, S.cy); gl.uniform2f(U.uFC, cut[3][0], cut[3][1]);
+        gl.uniform3fv(U.uPA, prev[1]); gl.uniform3fv(U.uIA, prev[2]); gl.uniform3fv(U.uPB, cut[1]); gl.uniform3fv(U.uIB, cut[2]);
+        gl.uniform3fv(U.uFlat, S.flat || cut[2]); gl.uniform3fv(U.uShockA, S.shA); gl.uniform3fv(U.uShockB, S.shB); gl.uniform1fv(U.uBar, S.bars);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      }
+
+      function paint(t) {
+        const frame = Math.round(t * FPS);
+        gl.viewport(0, 0, 1920, 1080); gl.blendFunc(gl.CONSTANT_ALPHA, gl.ONE_MINUS_CONSTANT_ALPHA);
+        const b0 = frame / FPS / BEAT, n = (b0 >= 36.45 && b0 < 42) || (b0 >= 58 && b0 < 60.4) ? 8 : SUBS;
+        for (let k = 0; k < n; k++) {
+          gl.blendColor(0, 0, 0, 1 / (k + 1));
+          draw((frame + (k / n) * (n > SUBS ? 0.16 : 0.6)) / FPS / BEAT);
+        }
+      }
+      const tl = gsap.timeline({ paused: true });
+      const clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+      async function build() {
+        await Promise.all([document.fonts.load(HEAVY(100), "A"), document.fonts.load(MONO(30), "A"), document.fonts.load("800 80px Archivo", "A"), $("#logo").decode()]);
+        initGL();
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = window.__hf.buildReady || {};
+      window.__hf.buildReady["hatch"] = build();
+    </script>
+  </body>
+</html>

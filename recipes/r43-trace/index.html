@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <!--
+      R43 · Trace. 34 s at 120 bpm. For Codex Control Center, which watches the shape of the activity and not the
+      words. The film is one beam of light, and the beam is steered by the film's own audio: left is x, right is y.
+      assets/beam.js holds exactly the samples of assets/bgm/score.wav, both written by score/compose.py. Each frame draws
+      the last frames' samples as additive line segments, brighter where the beam moves slowly, then adds bloom and the
+      glass. Stateless: any frame is exact. The logo at the close is a flat image and the only thing not drawn by the beam.
+    -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/table.js"></script>
+    <script src="assets/beam.js"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #030505; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #030505; }
+      #ct-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #stage { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #logo { position: absolute; left: -2000px; top: 0; width: 926px; height: 193px; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="34" data-width="1920" data-height="1080">
+      <div id="ct-stage" class="clip" data-start="0" data-duration="34" data-track-index="0">
+        <canvas id="stage" width="1920" height="1080" data-layout-allow-overflow></canvas>
+        <img id="logo" src="assets/brand/your-mark.svg" alt="Your mark" data-layout-allow-overflow>
+      </div>
+      <audio id="score" src="assets/bgm/score.wav" data-start="0" data-duration="34" data-track-index="7" data-volume="0.9"></audio>
+    </div>
+
+    <script>
+      const LINE_VS = `#version 300 es
+in vec2 c; in vec2 a; in vec2 b;
+uniform float uK, uR;
+out vec2 vP, vA, vB;
+const vec2 RES = vec2(1920.0, 1080.0);
+vec2 px(vec2 s) { return RES * 0.5 + s * vec2(uK); }
+void main() {
+  vA = px(a); vB = px(b);
+  vec2 d = vB - vA; float l = length(d); vec2 t = l > 0.01 ? d / l : vec2(1.0, 0.0), n = vec2(-t.y, t.x);
+  vec2 m = (vA + vB) * 0.5;
+  vP = m + t * c.x * (l * 0.5 + uR) + n * c.y * uR;
+  gl_Position = vec4(vP / RES * 2.0 - 1.0, 0.0, 1.0);
+}`;
+      const LINE_FS = `#version 300 es
+precision highp float;
+in vec2 vP, vA, vB;
+uniform vec3 uCol; uniform float uE;
+out vec4 o;
+void main() {
+  vec2 ab = vB - vA, ap = vP - vA; float l = length(ab);
+  float h = l > 0.001 ? clamp(dot(ap, ab) / (l * l), 0.0, 1.0) : 0.0;
+  float d = length(ap - ab * h), s = 1.7;
+  float g = exp(-d * d / (2.0 * s * s)) + 0.1 * exp(-d * d / (2.0 * 36.0));
+  o = vec4(uCol * g * uE / max(l, 3.0), 1.0);
+}`;
+      const QUAD_VS = "#version 300 es\nin vec2 c; out vec2 v; void main(){ v = c * 0.5 + 0.5; gl_Position = vec4(c, 0.0, 1.0); }";
+      const BLUR_FS = `#version 300 es
+precision highp float;
+in vec2 v; uniform sampler2D uT; uniform vec2 uD; out vec4 o;
+void main() {
+  vec3 s = min(texture(uT, v).rgb, vec3(5.0)) * 0.227;
+  s += (min(texture(uT, v + uD * 1.385).rgb, vec3(5.0)) + min(texture(uT, v - uD * 1.385).rgb, vec3(5.0))) * 0.316;
+  s += (min(texture(uT, v + uD * 3.231).rgb, vec3(5.0)) + min(texture(uT, v - uD * 3.231).rgb, vec3(5.0))) * 0.070;
+  o = vec4(s, 1.0);
+}`;
+      const FINAL_FS = `#version 300 es
+precision highp float;
+in vec2 v; uniform sampler2D uL, uB, uLogo; uniform float uTime, uLA, uGlow; uniform vec3 uCol; out vec4 o;
+float h(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+void main() {
+  vec2 c = v - 0.5, uv = 0.5 + c * (0.985 + 0.05 * dot(c, c));
+  vec3 L = texture(uL, uv).rgb, B = texture(uB, uv).rgb;
+  // the graticule: etched into the glass, and lit by what is on the screen
+  vec2 gp = (uv - 0.5) * vec2(16.0, 9.0) * 1.0;
+  vec2 f = abs(fract(gp) - 0.5);
+  float line = smoothstep(0.487, 0.496, max(f.x, f.y));
+  vec2 ft = abs(fract(gp * 5.0) - 0.5);
+  float tick = smoothstep(0.42, 0.47, ft.x) * smoothstep(0.03, 0.0, abs(gp.y)) + smoothstep(0.42, 0.47, ft.y) * smoothstep(0.03, 0.0, abs(gp.x));
+  float rim = smoothstep(0.62, 0.34, length(c * vec2(1.0, 0.72)));
+  vec3 glass = vec3(0.010, 0.016, 0.016) * (0.5 + rim);
+  float lum = dot(B, vec3(0.33));
+  glass += uCol * (line + tick) * (0.012 + 0.045 * uGlow + 0.5 * lum) * rim;
+  vec3 x = L * 1.0 + B * 0.42;
+  vec3 col = 1.0 - exp(-x);
+  col = max(col, vec3(0.0)) + glass;
+  // a soft window on the tube's face
+  col += vec3(0.012) * smoothstep(0.1, 0.0, abs(uv.x + uv.y * 0.4 - 0.46)) * rim;
+  // the logo, flat: not bent by the glass, never recoloured
+  vec2 q = (v - vec2(0.5, 0.5 + 180.0 / 1080.0)) * vec2(1920.0, 1080.0) / vec2(620.0, 129.0) + 0.5;
+  if (uLA > 0.0 && q.x > 0.0 && q.x < 1.0 && q.y > 0.0 && q.y < 1.0) { vec4 lg = texture(uLogo, vec2(q.x, 1.0 - q.y)); col = mix(col, lg.rgb, lg.a * uLA); }
+  col += (h(gl_FragCoord.xy + fract(uTime * 7.0) * 91.0) - 0.5) / 150.0;
+  o = vec4(col, 1.0);
+}`;
+    </script>
+
+    <script>
+      const TB = window.TABLE, DUR = TB.dur, BEAT = TB.beat, SR = TB.sr, FPS = 30, PER = SR / FPS, AGES = 4, TAU = 0.55;
+      const $ = (s) => document.querySelector(s);
+      const WORLD = 540 * TB.aspect * 0.98 / window.BEAM.gain;    // WAV level to pixels: the scope's gain, the same on both axes
+      const cl = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x)), r = (t, a, b) => cl((t - a) / (b - a));
+      let SAMP; let gl, PL, PB, PF, UL = {}, UB = {}, UF = {}, vLine, vQuad, buf, T = {}, N = 0;
+      function colourAt(b) { let c = TB.colour[0][1]; for (const [a, v] of TB.colour) if (b >= a) c = v; return c; }
+
+      function initGL() {
+        gl = $("#stage").getContext("webgl2", { antialias: false, alpha: false, depth: false, stencil: false, preserveDrawingBuffer: true });
+        if (!gl.getExtension("EXT_color_buffer_float")) throw new Error("EXT_color_buffer_float is needed");
+        const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+        const prog = (vs, fs) => { const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p); if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p)); return p; };
+        PL = prog(LINE_VS, LINE_FS); PB = prog(QUAD_VS, BLUR_FS); PF = prog(QUAD_VS, FINAL_FS);
+        for (const n of ["uK", "uR", "uCol", "uE"]) UL[n] = gl.getUniformLocation(PL, n);
+        for (const n of ["uT", "uD"]) UB[n] = gl.getUniformLocation(PB, n);
+        for (const n of ["uL", "uB", "uLogo", "uTime", "uLA", "uGlow", "uCol"]) UF[n] = gl.getUniformLocation(PF, n);
+        const raw = atob(window.BEAM.b64), bytes = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+        N = bytes.length / 4; SAMP = new Int16Array(bytes.buffer);
+        buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, bytes, gl.STATIC_DRAW);
+        const corner = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, corner); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+        vQuad = gl.createVertexArray(); gl.bindVertexArray(vQuad);
+        for (const p of [PB, PF]) { const l = gl.getAttribLocation(p, "c"); gl.enableVertexAttribArray(l); gl.vertexAttribPointer(l, 2, gl.FLOAT, false, 0, 0); }
+        vLine = gl.createVertexArray(); gl.bindVertexArray(vLine);
+        const lc = gl.getAttribLocation(PL, "c"); gl.enableVertexAttribArray(lc); gl.vertexAttribPointer(lc, 2, gl.FLOAT, false, 0, 0);
+        const mk = (w, h) => { const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t); gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA16F, w, h); for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v); const f = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, f); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0); return { t, f, w, h }; };
+        T.line = mk(1920, 1080); T.a = mk(480, 270); T.b = mk(480, 270); T.c = mk(160, 90); T.d = mk(160, 90);
+        T.logo = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, T.logo); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, $("#logo")); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      }
+      // the beam: the last frames' samples, each older frame fainter, as the phosphor fades
+      function beam(frame) {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, T.line.f); gl.viewport(0, 0, 1920, 1080); gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); gl.useProgram(PL); gl.bindVertexArray(vLine); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+        gl.uniform1f(UL.uK, WORLD); gl.uniform1f(UL.uR, 26);
+        const la = gl.getAttribLocation(PL, "a"), lb = gl.getAttribLocation(PL, "b");
+        gl.enableVertexAttribArray(la); gl.enableVertexAttribArray(lb); gl.vertexAttribDivisor(la, 1); gl.vertexAttribDivisor(lb, 1);
+        for (let g = AGES - 1; g >= 0; g--) {
+          const f = frame - g; if (f < 0) continue;
+          const s0 = Math.floor(f * PER), s1 = Math.min(N - 1, Math.floor((f + 1) * PER)); if (s1 <= s0) continue;
+          gl.vertexAttribPointer(la, 2, gl.SHORT, true, 4, s0 * 4); gl.vertexAttribPointer(lb, 2, gl.SHORT, true, 4, s0 * 4 + 4);
+          let run = 0, cnt = 0; for (let s = s0; s < s1 - 1; s += 7) { run += Math.hypot(SAMP[2 * s + 2] - SAMP[2 * s], SAMP[2 * s + 3] - SAMP[2 * s + 1]); cnt++; }
+          const px = run / Math.max(1, cnt) / 32767 * WORLD;
+          gl.uniform3fv(UL.uCol, colourAt(f / FPS / BEAT)); gl.uniform1f(UL.uE, 5.0 * cl(px / 6, 1, 3.5) * Math.exp(-g / TAU));
+          gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, s1 - s0);
+        }
+        gl.disable(gl.BLEND); gl.vertexAttribDivisor(la, 0); gl.vertexAttribDivisor(lb, 0); gl.disableVertexAttribArray(la); gl.disableVertexAttribArray(lb);
+      }
+      function blur(src, dst, dx, dy) { gl.bindFramebuffer(gl.FRAMEBUFFER, dst.f); gl.viewport(0, 0, dst.w, dst.h); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, src.t); gl.uniform1i(UB.uT, 0); gl.uniform2f(UB.uD, dx / dst.w, dy / dst.h); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); }
+      function paint(t) {
+        const frame = Math.floor(t * FPS + 1e-4), B = t / BEAT;
+        beam(frame);
+        gl.useProgram(PB); gl.bindVertexArray(vQuad);
+        blur(T.line, T.a, 1, 0); blur(T.a, T.b, 0, 1); blur(T.b, T.c, 1, 0); blur(T.c, T.d, 0, 1);
+        // two widths of bloom, tight and wide
+        gl.bindFramebuffer(gl.FRAMEBUFFER, T.a.f); gl.viewport(0, 0, 480, 270); gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, T.d.t); gl.uniform1i(UB.uT, 0); gl.uniform2f(UB.uD, 0, 0); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); gl.disable(gl.BLEND);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, 1920, 1080); gl.useProgram(PF);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, T.line.t); gl.uniform1i(UF.uL, 0);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, T.a.t); gl.uniform1i(UF.uB, 1);
+        gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, T.logo); gl.uniform1i(UF.uLogo, 2);
+        gl.uniform1f(UF.uTime, t); gl.uniform3fv(UF.uCol, colourAt(B));
+        gl.uniform1f(UF.uGlow, r(B, 0.5, 2)); gl.uniform1f(UF.uLA, r(B, TB.logo[0], TB.logo[0] + 0.5) * (1 - r(B, TB.logo[1], TB.logo[1] + 0.25)));
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      }
+      const tl = gsap.timeline({ paused: true });
+      const clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+      async function build() {
+        await $("#logo").decode();
+        initGL();
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = window.__hf.buildReady || {};
+      window.__hf.buildReady["trace"] = build();
+    </script>
+  </body>
+</html>

@@ -106,6 +106,30 @@ Made for: Imagined Worlds · Stills. Stack: Three.js, TSL, GSAP, Python (score).
 
 ## Products and systems
 
+### R43 · Trace
+
+A film whose soundtrack is its picture: one beam of light steered by the WAV's left and right channels draws every word and wire form, and how fast it redraws them is the note you hear.
+
+Made for: Codex Control Center · a local-first dashboard that keeps the shape and not the words. Stack: WebGL2, Python (NumPy), GSAP, FFmpeg.
+
+[Recipe and poster](../recipes/r43-trace/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r43-trace-v1)
+
+### R42 · Blackout
+
+A film made as blackout poetry: wet ink bleeds along paper fibres over a demo session log until only the metadata survives, then stamps land and water rinses the page.
+
+Made for: Codex Control Center · a local-first dashboard that keeps the metadata and not the words. Stack: WebGL2, Canvas 2D, GSAP, Python (table, score), FFmpeg.
+
+[Recipe and poster](../recipes/r42-blackout/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r42-blackout-v1)
+
+### R41 · Hatch
+
+A film drawn as one engraved field of lines: forms and big words exist only because the lines swell or bend, and NOT THE WORDS loses all its ink and stays readable through the bends alone.
+
+Made for: Codex Control Center · a local-first dashboard that keeps the metadata and not the words. Stack: WebGL2, Canvas 2D, GSAP, Python (score), FFmpeg.
+
+[Recipe and poster](../recipes/r41-hatch/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r41-hatch-v1)
+
 ### R40 · One Take
 
 A film for a system in development, flown in one take: twelve worlds, each with its own colours and motion, a camera that dives through a shape in one to land in the next, and a pull-back that reveals all twelve were tiles on one wall.
