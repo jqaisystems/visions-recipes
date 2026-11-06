@@ -1,0 +1,432 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <title>Reflow</title>
+    <!-- Reflow: a website built from clay and squeezed between two walls until its columns reflow. Stop-motion clay made entirely in code, posed at
+         12 poses a second. The site on screen says only YOUR BRAND and is labelled a demo. -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/table.js"></script>
+    <style>
+      @font-face { font-family: "Archivo"; src: url("assets/fonts/Archivo.ttf") format("truetype"); font-weight: 100 900; font-stretch: 62% 125%; }
+      @font-face { font-family: "JBM"; src: url("assets/fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 100 800; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #120C1E; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #120C1E; }
+      #ct-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #stage, #over { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #logo { position: absolute; left: -2000px; top: 0; width: 926px; height: 193px; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="32.1429" data-width="1920" data-height="1080">
+      <div id="ct-stage" class="clip" data-start="0" data-duration="32.1429" data-track-index="0">
+        <canvas id="stage" width="1920" height="1080" data-layout-allow-overflow></canvas>
+        <canvas id="over" width="1920" height="1080" data-layout-allow-overflow></canvas>
+        <img id="logo" src="assets/brand/your-mark.svg" alt="Your mark" data-layout-allow-overflow>
+      </div>
+      <audio id="score" src="assets/bgm/score.wav" data-start="0" data-duration="32.1429" data-track-index="7" data-volume="1"></audio>
+    </div>
+
+    <script>
+      const VS = `#version 300 es
+void main(){ vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2); gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }`;
+
+      // ---------------- the clay: shared by every scene
+      const COMMON = `#version 300 es
+precision highp float; precision highp sampler2DArray;
+out vec4 o;
+uniform vec2 uRes, uJit; uniform vec3 uEye, uTar; uniform float uFov, uSeed, uMorph;
+uniform float uLS; uniform vec4 uLump[3]; uniform vec3 uLumpC[3]; uniform vec3 uWall, uFloor, uKey;
+uniform float uTip[9], uRise9[9]; uniform vec4 uMould; uniform vec4 uFall;
+uniform vec4 uSlab; uniform vec3 uPos; uniform float uPS, uTurn, uBulge, uShear, uPipes, uFlow, uWallX;
+uniform vec4 uR[6]; uniform vec3 uRC[6]; uniform float uRZ[6], uRF[6], uRD[6];
+uniform vec4 uBlob[3]; uniform vec4 uRip; uniform vec4 uCur;
+uniform vec4 uP0[4], uP1[4]; uniform vec4 uFold; uniform float uFoldC;
+uniform sampler2DArray uWords; uniform vec4 uA0, uA1, uB0, uB1; uniform vec3 uAC, uBC;
+float gD; vec3 gC, gQ; float gK; float gSh = 0.0;
+float h31(vec3 p){ return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+float vn(vec3 p){ vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(mix(h31(i), h31(i + vec3(1,0,0)), f.x), mix(h31(i + vec3(0,1,0)), h31(i + vec3(1,1,0)), f.x), f.y),
+             mix(mix(h31(i + vec3(0,0,1)), h31(i + vec3(1,0,1)), f.x), mix(h31(i + vec3(0,1,1)), h31(i + vec3(1,1,1)), f.x), f.y), f.z); }
+mat2 rot(float a){ float s = sin(a), c = cos(a); return mat2(c, s, -s, c); }   // rot(a) * v turns v by +a
+float smin(float a, float b, float k){ float h = max(k - abs(a - b), 0.0) / k; return min(a, b) - h * h * k * 0.25; }
+// hand-made: nothing is true. A cheap wobble in the object's own coordinates, so it travels with the object
+float wob(vec3 q, float s){ return sin(q.x * 3.1 * s + sin(q.z * 2.3 * s + 1.3)) * sin(q.y * 2.7 * s + sin(q.x * 1.9 * s)) + 0.5 * sin(q.z * 5.3 * s + q.y * 4.1 * s); }
+float rbox(vec3 p, vec3 b, float r){ vec3 q = abs(p) - b + r; return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0) - r; }
+float cyl(vec3 p, float R, float h, float r){ vec2 d = vec2(length(p.xy) - R + r, abs(p.z) - h + r); return min(max(d.x, d.y), 0.0) + length(max(d, 0.0)) - r; }
+float tor(vec3 p, float R, float rr){ return length(vec2(length(p.xy) - R, p.z)) - rr; }
+void U(float d, vec3 c, vec3 q, float k){ if (d < gD) { gD = d; gC = c; gQ = q; gK = k; } }
+const vec3 TOM = vec3(0.78, 0.085, 0.03), BUT = vec3(0.86, 0.56, 0.06), COB = vec3(0.02, 0.09, 0.62), BON = vec3(0.74, 0.66, 0.50), PLUM = vec3(0.16, 0.035, 0.12), GREY = vec3(0.34, 0.33, 0.35), GREYD = vec3(0.17, 0.165, 0.19);
+float box2(vec2 p, vec2 b, float r){ vec2 q = abs(p) - b + r; return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r; }
+float cap(vec3 p, vec3 a, vec3 b, float r){ vec3 pa = p - a, ba = b - a; float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0); return length(pa - ba * h) - r; }
+// a word pressed out of clay: a 2D distance field in a texture, extruded and rounded
+float wordF(vec3 p, vec4 W0, vec4 W1){
+  if (W1.x <= 0.0) return 1e3;
+  vec3 q = p - W0.xyz; q.y -= W0.w; vec3 w = vec3(W1.x, W1.x * 0.25, W1.y);
+  float bb = rbox(q, w + 0.04, 0.02); if (bb > (gSh > 0.5 ? 1.6 : 0.3)) return bb;
+  float d2 = textureLod(uWords, vec3(q.x / w.x * 0.5 + 0.5, 0.5 - q.y / w.y * 0.5, W1.z), 0.0).r * w.x + wob(q * 3.0, 1.0) * 0.007;
+  float e = abs(q.z) - w.z, rr = 0.04; vec2 v = vec2(d2 + rr, e + rr);
+  return min(max(v.x, v.y), 0.0) + length(max(v, 0.0)) - rr;
+}
+`;
+
+      // ---------------- the scenes. Each writes into U(). A shot only compiles what it shows
+      const SCENES = {
+        lumps: `
+void lumps(vec3 p){
+  // the brand: three lumps of colour
+  for (int i = 0; i < 3; i++) { vec3 q = p - uLump[i].xyz; float sq = uLump[i].w; q.y /= sq; q.xz *= sqrt(sq); q += float(i) * 1.7;
+    q -= float(i) * 1.7; float d = (length(q) - 0.98) * min(sq, 1.0) + wob(q + float(i) * 3.0, 1.3) * 0.07;
+    d = smin(d, length(q - vec3(0.42 - float(i) * 0.3, 0.4, 0.14)) - 0.5, 0.5); U(d, uLumpC[i], q + float(i) * 5.0, 0.0); }
+}`,
+        row: `
+void row(vec3 p){
+  // a row of the same site, over and over. Standing on one rail, turned towards the camera
+  vec3 g = p; g.xz = rot(-0.62) * g.xz;
+  float pl = rbox(g - vec3(0.0, 0.05, 0.0), vec3(5.4, 0.1, 1.6), 0.08) + wob(g, 1.0) * 0.012; U(pl, GREYD, g, 0.0);
+  for (int i = 0; i < 9; i++) { float up = uRise9[i]; if (up <= 0.0) continue;
+    vec3 q = g - vec3(-4.0 + float(i), 0.14, 0.0); q.xy = rot(uTip[i]) * q.xy; q.y -= 1.45 * up;
+    float bb = rbox(q, vec3(0.3, 1.5 * up, 1.3), 0.05); if (bb > 0.25) { U(bb + 0.02, GREY, q, 0.0); continue; }
+    float d = rbox(q, vec3(0.085, 1.45 * up, 1.2), 0.06) + wob(q, 1.8) * 0.006; U(d, GREY, q, 1.0);
+    // the same layout on every one
+    vec3 f = q - vec3(0.11, 0.0, 0.0);
+    float rl = rbox(f - vec3(0.0, 1.12 * up, 0.0), vec3(0.035, 0.09, 1.02), 0.03);
+    rl = min(rl, rbox(f - vec3(0.0, 0.34 * up, 0.0), vec3(0.035, 0.46 * up, 1.02), 0.03));
+    vec3 cq = f - vec3(0.0, -0.74 * up, 0.0); cq.z = cq.z - clamp(floor(cq.z / 0.72 + 0.5), -1.0, 1.0) * 0.72; rl = min(rl, rbox(cq, vec3(0.035, 0.46 * up, 0.28), 0.03));
+    U(rl, GREYD, f, 2.0); }
+  if (uMould.w > 0.0) { vec3 m = g - uMould.xyz; float b = max(rbox(m, vec3(0.42, 1.7, 1.46), 0.12), -rbox(m + vec3(0.0, 0.9, 0.0), vec3(0.2, 1.0, 1.28), 0.04)); U(b + wob(m, 1.2) * 0.012, PLUM, m, 0.0); }
+  if (uFall.w > 0.0) { vec3 m = g - uFall.xyz; U(length(m) - 0.72 + wob(m, 1.6) * 0.05, TOM, m, 0.0); }
+}`,
+        page: `
+void page(vec3 p){
+  // the site, one slab of clay. Everything on it lives in its own coordinates, so the whole thing can buckle, wobble and turn
+  vec3 q = (p - uPos) / uPS; q.xz = rot(uTurn) * q.xz;
+  float hw = uSlab.x, hh = uSlab.y, cy = hh + 0.1;
+  float nx = q.x / hw, ny = (q.y - cy) / hh; float m = max(0.0, 1.0 - nx * nx) * max(0.0, 1.0 - ny * ny);
+  q.z -= uBulge * m; q.x -= uShear * (ny + 1.0) * (ny + 1.0) * 0.25;
+  vec2 rp = vec2(q.x, q.y - cy) - uRip.xy; float rr = length(rp), front = uRip.z * 2.9;
+  if (uRip.w > 0.0) q.z -= uRip.w * sin((rr - front) * 3.6) * smoothstep(1.4, 0.0, abs(rr - front)) ;
+  float lip = uPS / (1.0 + 1.6 * abs(uBulge) + 3.0 * uRip.w + abs(uShear));
+  vec3 s = q - vec3(0.0, cy, 0.0);
+  float slab = rbox(s, vec3(hw, hh, 0.2), 0.16) + wob(s, 0.9) * 0.012; U(slab * lip, BON, s, 0.0);
+  for (int i = 0; i < 6; i++) { vec4 R = uR[i]; float F = uRF[i], D = uRD[i]; if (F <= 0.0 && D <= 0.0) continue;
+    vec3 t = s - vec3(R.xy, 0.2 + uRZ[i]);
+    float d2 = box2(t.xy, R.zw, 0.1);
+    float tube = length(vec2(d2, t.z)) - 0.06 + wob(t, 2.4) * 0.006;
+    float an = (atan(t.y, t.x) + 3.14159265) / 6.2831853; tube += max(0.0, an - D) * 3.0;
+    if (i == 1 && F < 0.5) { float k = clamp(D * 1.3 - 0.3, 0.0, 1.0); vec3 aa = vec3(-R.z, -R.w, 0.0), bb = vec3(R.z, R.w, 0.0), cc = vec3(-R.z, R.w, 0.0), dd = vec3(R.z, -R.w, 0.0);
+      if (k > 0.0) { tube = min(tube, cap(t, aa, mix(aa, bb, k), 0.05)); tube = min(tube, cap(t, cc, mix(cc, dd, k), 0.05)); } }
+    float full = rbox(t, vec3(R.zw, 0.13), 0.1) + wob(t, 1.6) * 0.008;
+    if (i >= 2 && i <= 4 && F > 0.8) { vec3 c = t - vec3(0.0, R.w * 0.26, 0.18); full = max(full, -rbox(c, vec3(R.z * 0.8, R.w * 0.46, 0.14), 0.07));
+      float ln = rbox(t - vec3(0.0, -R.w * 0.58, 0.13), vec3(R.z * 0.7, 0.045, 0.04), 0.03); full = max(full, -ln); }
+    if (i == 0 && F > 0.8) { vec3 c = t - vec3(R.z - 0.42, 0.0, 0.13); c.x = c.x + clamp(floor(-c.x / 0.34 + 0.5), 0.0, 2.0) * 0.34; full = min(full, length(c) - 0.075); }
+    float d = mix(tube, full, smoothstep(0.0, 0.6, F));
+    float fl = smoothstep(0.0, 0.28, F * (length(R.zw) * 1.25 + 0.3) - length(t.xy));
+    U(d * lip, mix(GREY, uRC[i], fl), t, 2.0 + float(i)); }
+  if (uP1[0].x > 0.0) U(wordF(s, uP0[0], uP1[0]) * lip, BON, s - uP0[0].xyz, 0.0);
+  for (int i = 0; i < 3; i++) if (uBlob[i].w > 0.0) { vec3 t = s - uBlob[i].xyz; U((length(t) - uBlob[i].w + wob(t, 1.6) * 0.04) * lip, uRC[i], t, 9.0); }
+  // round the back: the plumbing. Mirrored, so x reads left to right once the slab has turned
+  if (uPipes > 0.0) { vec3 b = vec3(-s.x, s.y, -s.z); float rp2 = uPipes;
+    float bg = 0.2 * rp2 + 0.05 * sin(b.x * 3.2 - uFlow) * rp2;
+    float mn = cap(b, vec3(-3.9, -1.45, 0.34), vec3(3.9, -1.45, 0.34), max(bg, 0.001)) + wob(b, 2.0) * 0.008; U(mn * lip, COB, b, 11.0);
+    for (int i = 0; i < 3; i++) { float x = -2.95 + float(i) * 2.95; float bv = 0.13 * rp2 + 0.035 * sin(b.y * 4.5 - uFlow * 1.4 + float(i)) * rp2;
+      float v = cap(b, vec3(x, -1.45, 0.34), vec3(x, 0.15, 0.34), max(bv, 0.001)); U(v * lip, TOM, b, 12.0);
+      float jn = length(b - vec3(x, -1.45, 0.34)) - 0.3 * rp2; U(jn * lip, BUT, b, 13.0);
+      float pl = rbox(b - vec3(x, 0.72, 0.28), vec3(1.26 * rp2, 0.56 * rp2, 0.09), 0.08) + wob(b, 1.7) * 0.008; U(pl * lip, BUT, b, 14.0);
+      if (uP1[i + 1].x > 0.0) U(wordF(b, uP0[i + 1], uP1[i + 1]) * lip, COB, b - uP0[i + 1].xyz, 0.0); } }
+  // the walls
+  if (uWallX < 14.0) { vec3 wq = p; float sg = wq.x < 0.0 ? -1.0 : 1.0; vec3 w = vec3(wq.x - sg * (uWallX + 3.0), wq.y - 5.4, wq.z - 0.2); float dw = rbox(w, vec3(3.0, 5.4, 1.5), 0.2) + wob(w, 0.7) * 0.022; U(dw, TOM, w + sg, 0.0); }
+  // the cursor
+  if (uCur.w > 0.0) { vec3 c = p - uCur.xyz; c.xy = rot(0.5) * c.xy; c /= uCur.w;
+    vec2 a = vec2(abs(c.x), c.y); float tri = max(dot(a - vec2(0.0, 0.0), normalize(vec2(1.0, 0.42))), -(c.y + 1.05)); tri = max(tri, abs(c.z) - 0.14); float tl = rbox(c - vec3(0.0, -1.32, 0.0), vec3(0.16, 0.42, 0.14), 0.08);
+    U(smin(tri, tl, 0.08) * uCur.w * 0.8, PLUM, c, 0.0); }
+}`,
+        folder: `
+void folder(vec3 p){
+  vec3 q = p - uFold.xyz; vec3 col = mix(BUT, PLUM, uFoldC);
+  float bk = rbox(q - vec3(0.0, 2.0, -0.32), vec3(2.8, 2.0, 0.11), 0.09) + wob(q, 1.1) * 0.012;
+  float tb = rbox(q - vec3(-1.55, 4.0, -0.32), vec3(0.95, 0.28, 0.11), 0.1) + wob(q, 1.1) * 0.012;
+  U(smin(bk, tb, 0.1), col, q, 0.0);
+  vec3 f = q - vec3(0.0, 0.1, 0.3); f.yz = rot(-uFold.w) * f.yz; float fl = rbox(f - vec3(0.0, 1.62, 0.0), vec3(2.8, 1.62, 0.11), 0.09) + wob(f, 1.3) * 0.012; U(fl, col, f + 2.0, 1.0);
+}`,
+      };
+
+      const MAIN = `
+vec3 N(vec3 p){ const vec2 e = vec2(0.0035, 0.0); return normalize(vec3(map(p + e.xyy) - map(p - e.xyy), map(p + e.yxy) - map(p - e.yxy), map(p + e.yyx) - map(p - e.yyx))); }
+// the surface, in the object's own coordinates so it moves with the object
+float thumbs(vec3 q, float tile){
+  float S = 1.5, H = 0.0; vec3 g = q * S + tile * 3.1; vec3 i = floor(g);
+  for (int z = -1; z <= 1; z++) for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+    vec3 c = i + vec3(x, y, z); if (h31(c) < 0.45) continue;
+    vec3 o2 = vec3(h31(c + 1.1), h31(c + 2.2), h31(c + 3.3)); vec3 d = g - c - o2;
+    float a = h31(c + 4.4) * 3.14; d.xy = rot(a) * d.xy; d.yz = rot(a * 1.7) * d.yz;
+    float l = length(d * vec3(1.0, 1.5, 1.0)), m = smoothstep(0.5, 0.22, l); if (m <= 0.0) continue;
+    H += m * (-0.8 + 0.2 * sin((length(d.xy * vec2(1.0, 1.55)) + vn(d * 4.0) * 0.1) * 95.0));
+  }
+  return H;
+}
+float surf(vec3 q, float tile){
+  float h = 0.8 * vn(q * 2.1 + 3.0) + 0.42 * vn(q * 5.3 + 7.0) + 0.14 * vn(q * 15.0) + 0.05 * vn(q * 46.0);   // lumps, dents and nicks
+  h += 0.28 * thumbs(q, tile);
+  h += 0.035 * vn(q * 6.0 + uSeed * 11.0) + 0.016 * vn(q * 19.0 + uSeed * 37.0);                               // touched since the last pose
+  h -= 0.018 * smoothstep(0.88, 0.92, vn(vec3(q.x * 2.2, q.y * 22.0, q.z * 2.2) + 9.0));                        // a tool mark
+  return h;
+}
+float shadow(vec3 ro, vec3 rd){ gSh = 1.0; float s = 1.0, t = 0.04 + 0.05 * fract(sin(dot(gl_FragCoord.xy + uJit * 7.0, vec2(12.9898, 78.233))) * 43758.5453); for (int i = 0; i < 36; i++) { float d = map(ro + rd * t); s = min(s, 5.5 * d / t); t += clamp(d * 0.85, 0.035, 0.7); if (s < 0.002 || t > 22.0) break; } gSh = 0.0; s = clamp(s, 0.0, 1.0); return s * s * (3.0 - 2.0 * s); }
+float ao(vec3 p, vec3 n){ float a = 0.0, w = 1.0; for (int i = 1; i <= 5; i++) { float h = 0.03 + 0.14 * float(i); a += (h - map(p + n * h)) * w; w *= 0.62; } return clamp(1.0 - 1.15 * a, 0.0, 1.0); }
+void main(){
+  vec2 uv = (gl_FragCoord.xy + uJit - 0.5 * uRes) / uRes.y;
+  vec3 f = normalize(uTar - uEye), r = normalize(cross(f, vec3(0.0, 1.0, 0.0))), u = cross(r, f);
+  vec3 rd = normalize(f * uFov + r * uv.x + u * uv.y), ro = uEye;
+  float t = 0.0; bool hit = false;
+  for (int i = 0; i < 120; i++) { float d = map(ro + rd * t); if (d < 0.0012 * (1.0 + t * 0.15)) { hit = true; break; } t += d * 0.85; if (t > 60.0) break; }
+  vec3 c = uWall;
+  if (hit) {
+    vec3 p = ro + rd * t; map(p); vec3 q0 = gQ, alb = gC; float kk = gK;
+    vec3 n = N(p);
+    bool card = kk < -0.5; float tile = max(floor(kk), 0.0);
+    const vec2 e = vec2(0.0045, 0.0);
+    float h0 = surf(q0, tile);
+    vec3 gr = vec3(surf(q0 + e.xyy, tile) - h0, surf(q0 + e.yxy, tile) - h0, surf(q0 + e.yyx, tile) - h0) / e.x;
+    n = normalize(n - (gr - n * dot(gr, n)) * (card ? 0.012 : 0.042));
+    // the colour is never one colour: kneaded, smeared, and dirtied in the dents
+    if (!card) { alb *= 0.85 + 0.3 * vn(q0 * vec3(2.6, 4.4, 2.6) + 5.0); alb = mix(alb, alb * vec3(1.12, 0.9, 0.8), vn(q0 * 8.0)); alb *= 0.72 + 0.34 * smoothstep(0.1, 0.9, h0); }
+    else alb *= 0.9 + 0.2 * vn(p * vec3(0.8, 3.0, 0.8));              // brush strokes on the painted card
+    vec3 Lp = uKey - p; vec3 L = normalize(Lp), V = -rd, H = normalize(L + V);
+    float sh = shadow(p + n * 0.014, L), a = ao(p, n);
+    float wrap = clamp((dot(n, L) + 0.26) / 1.26, 0.0, 1.0);           // clay lets a little light in
+    vec3 key = vec3(1.0, 0.84, 0.66) * 1.75 * wrap * mix(0.08, 1.0, sh);
+    vec3 sky = vec3(0.56, 0.52, 0.98) * 0.30 * (0.5 + 0.5 * n.y) * a;
+    vec3 bou = vec3(0.86, 0.60, 0.40) * 0.22 * (0.5 - 0.5 * n.y) * a;
+    vec3 back = vec3(0.9, 0.8, 0.7) * 0.12 * clamp(dot(n, -L * vec3(1.0, 0.0, 1.0)), 0.0, 1.0) * a;
+    c = alb * (key + sky + bou + back);
+    c += alb * vec3(1.0, 0.42, 0.24) * 0.14 * (1.0 - wrap) * a * sh;   // warm where the light gets in
+    if (!card) { c += vec3(1.0, 0.95, 0.88) * pow(max(dot(n, H), 0.0), 22.0) * 0.07 * sh;   // a faint greasy sheen, broad, never a highlight
+      c += sky * alb * pow(1.0 - clamp(dot(n, V), 0.0, 1.0), 3.0) * 0.5; }
+  }
+  o = vec4(c, 1.0);
+}`;
+
+      const POST = `#version 300 es
+precision highp float; uniform sampler2D uT; uniform float uTime, uFlick; out vec4 o;
+float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+void main(){ vec2 uv = gl_FragCoord.xy / vec2(1920.0, 1080.0);
+  vec3 c = texture(uT, uv).rgb * 0.25 * uFlick;
+  c *= 1.0 - 0.3 * pow(length((uv - 0.5) * vec2(1.05, 0.9)) * 1.25, 2.6);
+  c = c * (1.0 + c * 0.25) / (1.0 + c * 0.75);                        // a soft shoulder that keeps the colour
+  c = pow(max(c, 0.0), vec3(1.0 / 2.2));
+  float l = dot(c, vec3(0.3, 0.59, 0.11)); c = mix(vec3(l), c, 1.14);
+  c = mix(c, c * c * (3.0 - 2.0 * c), 0.28);
+  c += (h(gl_FragCoord.xy + uTime * 61.0) - 0.5) * 0.014;
+  o = vec4(c, 1.0); }`;
+
+      const TB = window.TABLE, W = 1920, H = 1080, POSES = 12, BEAT = TB.beat, DUR = TB.dur, AA = [[-0.25, -0.25], [0.25, -0.25], [-0.25, 0.25], [0.25, 0.25]];
+      const $ = (s) => document.querySelector(s);
+      const r = (x, a, b) => Math.min(1, Math.max(0, (x - a) / (b - a))), lerp = (a, b, k) => a + (b - a) * k, l3 = (a, b, k) => [lerp(a[0], b[0], k), lerp(a[1], b[1], k), lerp(a[2], b[2], k)];
+      const eIO = (x) => x * x * (3 - 2 * x), eO = (x) => 1 - (1 - x) * (1 - x) * (1 - x), eB = (x) => { const c = 1.9; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+      const h1 = (x) => { const s = Math.sin(x * 127.1) * 43758.5453; return s - Math.floor(s); };
+      const TOM = [0.78, 0.085, 0.03], BUT = [0.86, 0.56, 0.06], COB = [0.02, 0.09, 0.62], BON = [0.74, 0.66, 0.50], PLUM = [0.16, 0.035, 0.12];
+
+      // ---------------- every line of type is a distance field made once from Archivo, kept in one texture array
+      const LINES = ["YOU BRING", "THE BRAND.", "NOT A TEMPLATE.", "WIREFRAMES FIRST.", "HAND-CODED,", "WITH AI ASSISTANCE.", "DESKTOP.", "TABLET.", "MOBILE.", "REVIEW THE REAL SITE,", "NOT A MOCK-UP.", "THE SEO PLUMBING", "IS INCLUDED.", "EVERY FILE", "IS YOURS.", "YOUR BRAND", "SCHEMA", "SITEMAP", "META"], L = (t) => LINES.indexOf(t), LW = 768, LH = 192;
+      function edt(f) { const n = f.length, d = new Float32Array(n), v = new Int32Array(n), z = new Float32Array(n + 1); let k = 0; v[0] = 0; z[0] = -1e20; z[1] = 1e20;
+        for (let q = 1; q < n; q++) { let s; do { s = ((f[q] + q * q) - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]); } while (s <= z[k] && --k >= 0); k++; v[k] = q; z[k] = s; z[k + 1] = 1e20; }
+        k = 0; for (let q = 0; q < n; q++) { while (z[k + 1] < q) k++; d[q] = (q - v[k]) * (q - v[k]) + f[v[k]]; } return d; }
+      function sdf2(mask) { const out = new Float32Array(LW * LH), row = new Float32Array(LW), col = new Float32Array(LH); out.set(mask);
+        for (let x = 0; x < LW; x++) { for (let y = 0; y < LH; y++) col[y] = out[y * LW + x]; const d = edt(col); for (let y = 0; y < LH; y++) out[y * LW + x] = d[y]; }
+        for (let y = 0; y < LH; y++) { for (let x = 0; x < LW; x++) row[x] = out[y * LW + x]; out.set(edt(row), y * LW); } return out; }
+      let gl, PP, UP = {}, PROG = {}, accT, accF, words, ovG;
+      function buildWords() {
+        const cv = document.createElement("canvas"); cv.width = LW; cv.height = LH; const g = cv.getContext("2d", { willReadFrequently: true });
+        const data = new Float32Array(LW * LH * LINES.length);
+        LINES.forEach((t, l) => {
+          g.fillStyle = "#000"; g.fillRect(0, 0, LW, LH); g.fillStyle = "#fff"; g.textAlign = "center"; g.textBaseline = "alphabetic";
+          let fs = 170; g.font = `900 condensed ${fs}px Archivo`; const wd = g.measureText(t).width; if (wd > LW - 30) { fs *= (LW - 30) / wd; g.font = `900 condensed ${fs}px Archivo`; }
+          g.fillText(t, LW / 2, LH / 2 + fs * 0.36);
+          const px = g.getImageData(0, 0, LW, LH).data, a = new Float32Array(LW * LH), b = new Float32Array(LW * LH);
+          for (let i = 0; i < LW * LH; i++) { const v = px[i * 4] > 127; a[i] = v ? 1e10 : 0; b[i] = v ? 0 : 1e10; }
+          const da = sdf2(a), db = sdf2(b);
+          for (let i = 0; i < LW * LH; i++) data[l * LW * LH + i] = (Math.sqrt(db[i]) - Math.sqrt(da[i])) / (LW / 2);
+        });
+        words = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D_ARRAY, words);
+        gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.R16F, LW, LH, LINES.length, 0, gl.RED, gl.FLOAT, data);
+        for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D_ARRAY, k, v);
+      }
+      const UNI = ["uRes", "uJit", "uEye", "uTar", "uFov", "uSeed", "uMorph", "uWall", "uFloor", "uKey", "uLump", "uLumpC", "uTip", "uRise9", "uMould", "uFall", "uSlab", "uPos", "uPS", "uTurn", "uBulge", "uShear", "uPipes", "uFlow", "uWallX", "uR", "uRC", "uRZ", "uRF", "uRD", "uBlob", "uRip", "uCur", "uP0", "uP1", "uFold", "uFoldC", "uWords", "uA0", "uA1", "uB0", "uB1", "uAC", "uBC"];
+      function compile(A, B) {
+        const key = A.join("+") + ">" + B.join("+"); if (PROG[key]) return PROG[key];
+        const sh = (t, src) => { const s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(key + gl.getShaderInfoLog(s)); return s; };
+        const used = [...new Set(A.concat(B))];
+        const stage = `void stage(vec3 p){ float f = p.y + wob(p * 0.35, 1.0) * 0.012, w = p.z + 5.0; U(smin(f, w, 2.4), mix(uFloor, uWall, smoothstep(-0.05, 1.6, p.y)), p, -1.0); }\n`;
+        const words2 = `U(wordF(p, uA0, uA1), uAC, p - uA0.xyz, 0.0); U(wordF(p, uB0, uB1), uBC, p - uB0.xyz + 7.0, 0.0);`;
+        const body = B.length
+          ? `gD = 1e3; ${A.map((s) => s + "(p);").join(" ")} float dA = gD; vec3 cA = gC, qA = gQ; float kA = gK; gD = 1e3; ${B.map((s) => s + "(p);").join(" ")} float d = mix(dA, gD, uMorph); vec3 cc = mix(cA, gC, uMorph); vec3 qq = uMorph < 0.5 ? qA : gQ; float kk = uMorph < 0.5 ? kA : gK; gD = d; gC = cc; gQ = qq; gK = kk;`
+          : `gD = 1e3; ${A.map((s) => s + "(p);").join(" ")}`;
+        const mapF = `float map(vec3 p){ ${body} ${words2} stage(p); return gD; }\n`;
+        const src = COMMON + stage + used.map((s) => SCENES[s]).join("\n") + "\n" + mapF + MAIN;
+        const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, src)); gl.linkProgram(p);
+        if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+        const U = {}; for (const n of UNI) U[n] = gl.getUniformLocation(p, n);
+        return (PROG[key] = { p, U });
+      }
+      function initGL() {
+        gl = $("#stage").getContext("webgl2", { antialias: false, alpha: false, depth: false, stencil: false, preserveDrawingBuffer: true });
+        if (!gl.getExtension("EXT_color_buffer_float")) throw new Error("EXT_color_buffer_float is needed");
+        gl.bindVertexArray(gl.createVertexArray());
+        const sh = (t, src) => { const s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+        PP = gl.createProgram(); gl.attachShader(PP, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(PP, sh(gl.FRAGMENT_SHADER, POST)); gl.linkProgram(PP);
+        for (const n of ["uT", "uTime", "uFlick"]) UP[n] = gl.getUniformLocation(PP, n);
+        accT = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, accT); gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA16F, W, H);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        accF = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, accF); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, accT, 0);
+        buildWords();
+      }
+
+      // ---------------- the camera: beat, eye, target, lens
+      const KEYS = [
+        [0, [0, 2.3, 11.5], [0, 2.2, 0], 1.8], [4.6, [0.25, 2.3, 10.8], [0, 2.1, 0], 1.8],
+        [6.0, [0, 3.0, 13.0], [0, 2.9, 0], 1.8], [11.6, [0.3, 3.0, 12.2], [0, 2.8, 0], 1.8],
+        [12.8, [0, 3.7, 14.2], [0, 3.55, 0], 1.75], [23.6, [0.2, 3.7, 13.8], [0, 3.55, 0], 1.75], [25.0, [0, 3.8, 14.2], [0, 3.7, 0], 1.75],
+        [26.5, [0, 3.95, 14.6], [0, 3.9, 0], 1.75], [33.2, [0, 3.95, 14.6], [0, 3.9, 0], 1.75], [35.6, [0, 3.7, 14.0], [0, 3.55, 0], 1.75], [37.2, [0, 3.7, 13.0], [0, 3.75, 0], 1.75], [41, [0, 3.7, 13.2], [0, 3.7, 0], 1.75],
+        [43, [0, 3.7, 13.4], [0, 3.55, 0], 1.75], [48, [0, 3.7, 13.0], [0, 3.55, 0], 1.75], [50, [0, 3.2, 11.6], [0, 3.1, 0], 1.75], [52.4, [0, 3.2, 11.2], [0, 3.1, 0], 1.75], [55.5, [0, 2.6, 8.4], [0, 2.3, 0], 1.75], [60, [0, 2.6, 8.4], [0, 2.3, 0], 1.75],
+      ];
+      function camera(b) { let i = 0; while (i < KEYS.length - 2 && b >= KEYS[i + 1][0]) i++; const a = KEYS[i], c = KEYS[i + 1], k = eIO(r(b, a[0], c[0])); return { eye: l3(a[1], c[1], k), tar: l3(a[2], c[2], k), fov: lerp(a[3], c[3], k) }; }
+
+      // ---------------- one page, three layouts. x, y (from the slab's centre), half-width, half-height. Nav, hero, three cards, button
+      const LAY = [
+        { w: 4.6, h: 2.35, R: [[0, 2.0, 4.3, 0.16], [0, 0.62, 4.3, 1.05], [-2.97, -1.3, 1.33, 0.72], [0, -1.3, 1.33, 0.72], [2.97, -1.3, 1.33, 0.72]], word: 2.75, wy: 0.26, btn: [0.72, 0.17] },
+        { w: 2.75, h: 3.1, R: [[0, 2.75, 2.5, 0.16], [0, 1.28, 2.5, 1.05], [-1.32, -0.45, 1.18, 0.62], [1.32, -0.45, 1.18, 0.62], [0, -2.0, 2.5, 0.78]], word: 2.1, wy: 0.26, btn: [0.62, 0.16] },
+        { w: 1.55, h: 3.75, R: [[0, 3.42, 1.32, 0.14], [0, 2.12, 1.32, 1.0], [0, 0.42, 1.32, 0.58], [0, -1.0, 1.32, 0.58], [0, -2.42, 1.32, 0.58]], word: 1.18, wy: 0.3, btn: [0.5, 0.15] },
+      ];
+      const rt = (a, b, k) => a.map((v, i) => lerp(v, b[i], k));
+      // where the squeeze has got to, 0 desktop, 1 tablet, 2 phone; each part arrives a little after the last, which is what makes it look pushed
+      const lay = (b, d = 0) => { const w = eB(r(b, TB.slam1 + d, TB.slam1 + 0.46 + d)) + eB(r(b, TB.slam2 + d, TB.slam2 + 0.46 + d)); const u = r(b, TB.release + d, TB.release + 1.0 + d); return w * (1 - eB(u)); };
+      const layAt = (w, f) => (w <= 1 ? f(LAY[0], LAY[1], w) : f(LAY[1], LAY[2], w - 1));
+      const decay = (b, t, rate, fr) => (b < t ? 0 : Math.exp(-(b - t) * rate) * Math.cos((b - t) * fr));
+
+      const WORDS = [
+        // beat in, beat out, line, x, y, z, half-width, depth, colour
+        [1.3, 4.9, "YOU BRING", 0, 4.85, -1.4, 3.0, 0.2, TOM], [2.1, 4.9, "THE BRAND.", 0, 3.88, -1.4, 3.0, 0.2, COB],
+        [8.5, 11.8, "NOT A TEMPLATE.", 0, 5.3, -3.6, 4.2, 0.22, TOM],
+        [12.7, 17.0, "WIREFRAMES FIRST.", 0, 6.05, -1.0, 3.9, 0.2, [0.05, 0.05, 0.06]],
+        [19.6, 23.7, "HAND-CODED,", 0, 6.65, -1.0, 3.3, 0.2, TOM], [20.2, 23.7, "WITH AI ASSISTANCE.", 0, 5.72, -1.0, 3.3, 0.2, COB],
+        [24.0, 26.45, "DESKTOP.", 0, 6.2, -1.0, 3.0, 0.2, COB],
+        [27.0, 29.3, "TABLET.", (b) => -4.72, 4.5, 1.72, 1.72, 0.08, BUT],
+        [30.0, 35.0, "MOBILE.", (b) => -4.15 - 14 * eO(r(b, TB.release, TB.release + 0.8)), 4.5, 1.72, 2.2, 0.08, BUT],
+        [35.6, 40.8, "REVIEW THE REAL SITE,", 0, 6.65, -1.0, 3.6, 0.2, TOM], [36.2, 40.8, "NOT A MOCK-UP.", 0, 5.72, -1.0, 3.6, 0.2, COB],
+        [43.4, 48.0, "THE SEO PLUMBING", 0, 6.65, -1.0, 3.6, 0.2, BUT], [44.0, 48.0, "IS INCLUDED.", 0, 5.72, -1.0, 3.6, 0.2, BUT],
+        [49.6, 54.0, "EVERY FILE", 0, 6.0, -1.5, 2.7, 0.2, TOM], [50.2, 54.0, "IS YOURS.", 0, 5.15, -1.5, 2.7, 0.2, COB],
+      ];
+      function wordState(b) { const on = [];
+        for (const w of WORDS) { if (b < w[0] || b >= w[1] + 0.5) continue; const up = eB(r(b, w[0], w[0] + 0.5)), dn = r(b, w[1], w[1] + 0.5), x = typeof w[3] === "function" ? w[3](b) : w[3]; on.push({ l: L(w[2]), x, y: w[4], z: w[5], w: w[6], d: w[7], c: w[8], off: Math.min(0.12, -(w[4] + w[6] * 0.25 + 0.2) * (1 - up)) - (w[4] + w[6] * 0.25 + 0.2) * eIO(dn) }); }
+        return on.slice(0, 2);
+      }
+
+      const LILAC = { wall: [0.30, 0.19, 0.46], floor: [0.40, 0.26, 0.46] }, GREYW = { wall: [0.25, 0.25, 0.27], floor: [0.33, 0.33, 0.35] }, BACK = { wall: [0.035, 0.055, 0.17], floor: [0.07, 0.08, 0.19] }, DUSK = { wall: [0.50, 0.21, 0.26], floor: [0.52, 0.30, 0.30] };
+      function grade(b) { const seq = [[0, LILAC], [5, LILAC], [6.2, GREYW], [17.5, GREYW], [19.2, LILAC], [41, LILAC], [42.6, BACK], [47.6, BACK], [49.2, DUSK], [60, DUSK]]; let i = 0; while (i < seq.length - 2 && b >= seq[i + 1][0]) i++; const a = seq[i], c = seq[i + 1], k = eIO(r(b, a[0], c[0])); return { wall: l3(a[1].wall, c[1].wall, k), floor: l3(a[1].floor, c[1].floor, k) }; }
+
+      function pose(n) {
+        const b = n / POSES / BEAT, S = { A: ["lumps"], B: [], morph: 0, ...camera(b), ...grade(b), key: [-8.5, 8.5, 10.5], ls: 1,
+          lump: [[-3, -3, 0, 1], [0, -3, 0, 1], [3, -3, 0, 1]], lumpC: [TOM, COB, BUT], tip: new Array(9).fill(0), rise: new Array(9).fill(0), mould: [0, 0, 0, 0], fall: [0, 0, 0, 0],
+          slab: [LAY[0].w, LAY[0].h, 0, 0], pos: [0, 0, 0], ps: 1, turn: 0, bulge: 0, shear: 0, pipes: 0, flow: 0, wallX: 99, R: [], RC: [TOM, COB, BUT, BUT, BUT, TOM], RZ: new Array(6).fill(0), RF: new Array(6).fill(0), RD: new Array(6).fill(0), blob: [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]], rip: [0, 0, 0, 0], cur: [0, 0, 0, 0], P0: new Array(16).fill(0), P1: new Array(16).fill(0), fold: [0, -6, 0, 1.2], foldC: 0 };
+        // ---- 1. the brand: three lumps land, one by one
+        TB.drops.forEach((t, i) => { const fall = r(b, t - 0.55, t), a = Math.max(0, b - t), sq = 1 - 0.4 * Math.exp(-a * 2.8) * Math.cos(a * 8), hop = Math.abs(Math.sin(a * 3.2)) * 0.22 * Math.exp(-a * 2.5); S.lump[i] = [[-3.2, 0, 3.2][i], b < t ? lerp(8, 0.85, fall * fall) : 0.8 * sq + hop, 0, b < t ? 1.1 : sq]; });
+        // ---- 2. they melt into a rail, and the mould stamps out the same site again and again
+        if (b >= TB.row) { const k = eIO(r(b, TB.row, TB.row + 0.9)); S.A = ["lumps"]; S.B = ["row"]; S.morph = k; if (k >= 1) { S.A = ["row"]; S.B = []; }
+          const u = (b - TB.stamp) / TB.stampGap, i = Math.floor(u), f = u - i;
+          for (let j = 0; j < TB.sites; j++) { const t = TB.stamp + j * TB.stampGap + 0.12; S.rise[j] = eB(r(b, t, t + 0.2)); }
+          if (b >= TB.stamp - 0.5 && b < TB.hit - 0.1) { const c = Math.min(i, TB.sites - 1), done = i >= TB.sites, dn = f < 0.4 ? (f / 0.4) * (f / 0.4) : 1 - (f - 0.4) / 0.6, x = -4 + Math.max(0, c) + (f > 0.65 && !done ? eIO((f - 0.65) / 0.35) : 0); S.mould = [done ? lerp(4, 13, eIO(r(b, TB.stamp + TB.sites * TB.stampGap, TB.hit - 0.3))) : x, done ? 5.4 : b < TB.stamp ? lerp(13, 5.4, r(b, TB.stamp - 0.5, TB.stamp)) : lerp(5.4, 1.78, dn), 0, 1]; }
+          // ---- one lump of colour lands on the end
+          const fl = r(b, TB.hit - 0.65, TB.hit), a = Math.max(0, b - TB.hit); if (b >= TB.hit - 0.65) S.fall = [b < TB.hit ? lerp(-7.2, -4.95, fl) : -4.95 - a * 0.1, b < TB.hit ? lerp(5.6, 1.35, fl * fl) : Math.max(0.86, 1.35 - a * 0.9) + Math.abs(Math.sin(a * 3)) * 0.3 * Math.exp(-a * 2), 0, 1];
+          for (let j = 0; j < TB.sites; j++) { const t = TB.hit + j * TB.topple * (1 - 0.2 * (j + 1) / TB.sites), kk = r(b, t, t + 0.55); S.tip[j] = kk * kk * (j === TB.sites - 1 ? 1.52 : 1.3); }
+          for (let j = TB.sites - 2; j >= 0; j--) { const H = 2.9, a2 = S.tip[j + 1], ta = Math.tan(a2); let lo = 0, hi = S.tip[j]; if (H * Math.sin(hi) - H * Math.cos(hi) * ta > 0.96) { for (let it = 0; it < 18; it++) { const m = (lo + hi) / 2; if (H * Math.sin(m) - H * Math.cos(m) * ta > 0.96) hi = m; else lo = m; } S.tip[j] = lo; } } }
+        // ---- 3. the row melts down into a blank slab, and grey coils draw the page
+        const w = lay(b), wh = lay(b, 0), lk = layAt(w, (A, B, k) => [lerp(A.w, B.w, k), lerp(A.h, B.h, k)]);
+        if (b >= TB.wire) { const k = eIO(r(b, TB.wire, TB.wire + 0.6)); S.A = ["row"]; S.B = ["page"]; S.morph = k; if (k >= 1) { S.A = ["page"]; S.B = []; }
+          for (let j = 0; j < TB.sites; j++) { S.rise[j] = 1; S.tip[j] = j === TB.sites - 1 ? 1.52 : 1.3; } S.fall = [-5.2, 0.86, 0, 1];
+          S.slab = [lk[0], lk[1], 0, 0];
+          for (let i = 0; i < 5; i++) { const d = i * 0.035, wi = lay(b, d); S.R[i] = layAt(wi, (A, B, q) => rt(A.R[i], B.R[i], q)); if (i >= 2) { const fr = wi - Math.floor(wi); S.RZ[i] = 0.42 * Math.sin(fr * Math.PI) * (wi > 0.02 && wi < 1.98 ? 1 : 0); }
+            const st = TB.draw + [0, 0.6, 1.4, 2.0, 2.6][i]; S.RD[i] = r(b, st, st + 1.2); }
+          // ---- 4. colour lands on the wireframe and floods it
+          const blobOf = [0, 1, 3]; TB.blobs.forEach((t, j) => { const fl = r(b, t - 0.5, t), a = r(b, t, t + 1.2), ri = blobOf[j], Rr = S.R[ri]; if (b >= t - 0.5 && a < 1) { const size = [0.5, 0.92, 0.72][j]; S.blob[j] = [lerp(Rr[0] + [-7, 0, 7][j], Rr[0], fl), lerp(Rr[1] + 5.5, Rr[1], fl * fl), lerp(5, 0.42, fl), size * (1 - a * a)]; }
+            const on = j === 2 ? [2, 3, 4] : [ri]; for (const x of on) S.RF[x] = a; });
+          S.RF[5] = r(b, TB.blobs[1] + 0.8, TB.blobs[1] + 1.3);
+          const hero = S.R[1], wLay = layAt(w, (A, B, q) => [lerp(A.word, B.word, q), lerp(A.wy, B.wy, q), lerp(A.btn[0], B.btn[0], q), lerp(A.btn[1], B.btn[1], q)]);
+          const pr = Math.max(0, b - TB.press), pushed = b >= TB.press - 0.14 ? (b < TB.press ? r(b, TB.press - 0.14, TB.press) : Math.exp(-pr * 4) * Math.cos(pr * 8)) : 0;
+          S.R[5] = [hero[0], hero[1] - hero[3] * 0.68, wLay[2], wLay[3]]; S.RZ[5] = 0.14 - pushed * 0.1;
+          const wa = eB(r(b, TB.blobs[1] + 0.7, TB.blobs[1] + 1.3)); if (wa > 0) { S.P0[0] = hero[0]; S.P0[1] = hero[1] + hero[3] * wLay[1]; S.P0[2] = 0.44; S.P0[3] = 0; S.P1[0] = wLay[0] * wa; S.P1[1] = 0.07; S.P1[2] = L("YOUR BRAND"); }
+          // ---- 5. the walls
+          const bw = (x, t, d, rate = 3, fr = 11) => decay(x, t + d, rate, fr);
+          S.bulge = (decay(b, TB.slam1, 2.4, 9) * 0.62 + decay(b, TB.slam2, 2.4, 9) * 0.78 + decay(b, TB.release, 3, 10) * -0.34);
+          S.shear = decay(b, TB.release + 0.1, 2.3, 12) * 0.5;
+          S.slab[1] *= 1 + 0.03 * decay(b, TB.release + 0.1, 2.5, 12);
+          let wx = 99; if (b >= TB.slam1 - 0.42 && b < TB.release + 1) { const inn = lk[0] + 0.14, ap = r(b, TB.slam1 - 0.42, TB.slam1); wx = b < TB.slam1 ? lerp(13, LAY[0].w + 0.14, ap * ap * ap) : inn; if (b >= TB.release) { const o = r(b, TB.release, TB.release + 0.8); wx = lerp(LAY[2].w + 0.14, 14.5, eO(o)); } } S.wallX = wx;
+          const shk = (decay(b, TB.slam1, 5, 22) + decay(b, TB.slam2, 5, 22)) * 0.09; S.eye = [S.eye[0] + shk, S.eye[1] - shk * 0.5, S.eye[2]];
+          // ---- 6. the cursor presses the button, and the press runs through the page
+          if (b >= TB.press - 2.0 && b < TB.turn) { const bt = S.R[5], cy = S.slab[1] + 0.1, tx = bt[0], ty = cy + bt[1] - 0.03, u = eIO(r(b, TB.press - 2.0, TB.press - 0.3)), hv = b < TB.press - 0.14 ? 0.75 : b < TB.press ? lerp(0.75, 0.42, r(b, TB.press - 0.14, TB.press)) : lerp(0.42, 0.95, r(b, TB.press + 0.3, TB.press + 0.9)), out = r(b, TB.turn - 0.9, TB.turn - 0.1); S.cur = [lerp(6.4, tx + 0.02, u) + out * out * 8, lerp(0.9, ty, u) - out * 1.2, hv, 0.62]; }
+          if (b >= TB.press && b < TB.press + 2.6) { const a = b - TB.press; S.rip = [S.R[5][0], S.R[5][1], a, 0.32 * Math.exp(-a * 0.95)]; }
+          // ---- 7. it turns round, and the plumbing grows on the back
+          if (b >= TB.turn) { const k = r(b, TB.turn, TB.turnEnd), bk = r(b, TB.fold, TB.fold + 1.2); S.turn = Math.PI * eIO(k) - Math.PI * eIO(bk) + 0.09 * decay(b, TB.turnEnd, 3, 10) * (bk > 0 ? 0 : 1); S.pipes = eB(r(b, TB.pipes, TB.pipes + 1.5)) * (1 - r(b, TB.fold + 0.2, TB.fold + 0.8)); S.flow = (b - TB.pipes) * 5;
+            if (S.pipes > 0.5) ["SCHEMA", "SITEMAP", "META"].forEach((t, i) => { const x = -2.95 + i * 2.95, u = eB(r(b, TB.pipes + 0.8 + i * 0.3, TB.pipes + 1.3 + i * 0.3)) * (1 - r(b, TB.fold, TB.fold + 0.3)); S.P0[4 + i * 4] = x; S.P0[5 + i * 4] = 0.72; S.P0[6 + i * 4] = 0.38; S.P0[7 + i * 4] = 0; S.P1[4 + i * 4] = 1.06 * u; S.P1[5 + i * 4] = 0.05; S.P1[6 + i * 4] = L(t); }); }
+          // ---- 8. the site shrinks to fit a folder, and the flap shuts on it
+          if (b >= TB.fold) { const k = eIO(r(b, TB.fold + 0.2, TB.fold + 1.6)), up = eB(r(b, TB.fold + 0.3, TB.fold + 1.3)), sh = r(b, TB.shut - 0.42, TB.shut), a = Math.max(0, b - TB.shut); S.ps = lerp(1, 0.44, k); S.pos = [0, 0.03 * k, 0]; S.A = ["page", "folder"]; S.B = [];
+            const ang = lerp(1.24, 0, sh * sh * sh) + 0.05 * decay(b, TB.shut, 4, 12); const sd = r(b, TB.slide, TB.logo); S.fold = [0, lerp(-6, 0, up), 0, ang];
+            if (b >= TB.slide) { S.A = ["folder"]; const gz = sd * sd * sd * sd; S.fold = [0, -0.4 * sd, gz * 6.8, 0]; S.foldC = 0.75 * r(b, TB.logo - 0.8, TB.logo); } }
+        }
+        S.words = wordState(b);
+        return S;
+      }
+let lastPose = -1;
+      function render(n) {
+        const S = pose(n), P = compile(S.A, S.B), U = P.U, seed = h1(n * 0.73);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, accF); gl.viewport(0, 0, W, H); gl.clearColor(0, 0, 0, 0); gl.disable(gl.SCISSOR_TEST); gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.useProgram(P.p); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D_ARRAY, words); gl.uniform1i(U.uWords, 0);
+        gl.uniform2f(U.uRes, W, H); const j = 0.0035;
+        gl.uniform3f(U.uEye, S.eye[0] + (seed - 0.5) * j, S.eye[1] + (h1(n * 1.9) - 0.5) * j, S.eye[2]); gl.uniform3fv(U.uTar, S.tar); gl.uniform1f(U.uFov, S.fov); gl.uniform1f(U.uSeed, seed); gl.uniform1f(U.uMorph, S.morph);
+        gl.uniform1fv(U.uTip, S.tip); gl.uniform1fv(U.uRise9, S.rise); gl.uniform4fv(U.uMould, S.mould); gl.uniform4fv(U.uFall, S.fall);
+        gl.uniform4fv(U.uLump, S.lump.flat()); gl.uniform3fv(U.uLumpC, S.lumpC.flat());
+        gl.uniform4fv(U.uSlab, S.slab); gl.uniform3fv(U.uPos, S.pos); gl.uniform1f(U.uPS, S.ps); gl.uniform1f(U.uTurn, S.turn); gl.uniform1f(U.uBulge, S.bulge); gl.uniform1f(U.uShear, S.shear); gl.uniform1f(U.uPipes, S.pipes); gl.uniform1f(U.uFlow, S.flow); gl.uniform1f(U.uWallX, S.wallX);
+        const RR = []; for (let i = 0; i < 6; i++) RR.push(...(S.R[i] || [0, 0, 0, 0])); gl.uniform4fv(U.uR, RR); gl.uniform3fv(U.uRC, S.RC.flat()); gl.uniform1fv(U.uRZ, S.RZ); gl.uniform1fv(U.uRF, S.RF); gl.uniform1fv(U.uRD, S.RD);
+        gl.uniform4fv(U.uBlob, S.blob.flat()); gl.uniform4fv(U.uRip, S.rip); gl.uniform4fv(U.uCur, S.cur); gl.uniform4fv(U.uP0, S.P0); gl.uniform4fv(U.uP1, S.P1); gl.uniform4fv(U.uFold, S.fold); gl.uniform1f(U.uFoldC, S.foldC);
+        gl.uniform3fv(U.uWall, S.wall); gl.uniform3fv(U.uFloor, S.floor); gl.uniform3fv(U.uKey, S.key);
+        const a = S.words[0], c = S.words[1];
+        gl.uniform4f(U.uA0, a ? a.x : 0, a ? a.y : 0, a ? a.z : 0, a ? a.off : 0); gl.uniform4f(U.uA1, a ? a.w : 0, a ? a.d : 0, a ? a.l : 0, 0); gl.uniform3fv(U.uAC, a ? a.c : [0, 0, 0]);
+        gl.uniform4f(U.uB0, c ? c.x : 0, c ? c.y : 0, c ? c.z : 0, c ? c.off : 0); gl.uniform4f(U.uB1, c ? c.w : 0, c ? c.d : 0, c ? c.l : 0, 0); gl.uniform3fv(U.uBC, c ? c.c : [0, 0, 0]);
+        gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); gl.enable(gl.SCISSOR_TEST);
+        for (const q of AA) { gl.uniform2f(U.uJit, q[0], q[1]); for (let y = 0; y < H; y += 135) { gl.scissor(0, y, W, 135); gl.drawArrays(gl.TRIANGLES, 0, 3); gl.flush(); } }
+        gl.disable(gl.SCISSOR_TEST); gl.disable(gl.BLEND); gl.finish();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.useProgram(PP); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, accT); gl.uniform1i(UP.uT, 0);
+        gl.uniform1f(UP.uTime, seed * 10); gl.uniform1f(UP.uFlick, 1 + 0.02 * (h1(n * 3.1) - 0.5));   // the exposure breathes a little from pose to pose
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+      }
+
+      // ---------------- the flat layer: labels, and the end card with the mark placed flat
+      const BONE = "#F3EAD6", DARK = "#120C1E";
+      function pill(g, t, x, y, sz = 30, bg = BONE, fg = "#1A0F12") { g.font = `800 condensed ${sz}px Archivo`; g.letterSpacing = "0.02em"; const w = g.measureText(t).width + sz * 1.0, h = sz * 1.5; g.fillStyle = bg; g.beginPath(); g.roundRect(x - w / 2, y - h / 2, w, h, 6); g.fill(); g.fillStyle = fg; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(t, x, y + sz * 0.05); g.letterSpacing = "0px"; }
+      function mono(g, s, x, y, size, col, al = "left") { g.font = `500 ${size}px JBM`; g.letterSpacing = "0.08em"; g.textAlign = al; g.textBaseline = "alphabetic"; g.fillStyle = col; g.fillText(s, x, y); g.letterSpacing = "0px"; }
+      function overlay(g, n) {
+        const b = n / POSES / BEAT; g.clearRect(0, 0, W, H);
+        if (b >= 0.6 && b < TB.logo) { g.font = "500 18px JBM"; g.letterSpacing = "0.08em"; const s = "AI-POWERED WEB DESIGN · DEMO SITE", w = g.measureText(s).width + 22; g.fillStyle = "rgba(18,12,30,0.86)"; g.fillRect(40, 36, w, 32); g.letterSpacing = "0px"; mono(g, s, 51, 58, 18, BONE); }
+        if (b >= TB.logo - 0.34) { const u = r(b, TB.logo, TB.logo + 0.7), lw = 926 * 0.72, lh = 193 * 0.72, a = 1 - r(b, 59.4, 60);
+          g.fillStyle = DARK; g.globalAlpha = r(b, TB.logo - 0.34, TB.logo); g.fillRect(0, 0, W, H);
+          g.globalAlpha = eO(u) * a; g.drawImage($("#logo"), W / 2 - lw / 2, 300 - (1 - eO(u)) * 14, lw, lh);
+          g.font = '800 88px "Archivo"'; g.textAlign = "center"; g.textBaseline = "alphabetic"; g.fillStyle = BONE; g.globalAlpha = a * r(b, TB.logo + 0.4, TB.logo + 1); g.fillText("AI-Powered Web Design", W / 2, 610);
+          g.globalAlpha = a * r(b, TB.logo + 1, TB.logo + 1.6); mono(g, "ai.joaoqueiros.com", W / 2, 690, 28, BONE, "center"); mono(g, "A SERVICE · THE SITE HERE IS A DEMO", W / 2, 744, 20, "#E2A23A", "center"); g.globalAlpha = 1; }
+      }
+      function paint(t) { const n = Math.floor(t * POSES + 1e-6); if (n !== lastPose) { lastPose = n; render(n); overlay(ovG, n); } }
+      const tl = gsap.timeline({ paused: true }), clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+      async function build() {
+        await Promise.all([$("#logo").decode(), document.fonts.load('900 condensed 40px "Archivo"'), document.fonts.load('800 condensed 40px "Archivo"'), document.fonts.load('800 40px "Archivo"'), document.fonts.load('500 20px "JBM"')]);
+        ovG = $("#over").getContext("2d"); initGL();
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(0);
+        window.__timelines = window.__timelines || {}; window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+      window.__hf = window.__hf || {}; window.__hf.buildReady = window.__hf.buildReady || {}; window.__hf.buildReady["reflow"] = build();
+    </script>
+  </body>
+</html>

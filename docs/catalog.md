@@ -106,6 +106,14 @@ Made for: Imagined Worlds · Stills. Stack: Three.js, TSL, GSAP, Python (score).
 
 ## Products and systems
 
+### R48 · Reflow
+
+A website made of clay and squeezed: two huge walls slam in, the page buckles, and its three columns slump into two and then one, in one take. Then a clay cursor, the plumbing on the back, and a folder.
+
+Made for: AI-Powered Web Design · JQ AI SYSTEMS. Stack: HyperFrames, WebGL2, Canvas 2D, GSAP, Python, FFmpeg.
+
+[Recipe and poster](../recipes/r48-reflow/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r48-reflow-v1)
+
 ### R47 · Flywheel
 
 A stop-motion clay film with no clay: one lump becomes shelves, a batch of 108 pins and a heavy wheel that clicks round a notch a day while the seasons pass, then melts back into the lump.
