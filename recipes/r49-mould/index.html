@@ -1,0 +1,451 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <title>Mould</title>
+    <!-- Mould: mismatched clay pictures squashed into one lump, a press built from the four parts of a style system, and a wall of pictures that share one look.
+         Stop-motion clay made entirely in code at 12 poses a second. The pictures are demos: this film is code, and the service it's for makes AI visuals. -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/table.js"></script>
+    <style>
+      @font-face { font-family: "Archivo"; src: url("assets/fonts/Archivo.ttf") format("truetype"); font-weight: 100 900; font-stretch: 62% 125%; }
+      @font-face { font-family: "JBM"; src: url("assets/fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 100 800; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #0B0C12; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #0B0C12; }
+      #ct-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #stage, #over { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #logo { position: absolute; left: -2000px; top: 0; width: 926px; height: 193px; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="32.8846" data-width="1920" data-height="1080">
+      <div id="ct-stage" class="clip" data-start="0" data-duration="32.8846" data-track-index="0">
+        <canvas id="stage" width="1920" height="1080" data-layout-allow-overflow></canvas>
+        <canvas id="over" width="1920" height="1080" data-layout-allow-overflow></canvas>
+        <img id="logo" src="assets/brand/your-mark.svg" alt="Your mark" data-layout-allow-overflow>
+      </div>
+      <audio id="score" src="assets/bgm/score.wav" data-start="0" data-duration="32.8846" data-track-index="7" data-volume="1"></audio>
+    </div>
+
+    <script>
+      const VS = `#version 300 es
+void main(){ vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2); gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }`;
+
+      // ---------------- the clay: shared by every scene
+      const COMMON = `#version 300 es
+precision highp float; precision highp sampler2DArray;
+out vec4 o;
+uniform vec2 uRes, uJit; uniform vec3 uEye, uTar; uniform float uFov, uSeed, uMorph;
+uniform vec3 uWall, uFloor, uKey; uniform vec4 uSpot;
+uniform vec4 uHP[10], uHQ[10], uHC[10]; uniform vec4 uThumb;
+uniform vec4 uLump; uniform float uLR, uRoll, uTw, uSys;
+uniform vec4 uStack; uniform vec4 uPl[4]; uniform vec4 uP0[5], uP1[5]; uniform vec4 uStamp;
+uniform float uLand[45], uPicW[45], uPalW[45], uMove;
+uniform sampler2DArray uWords; uniform vec4 uA0, uA1, uB0, uB1, uC0, uC1; uniform vec3 uAC, uBC, uCC;
+float gD; vec3 gC, gQ; float gK; float gSh = 0.0;
+float h31(vec3 p){ return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+float vn(vec3 p){ vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(mix(h31(i), h31(i + vec3(1,0,0)), f.x), mix(h31(i + vec3(0,1,0)), h31(i + vec3(1,1,0)), f.x), f.y),
+             mix(mix(h31(i + vec3(0,0,1)), h31(i + vec3(1,0,1)), f.x), mix(h31(i + vec3(0,1,1)), h31(i + vec3(1,1,1)), f.x), f.y), f.z); }
+mat2 rot(float a){ float s = sin(a), c = cos(a); return mat2(c, s, -s, c); }   // rot(a) * v turns v by +a
+float smin(float a, float b, float k){ float h = max(k - abs(a - b), 0.0) / k; return min(a, b) - h * h * k * 0.25; }
+// hand-made: nothing is true. A cheap wobble in the object's own coordinates, so it travels with the object
+float wob(vec3 q, float s){ return sin(q.x * 3.1 * s + sin(q.z * 2.3 * s + 1.3)) * sin(q.y * 2.7 * s + sin(q.x * 1.9 * s)) + 0.5 * sin(q.z * 5.3 * s + q.y * 4.1 * s); }
+float rbox(vec3 p, vec3 b, float r){ vec3 q = abs(p) - b + r; return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0) - r; }
+float cyl(vec3 p, float R, float h, float r){ vec2 d = vec2(length(p.xy) - R + r, abs(p.z) - h + r); return min(max(d.x, d.y), 0.0) + length(max(d, 0.0)) - r; }
+float tor(vec3 p, float R, float rr){ return length(vec2(length(p.xy) - R, p.z)) - rr; }
+void U(float d, vec3 c, vec3 q, float k){ if (d < gD) { gD = d; gC = c; gQ = q; gK = k; } }
+const vec3 EMB = vec3(0.80, 0.19, 0.03), BON = vec3(0.78, 0.70, 0.55), TEA = vec3(0.01, 0.20, 0.24), INK = vec3(0.025, 0.03, 0.05), TAN = vec3(0.66, 0.40, 0.26);
+float box2(vec2 p, vec2 b, float r){ vec2 q = abs(p) - b + r; return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r; }
+float cap(vec3 p, vec3 a, vec3 b, float r){ vec3 pa = p - a, ba = b - a; float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0); return length(pa - ba * h) - r; }
+// a word pressed out of clay: a 2D distance field in a texture, extruded and rounded. Outside its box the field keeps growing, so its shadow is letters and not a block
+float wordF(vec3 p, vec4 W0, vec4 W1){
+  if (W1.x <= 0.0) return 1e3;
+  vec3 q = p - W0.xyz; q.y -= W0.w; vec3 w = vec3(W1.x, W1.x * 0.25, W1.y);
+  float bb = rbox(q, w + 0.04, 0.02); if (bb > 0.5) return bb;
+  float d2 = textureLod(uWords, vec3(q.x / w.x * 0.5 + 0.5, 0.5 - q.y / w.y * 0.5, W1.z), 0.0).r * w.x + wob(q * 3.0, 1.0) * 0.007 + length(max(abs(q.xy) - w.xy, vec2(0.0)));
+  float e = abs(q.z) - w.z, rr = 0.04; vec2 v = vec2(d2 + rr, e + rr);
+  return min(max(v.x, v.y), 0.0) + length(max(v, 0.0)) - rr;
+}
+`;
+
+      // ---------------- the scenes. Each writes into U(). A shot only compiles what it shows
+      const SCENES = {
+        heap: `
+void heap(vec3 p){
+  // loose pictures: one plaque shape each. The picture itself is shaded later, as a height map
+  for (int i = 0; i < 10; i++) { vec4 Q = uHQ[i]; if (Q.x <= 0.0) continue;
+    vec3 q = p - uHP[i].xyz; q.xz = rot(Q.z) * q.xz; q.xy = rot(uHP[i].w) * q.xy;
+    float d = rbox(q, vec3(Q.x, Q.y, 0.13), 0.09) + wob(q, 1.4) * 0.006; U(d, vec3(0.6), q, 30.0 + float(i)); }
+  if (uThumb.w > 0.0) { vec3 q = p - uThumb.xyz; vec3 tv = vec3(18.0, 1.5, 6.0); float h = clamp(dot(q, tv) / dot(tv, tv), 0.0, 1.0); float d = cap(q, vec3(0.0), tv, uThumb.w * (1.0 + h * 0.75 + 0.1 * sin(h * 19.0) * step(0.12, h))) + wob(q, 1.5) * 0.02; U(d, TAN, q, 6.0); }
+}`,
+        lump: `
+void lump(vec3 p){
+  if (uLR <= 0.0) return;
+  vec3 q = p - uLump.xyz; float sq = uLump.w; q.y /= sq; q.xz *= sqrt(sq); q.xz = rot(uRoll) * q.xz;
+  float d = (length(q) - uLR) * min(sq, 1.0) + wob(q, 1.2) * 0.05 * min(sq, 1.0); U(d, vec3(0.6), q, 20.0);
+}`,
+        wall: `
+void wall(vec3 p){
+  // one wall of pictures: one cell's distance at a time, so forty-five cost the same as one
+  vec3 q = p - vec3(0.0, 6.6, -4.2); vec2 c = vec2(clamp(floor(q.x / 2.6 + 0.5), -4.0, 4.0), clamp(floor(q.y / 2.0 + 0.5), -2.0, 2.0));
+  int id = int(c.y + 2.0) * 9 + int(c.x + 4.0); float l = uLand[id]; vec3 t = q - vec3(c * vec2(2.6, 2.0), 0.0);
+  if (l <= 0.0) { vec2 e = vec2(1.3, 1.0) - abs(t.xy); U(gSh > 0.5 ? max(abs(t.z) - 0.25, 0.45) : max(max(abs(t.z) - 0.25, min(e.x, e.y) + 0.1), 0.03), vec3(0.0), t, 7.0); return; }
+  t.z -= (l - 1.0) * 1.25; float d = rbox(t, vec3(1.15, 0.85, 0.13), 0.09) + wob(t + float(id), 1.4) * 0.006; U(d, vec3(0.6), t, 80.0 + float(id));
+}`,
+        mould: `
+void mould(vec3 p){
+  // the press: four plates on a screw. Everything lives in the stack's coordinates
+  vec3 s = p - uStack.xyz;
+  for (int i = 0; i < 4; i++) { if (uPl[i].w <= 0.0) continue; vec3 t = s - uPl[i].xyz; float d = rbox(t, vec3(3.0, 0.48, 0.95), 0.1) + wob(t + float(i), 1.1) * 0.012; U(d, i == 3 ? EMB : BON, t + float(i) * 3.0, 2.0 + float(i));
+    if (uP1[i].x > 0.0) U(wordF(s, uP0[i], uP1[i]), i == 3 ? BON : INK, t, 70.0); }
+  if (uStack.w > 0.0) { float R = 0.42 + 0.03 * sin(s.y * 9.0); U(cap(s, vec3(0.0, 4.0, 0.0), vec3(0.0, 44.0, 0.0), R), vec3(0.16, 0.12, 0.10), s, 8.0); }
+}`,
+        stamp: `
+void stamp(vec3 p){
+  if (uStamp.w <= 0.0) return;
+  vec3 q = p - uStamp.xyz; float d = rbox(q, vec3(1.9, 1.4, 0.7), 0.16) + wob(q, 1.1) * 0.012; U(d, EMB, q, 9.0);
+  if (uP1[4].x > 0.0) U(wordF(q, uP0[4], uP1[4]), BON, q, 70.0);
+}`,
+      };
+
+      const MAIN = `
+vec3 N(vec3 p){ const vec2 e = vec2(0.0035, 0.0); return normalize(vec3(map(p + e.xyy) - map(p - e.xyy), map(p + e.yxy) - map(p - e.yxy), map(p + e.yyx) - map(p - e.yyx))); }
+// the surface, in the object's own coordinates so it moves with the object
+float thumbs(vec3 q, float tile){
+  float S = 1.5, H = 0.0; vec3 g = q * S + tile * 3.1; vec3 i = floor(g);
+  for (int z = -1; z <= 1; z++) for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+    vec3 c = i + vec3(x, y, z); if (h31(c) < 0.45) continue;
+    vec3 o2 = vec3(h31(c + 1.1), h31(c + 2.2), h31(c + 3.3)); vec3 d = g - c - o2;
+    float a = h31(c + 4.4) * 3.14; d.xy = rot(a) * d.xy; d.yz = rot(a * 1.7) * d.yz;
+    float l = length(d * vec3(1.0, 1.5, 1.0)), m = smoothstep(0.5, 0.22, l); if (m <= 0.0) continue;
+    H += m * (-0.8 + 0.2 * sin((length(d.xy * vec2(1.0, 1.55)) + vn(d * 4.0) * 0.1) * 95.0));
+  }
+  return H;
+}
+float surf(vec3 q, float tile){
+  float h = 0.8 * vn(q * 2.1 + 3.0) + 0.42 * vn(q * 5.3 + 7.0) + 0.14 * vn(q * 15.0) + 0.05 * vn(q * 46.0);   // lumps, dents and nicks
+  h += 0.28 * thumbs(q, tile);
+  h += 0.035 * vn(q * 6.0 + uSeed * 11.0) + 0.016 * vn(q * 19.0 + uSeed * 37.0);                               // touched since the last pose
+  h -= 0.018 * smoothstep(0.88, 0.92, vn(vec3(q.x * 2.2, q.y * 22.0, q.z * 2.2) + 9.0));                        // a tool mark
+  return h;
+}
+
+// ---- the pictures: layers of flattened clay, one on another, each with a pillowed edge
+vec3 gPC; float gPH;
+void lay(float d, vec3 c, float h){ gPC = mix(gPC, c, smoothstep(0.018, -0.018, d)); gPH += h * smoothstep(0.04, -0.04, d); }
+float tri2(vec2 p, vec2 a, vec2 b, vec2 c){ vec2 e0 = b - a, e1 = c - b, e2 = a - c, v0 = p - a, v1 = p - b, v2 = p - c;
+  vec2 p0 = v0 - e0 * clamp(dot(v0, e0) / dot(e0, e0), 0.0, 1.0), p1 = v1 - e1 * clamp(dot(v1, e1) / dot(e1, e1), 0.0, 1.0), p2 = v2 - e2 * clamp(dot(v2, e2) / dot(e2, e2), 0.0, 1.0);
+  float s = sign(e0.x * e2.y - e0.y * e2.x); vec2 d = min(min(vec2(dot(p0, p0), s * (v0.x * e0.y - v0.y * e0.x)), vec2(dot(p1, p1), s * (v1.x * e1.y - v1.y * e1.x))), vec2(dot(p2, p2), s * (v2.x * e2.y - v2.y * e2.x)));
+  return -sqrt(d.x) * sign(d.y); }
+void pic(float id, vec2 u, float T, vec3 A, vec3 B, vec3 C){ gPC = A; gPH = 0.0;
+  if (id < 0.5) { // a boat on small waves
+    lay(length(u - vec2(0.62, 0.48)) - 0.28, B, 0.22); vec2 q = u - vec2(-0.08, -0.2 + 0.03 * sin(T * 2.2)); q = rot(0.13 * sin(T * 1.7)) * q;
+    lay(tri2(q, vec2(-0.03, 0.72), vec2(-0.03, 0.14), vec2(0.5, 0.14)), C, 0.3); lay(box2(q - vec2(0.0, -0.02), vec2(0.66, 0.15), 0.13), B, 0.42);
+    lay(u.y + 0.42 + 0.07 * sin(u.x * 5.0 + T * 2.4), C, 0.5); lay(u.y + 0.72 + 0.05 * sin(u.x * 7.0 - T * 2.0), B, 0.25);
+  } else if (id < 1.5) { // a bird breaking the water
+    float a = sin(T * 6.0); vec2 c = u - vec2(0.0, 0.05 + 0.05 * a); lay((length(c / vec2(0.62, 0.27)) - 1.0) * 0.27, B, 0.4);
+    lay(tri2(c, vec2(-0.3, 0.05), vec2(0.28, 0.05), vec2(-0.5 - 0.1 * a, 0.72 + 0.26 * a)), C, 0.32); lay(tri2(c, vec2(-0.5, 0.06), vec2(-0.5, -0.1), vec2(-1.0, 0.1 + 0.12 * a)), C, 0.24); lay(tri2(c, vec2(0.58, 0.08), vec2(0.58, -0.08), vec2(1.06, -0.02)), C, 0.25); lay(length(c - vec2(0.38, 0.07)) - 0.05, A, 0.08);
+    lay(u.y + 0.62 + 0.04 * sin(u.x * 6.0 + T * 3.0), C, 0.4);
+  } else if (id < 2.5) { // mountains over a still lake
+    lay(tri2(u, vec2(-1.3, -0.14), vec2(-0.3, 0.8), vec2(0.72, -0.14)), B, 0.38); lay(tri2(u, vec2(-0.05, -0.14), vec2(0.72, 0.5), vec2(1.34, -0.14)), C, 0.28);
+    lay(u.y + 0.14, C, 0.12); for (int i = 0; i < 3; i++) { float y = -0.32 - float(i) * 0.2; lay(box2(u - vec2(0.3 * sin(float(i) * 2.0 + T), y), vec2(0.7 - float(i) * 0.15, 0.03), 0.03), B, 0.12); }
+  } else if (id < 3.5) { // a car, no badge
+    vec2 q = u - vec2(0.0, 0.012 * sin(T * 9.0)); lay(u.y + 0.6, C, 0.16); lay(box2(q - vec2(-0.08, 0.16), vec2(0.56, 0.24), 0.2), B, 0.32); lay(box2(q - vec2(-0.08, 0.17), vec2(0.42, 0.13), 0.1), A, 0.05);
+    lay(box2(q - vec2(0.0, -0.18), vec2(1.02, 0.25), 0.2), B, 0.42); lay(box2(q - vec2(0.0, -0.13), vec2(0.95, 0.04), 0.03), C, 0.1);
+    lay(length(q - vec2(-0.6, -0.44)) - 0.2, INK, 0.3); lay(length(q - vec2(0.6, -0.44)) - 0.2, INK, 0.3);
+  } else if (id < 4.5) { // a yacht from the side, on a long wake
+    vec2 q = u - vec2(0.0, 0.015 * sin(T * 2.0)); lay(tri2(q, vec2(-1.02, 0.02), vec2(1.12, 0.02), vec2(-0.66, -0.36)), B, 0.44); lay(tri2(q, vec2(-0.92, 0.02), vec2(0.58, 0.02), vec2(-0.72, 0.26)), B, 0.3);
+    lay(box2(q - vec2(-0.32, 0.12), vec2(0.36, 0.06), 0.04), A, 0.06); lay(tri2(q, vec2(-0.68, 0.24), vec2(0.0, 0.24), vec2(-0.52, 0.46)), C, 0.2);
+    lay(u.y + 0.46 + 0.03 * sin(u.x * 6.0 + T * 2.4), C, 0.42); lay(box2(u - vec2(-0.6 + 0.08 * sin(T), -0.66), vec2(0.42, 0.03), 0.03), B, 0.1);
+  } else if (id < 5.5) { // a figure and a megaphone
+    vec2 c = u - vec2(-0.48, 0.0); lay(box2(c - vec2(0.0, -0.45), vec2(0.3, 0.55), 0.18), C, 0.32); lay(length(c - vec2(0.0, 0.34)) - 0.24, B, 0.42);
+    lay(tri2(c, vec2(0.12, 0.2), vec2(0.12, 0.05), vec2(0.72, 0.44)) , B, 0.2); lay(tri2(c, vec2(0.12, 0.05), vec2(0.72, 0.44), vec2(0.72, -0.2)), B, 0.3);
+    for (int i = 0; i < 2; i++) { float r = 0.32 + float(i) * 0.26 + 0.05 * sin(T * 6.0 - float(i)); vec2 m = c - vec2(0.72, 0.12); lay(max(abs(length(m) - r) - 0.035, -m.x), C, 0.18); }
+  } else if (id < 6.5) { // lights over a ridge
+    for (int i = 0; i < 3; i++) { float y = 0.6 - float(i) * 0.36 + 0.14 * sin(u.x * 2.5 + float(i) * 1.7 + T * 1.2); lay(abs(u.y - y) - 0.09 + 0.03 * sin(u.x * 4.0 - T), i == 1 ? C : B, 0.18); }
+    lay(u.y + 0.4 + 0.2 * abs(sin(u.x * 2.3 + 0.6)), C, 0.42);
+  } else { // a record
+    lay(length(u) - 0.93, INK, 0.3); float r = length(u); gPH += 0.035 * sin(r * 62.0) * step(0.34, r) * step(r, 0.9);
+    lay(r - 0.32, B, 0.08); vec2 q = rot(T * 3.3) * u; lay(length(q - vec2(0.18, 0.0)) - 0.06, C, 0.05); lay(r - 0.04, A, 0.04);
+  }
+}
+void pal(float k, out vec3 A, out vec3 B, out vec3 C){
+  if (k < 0.5) { A = TEA; B = EMB; C = BON; } else if (k < 1.5) { A = EMB; B = BON; C = TEA; } else if (k < 2.5) { A = BON; B = TEA; C = EMB; }
+  else if (k < 3.5) { A = vec3(1.0, 0.06, 0.40); B = vec3(0.55, 0.85, 0.05); C = vec3(0.02, 0.72, 0.85); }
+  else if (k < 10.5) { A = vec3(0.04, 0.14, 0.70); B = vec3(0.92, 0.78, 0.05); C = vec3(0.70, 0.04, 0.05); } else if (k < 11.5) { A = vec3(0.35, 0.05, 0.60); B = vec3(0.90, 0.80, 0.05); C = vec3(0.02, 0.60, 0.20); }
+  else if (k < 12.5) { A = vec3(0.00, 0.50, 0.25); B = vec3(0.95, 0.35, 0.05); C = vec3(0.70, 0.70, 0.75); } else if (k < 13.5) { A = vec3(0.75, 0.72, 0.05); B = vec3(0.02, 0.08, 0.50); C = vec3(0.80, 0.05, 0.05); }
+  else if (k < 14.5) { A = vec3(0.90, 0.90, 0.85); B = vec3(0.10, 0.10, 0.10); C = vec3(0.02, 0.40, 0.90); } else { A = vec3(0.50, 0.20, 0.05); B = vec3(0.10, 0.75, 0.70); C = vec3(0.85, 0.75, 0.10); }
+}
+// the marbled lump: colour that runs through the volume, and really twists as it's kneaded
+vec3 marble(vec3 q0){ vec3 q = q0; q.xz = rot(uTw * q.y * 0.75) * q.xz; float w = vn(q * 1.1 + 3.0) * 3.0;
+  float b1 = smoothstep(-0.10, 0.10, sin((q.x + q.y * 0.6) * 2.6 + w * 3.0 + uTw * 0.5)), b2 = smoothstep(-0.10, 0.10, sin((q.z - q.y) * 3.4 + w * 2.2));
+  vec3 a = mix(vec3(0.04, 0.14, 0.70), EMB, uSys), b = mix(vec3(0.92, 0.78, 0.05), BON, uSys), c = mix(vec3(0.35, 0.05, 0.60), TEA, uSys), d = mix(vec3(0.00, 0.50, 0.25), INK, uSys);
+  return mix(mix(a, b, b1), mix(c, d, b1), b2); }
+float shadow(vec3 ro, vec3 rd){ gSh = 1.0; float s = 1.0, t = 0.04 + 0.05 * fract(sin(dot(gl_FragCoord.xy + uJit * 7.0, vec2(12.9898, 78.233))) * 43758.5453); for (int i = 0; i < 40; i++) { float d = map(ro + rd * t); s = min(s, 16.0 * d / t); t += clamp(d * 0.85, 0.035, 0.7); if (s < 0.002 || t > 26.0) break; } gSh = 0.0; s = clamp(s, 0.0, 1.0); return s * s * (3.0 - 2.0 * s); }
+float ao(vec3 p, vec3 n){ float a = 0.0, w = 1.0; gSh = 1.0; for (int i = 1; i <= 5; i++) { float h = 0.03 + 0.14 * float(i); a += (h - map(p + n * h)) * w; w *= 0.62; } gSh = 0.0; return clamp(1.0 - 1.15 * a, 0.0, 1.0); }
+void main(){
+  vec2 uv = (gl_FragCoord.xy + uJit - 0.5 * uRes) / uRes.y;
+  vec3 f = normalize(uTar - uEye), r = normalize(cross(f, vec3(0.0, 1.0, 0.0))), u = cross(r, f);
+  vec3 rd = normalize(f * uFov + r * uv.x + u * uv.y), ro = uEye;
+  float t = 0.0; bool hit = false;
+  for (int i = 0; i < 120; i++) { float d = map(ro + rd * t); if (d < 0.0012 * (1.0 + t * 0.15)) { hit = true; break; } t += d * 0.85; if (t > 70.0) break; }
+  vec3 c = uWall * 0.2;
+  if (hit) {
+    vec3 p = ro + rd * t; map(p); vec3 q0 = gQ, alb = gC; float kk = gK;
+    vec3 n = N(p);
+    bool card = kk < -0.5; float tile = max(floor(kk), 0.0);
+    const vec2 e = vec2(0.0045, 0.0);
+    float h0 = surf(q0, tile);
+    vec3 gr = vec3(surf(q0 + e.xyy, tile) - h0, surf(q0 + e.yxy, tile) - h0, surf(q0 + e.yyx, tile) - h0) / e.x;
+    n = normalize(n - (gr - n * dot(gr, n)) * (card ? 0.012 : 0.042));
+    float kr = floor(kk + 0.5); float relief = 1.0;
+    if (kr >= 30.0 && kr < 125.0 && kr != 70.0) {
+      // a picture: the height map tilts the surface, so flat plaques read as layers of clay
+      bool wl = kr >= 80.0; int i = int(kr - (wl ? 80.0 : 30.0)); float hh = wl ? 0.85 : uHQ[i].y, id = wl ? uPicW[i] : uHC[i].x, pk = wl ? uPalW[i] : uHC[i].y, seal = wl ? 0.0 : uHQ[i].w; float T = uMove + (wl ? float(i) * 1.3 : float(i) * 2.1);
+      vec3 A, B, C; pal(pk, A, B, C);
+      if (q0.z > 0.06) { vec2 v = q0.xy / hh * 0.92; const float dd = 0.012;
+        pic(id, v, T, A, B, C); vec3 col = gPC; float h = gPH; pic(id, v + vec2(dd, 0.0), T, A, B, C); float hx = gPH; pic(id, v + vec2(0.0, dd), T, A, B, C); float hy = gPH;
+        if (seal > 0.0) { vec2 sv = v - vec2(0.78, 0.55); float sr = length(sv); float m = smoothstep(0.24 * seal, 0.2 * seal, sr); col = mix(col, EMB * 0.75, m); relief = 1.0 - m * 0.2 * (0.5 + 0.5 * sin(sr * 110.0)); }
+        vec2 g = vec2(hx - h, hy - h) / dd; n = normalize(n - vec3(g, 0.0) * 0.085); alb = col; relief *= 0.74 + 0.26 * clamp(h / 0.55, 0.0, 1.0);
+      } else alb = A * 0.85;
+    }
+    // the colour is never one colour: kneaded, smeared, and dirtied in the dents
+    if (kr == 20.0) alb = marble(q0);
+    if (!card) { alb *= 0.88 + 0.24 * vn(q0 * vec3(2.6, 4.4, 2.6) + 5.0); alb = mix(alb, alb * vec3(1.1, 0.92, 0.82), vn(q0 * 8.0)); alb *= (0.76 + 0.3 * smoothstep(0.1, 0.9, h0)) * relief; }
+    vec3 Lp = uKey - p; vec3 L = normalize(Lp), V = -rd, H = normalize(L + V);
+    float cone = smoothstep(cos(uSpot.w + 0.025), cos(uSpot.w), dot(L, normalize(uKey - uSpot.xyz))); if (kr == 70.0) cone = max(cone, 0.72); if (kr == 6.0) cone = max(cone, 0.85);
+    float sh = shadow(p + n * 0.014, L), a = ao(p, n);
+    float wrap = clamp((dot(n, L) + 0.22) / 1.22, 0.0, 1.0);
+    vec3 key = vec3(1.0, 0.86, 0.68) * 2.1 * wrap * mix(0.03, 1.0, sh) * cone;
+    vec3 sky = vec3(0.42, 0.52, 0.80) * 0.075 * (0.5 + 0.5 * n.y) * a;
+    vec3 bou = vec3(0.86, 0.60, 0.40) * 0.05 * (0.5 - 0.5 * n.y) * a + vec3(0.86, 0.60, 0.40) * 0.14 * cone * (0.5 - 0.5 * n.y) * a;
+    vec3 back = vec3(0.30, 0.75, 0.85) * 0.20 * clamp(dot(n, normalize(vec3(0.8, 0.25, -0.5))), 0.0, 1.0) * a;
+    c = alb * (key + sky + bou + back);
+    if (!card) { c += vec3(1.0, 0.95, 0.88) * pow(max(dot(n, H), 0.0), 34.0) * 0.16 * sh * cone;   // a little sheen, from one hard light
+      c += sky * alb * pow(1.0 - clamp(dot(n, V), 0.0, 1.0), 3.0) * 0.5; }
+  }
+  o = vec4(c, 1.0);
+}`;
+
+      const POST = `#version 300 es
+precision highp float; uniform sampler2D uT; uniform float uTime, uFlick; out vec4 o;
+float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+void main(){ vec2 uv = gl_FragCoord.xy / vec2(1920.0, 1080.0);
+  vec3 c = texture(uT, uv).rgb * 0.25 * uFlick;
+  c *= 1.0 - 0.34 * pow(length((uv - 0.5) * vec2(1.05, 0.9)) * 1.25, 2.6);
+  c = c * (1.0 + c * 0.25) / (1.0 + c * 0.75);
+  c = pow(max(c, 0.0), vec3(1.0 / 2.2));
+  float l = dot(c, vec3(0.3, 0.59, 0.11)); c = mix(vec3(l), c, 1.12);
+  c = mix(c, c * c * (3.0 - 2.0 * c), 0.34);
+  c += (h(gl_FragCoord.xy + uTime * 61.0) - 0.5) * 0.014;
+  o = vec4(c, 1.0); }`;
+
+      const TB = window.TABLE, W = 1920, H = 1080, POSES = 12, BEAT = TB.beat, DUR = TB.dur, AA = [[-0.25, -0.25], [0.25, -0.25], [-0.25, 0.25], [0.25, 0.25]];
+      const $ = (s) => document.querySelector(s);
+      const r = (x, a, b) => Math.min(1, Math.max(0, (x - a) / (b - a))), lerp = (a, b, k) => a + (b - a) * k, l3 = (a, b, k) => [lerp(a[0], b[0], k), lerp(a[1], b[1], k), lerp(a[2], b[2], k)];
+      const eIO = (x) => x * x * (3 - 2 * x), eO = (x) => 1 - (1 - x) * (1 - x) * (1 - x), eB = (x) => { const c = 1.9; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+      const h1 = (x) => { const s = Math.sin(x * 127.1) * 43758.5453; return s - Math.floor(s); };
+      const decay = (b, t, rate, fr) => (b < t ? 0 : Math.exp(-(b - t) * rate) * Math.cos((b - t) * fr));
+      const EMBc = [0.80, 0.19, 0.03], BONc = [0.78, 0.70, 0.55], TEAc = [0.02, 0.34, 0.38], YEL = [0.92, 0.78, 0.05];
+
+      // ---------------- every line of type is a distance field made once from Archivo, kept in one texture array
+      const LINES = ["ONE BRAND?", "NOT A DEFAULT", "AI IMAGE.", "A STYLE SYSTEM", "FOR YOUR BRAND.", "YOU APPROVE", "THE FIRST SET.", "ONE LOOK.", "THAT'S WHAT THE", "DO-NOT LIST IS FOR.", "IMAGES.", "MOTION.", "MUSIC.", "THE SYSTEM", "IS YOURS TO KEEP.", "REFERENCES", "RECIPES", "RULES", "DO-NOT"], L = (t) => LINES.indexOf(t), LW = 768, LH = 192;
+      function edt(f) { const n = f.length, d = new Float32Array(n), v = new Int32Array(n), z = new Float32Array(n + 1); let k = 0; v[0] = 0; z[0] = -1e20; z[1] = 1e20;
+        for (let q = 1; q < n; q++) { let s; do { s = ((f[q] + q * q) - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]); } while (s <= z[k] && --k >= 0); k++; v[k] = q; z[k] = s; z[k + 1] = 1e20; }
+        k = 0; for (let q = 0; q < n; q++) { while (z[k + 1] < q) k++; d[q] = (q - v[k]) * (q - v[k]) + f[v[k]]; } return d; }
+      function sdf2(mask) { const out = new Float32Array(LW * LH), row = new Float32Array(LW), col = new Float32Array(LH); out.set(mask);
+        for (let x = 0; x < LW; x++) { for (let y = 0; y < LH; y++) col[y] = out[y * LW + x]; const d = edt(col); for (let y = 0; y < LH; y++) out[y * LW + x] = d[y]; }
+        for (let y = 0; y < LH; y++) { for (let x = 0; x < LW; x++) row[x] = out[y * LW + x]; out.set(edt(row), y * LW); } return out; }
+      let gl, PP, UP = {}, PROG = {}, accT, accF, words, ovG;
+      function buildWords() {
+        const cv = document.createElement("canvas"); cv.width = LW; cv.height = LH; const g = cv.getContext("2d", { willReadFrequently: true });
+        const data = new Float32Array(LW * LH * LINES.length);
+        LINES.forEach((t, l) => {
+          g.fillStyle = "#000"; g.fillRect(0, 0, LW, LH); g.fillStyle = "#fff"; g.textAlign = "center"; g.textBaseline = "alphabetic";
+          let fs = 170; g.font = `900 condensed ${fs}px Archivo`; const wd = g.measureText(t).width; if (wd > LW - 30) { fs *= (LW - 30) / wd; g.font = `900 condensed ${fs}px Archivo`; }
+          g.fillText(t, LW / 2, LH / 2 + fs * 0.36);
+          const px = g.getImageData(0, 0, LW, LH).data, a = new Float32Array(LW * LH), b = new Float32Array(LW * LH);
+          for (let i = 0; i < LW * LH; i++) { const v = px[i * 4] > 127; a[i] = v ? 1e10 : 0; b[i] = v ? 0 : 1e10; }
+          const da = sdf2(a), db = sdf2(b);
+          for (let i = 0; i < LW * LH; i++) data[l * LW * LH + i] = (Math.sqrt(db[i]) - Math.sqrt(da[i])) / (LW / 2);
+        });
+        words = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D_ARRAY, words);
+        gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.R16F, LW, LH, LINES.length, 0, gl.RED, gl.FLOAT, data);
+        for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D_ARRAY, k, v);
+      }
+      const UNI = ["uRes", "uJit", "uEye", "uTar", "uFov", "uSeed", "uMorph", "uWall", "uFloor", "uKey", "uSpot", "uHP", "uHQ", "uHC", "uThumb", "uLump", "uLR", "uRoll", "uTw", "uSys", "uStack", "uPl", "uP0", "uP1", "uStamp", "uLand", "uPicW", "uPalW", "uMove", "uWords", "uA0", "uA1", "uB0", "uB1", "uC0", "uC1", "uAC", "uBC", "uCC"];
+      function compile(A, B) {
+        const key = A.join("+") + ">" + B.join("+"); if (PROG[key]) return PROG[key];
+        const sh = (t, src) => { const s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(key + gl.getShaderInfoLog(s)); return s; };
+        const used = [...new Set(A.concat(B))];
+        const stage = `void stage(vec3 p){ float f = p.y + wob(p * 0.35, 1.0) * 0.012, w = p.z + 5.0; U(smin(f, w, 2.4), mix(uFloor, uWall, smoothstep(-0.05, 1.6, p.y)), p, -1.0); }\n`;
+        const words2 = `U(wordF(p, uA0, uA1), uAC, p - uA0.xyz, 70.0); U(wordF(p, uB0, uB1), uBC, p - uB0.xyz + 7.0, 70.0); U(wordF(p, uC0, uC1), uCC, p - uC0.xyz + 13.0, 70.0);`;
+        const body = B.length
+          ? `gD = 1e3; ${A.map((s) => s + "(p);").join(" ")} float dA = gD; vec3 cA = gC, qA = gQ; float kA = gK; gD = 1e3; ${B.map((s) => s + "(p);").join(" ")} float d = mix(dA, gD, uMorph); vec3 cc = mix(cA, gC, uMorph); vec3 qq = uMorph < 0.5 ? qA : gQ; float kk = uMorph < 0.5 ? kA : gK; gD = d; gC = cc; gQ = qq; gK = kk;`
+          : `gD = 1e3; ${A.map((s) => s + "(p);").join(" ")}`;
+        const mapF = `float map(vec3 p){ ${body} ${words2} stage(p); return gD; }\n`;
+        const src = COMMON + stage + used.map((s) => SCENES[s]).join("\n") + "\n" + mapF + MAIN;
+        const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, src)); gl.linkProgram(p);
+        if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+        const U = {}; for (const n of UNI) U[n] = gl.getUniformLocation(p, n);
+        return (PROG[key] = { p, U });
+      }
+      function initGL() {
+        gl = $("#stage").getContext("webgl2", { antialias: false, alpha: false, depth: false, stencil: false, preserveDrawingBuffer: true });
+        if (!gl.getExtension("EXT_color_buffer_float")) throw new Error("EXT_color_buffer_float is needed");
+        gl.bindVertexArray(gl.createVertexArray());
+        const sh = (t, src) => { const s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+        PP = gl.createProgram(); gl.attachShader(PP, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(PP, sh(gl.FRAGMENT_SHADER, POST)); gl.linkProgram(PP);
+        for (const n of ["uT", "uTime", "uFlick"]) UP[n] = gl.getUniformLocation(PP, n);
+        accT = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, accT); gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA16F, W, H);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        accF = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, accF); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, accT, 0);
+        buildWords();
+      }
+
+      
+      // ---------------- the camera: beat, eye, target, lens
+      const KEYS = [
+        [0, [0, 3.4, 15], [0, 3.0, 0], 1.75], [5.8, [0.2, 3.3, 14], [0, 2.8, 0], 1.75], [7.2, [0, 3.0, 11], [0, 2.4, 0], 1.75], [11.8, [0.3, 3.0, 10.4], [0, 2.4, 0], 1.75],
+        [13, [0, 4.5, 17], [0, 4.4, 0], 1.75], [20, [0, 4.5, 16.4], [0, 4.4, 0], 1.75], [22.2, [0, 3.4, 14.5], [0, 3.4, 0], 1.75], [25.9, [0.2, 3.4, 14], [0, 3.4, 0], 1.75],
+        [27, [0, 4.6, 16], [0, 5, -1], 1.75], [35.2, [0, 6.6, 22], [0, 6.6, -4], 1.75], [38.4, [0, 6.6, 21.4], [0, 6.6, -4], 1.75], [39.5, [3, 7.2, 13], [4.4, 7.4, -4], 1.75], [43.3, [3.2, 7.2, 12.4], [4.4, 7.4, -4], 1.75],
+        [44.1, [0, 6.0, 5.2], [0, 6.0, -4.2], 1.75], [47.8, [0, 6.0, 4.8], [0, 6.0, -4.2], 1.75], [48.8, [0, 3.6, 20], [0, 3.2, 0], 1.75], [57, [0, 3.6, 20], [0, 3.2, 0], 1.75],
+      ];
+      function camera(b) { let i = 0; while (i < KEYS.length - 2 && b >= KEYS[i + 1][0]) i++; const a = KEYS[i], c = KEYS[i + 1], k = eIO(r(b, a[0], c[0])); return { eye: l3(a[1], c[1], k), tar: l3(a[2], c[2], k), fov: lerp(a[3], c[3], k) }; }
+      // ---------------- the one hard light: beat, where it points, how wide
+      const SPOTS = [[0, [0, 1.5, 0], 0.36], [12, [0, 1.5, 0], 0.30], [13, [0, 4.4, 0], 0.36], [20, [0, 4.4, 0], 0.36], [22, [0, 2, 0], 0.38], [26, [0, 2, 0], 0.38], [35, [0, 6.6, -4.2], 0.70], [38.4, [0, 6.6, -4.2], 0.70], [39.2, [5.2, 8.6, -4.2], 0.095], [40.9, [5.2, 8.6, -4.2], 0.095], [43.3, [5.2, 8.6, -4.2], 0.095], [44.1, [0, 6.6, -4.2], 0.25], [47.8, [0, 6.6, -4.2], 0.25], [48.8, [0, 1.5, 1], 0.30], [57, [0, 1.5, 1], 0.30]];
+      function spot(b) { let i = 0; while (i < SPOTS.length - 2 && b >= SPOTS[i + 1][0]) i++; const a = SPOTS[i], c = SPOTS[i + 1], k = eIO(r(b, a[0], c[0])); const v = l3(a[1], c[1], k); return [v[0], v[1], v[2], lerp(a[2], c[2], k)]; }
+
+      const WORDS = [
+        // beat in, beat out, line, x, y, z, half-width, depth, colour
+        [2.2, 6.0, "ONE BRAND?", 0, 6.0, -4.5, 4.2, 0.22, BONc],
+        [8.0, 12.3, "NOT A DEFAULT", 0, 5.6, -4.5, 3.4, 0.22, EMBc], [8.5, 12.3, "AI IMAGE.", 0, 4.65, -4.5, 3.4, 0.22, BONc],
+        [16.0, 20.0, "A STYLE SYSTEM", -7.55, 5.9, -4.5, 2.9, 0.18, EMBc], [16.5, 20.0, "FOR YOUR BRAND.", -7.55, 5.0, -4.5, 2.9, 0.18, BONc],
+        [22.4, 25.8, "YOU APPROVE", 0, 6.7, -4.5, 3.8, 0.22, BONc], [22.9, 25.8, "THE FIRST SET.", 0, 5.6, -4.5, 3.8, 0.22, EMBc],
+        [35.8, 38.4, "ONE LOOK.", 0, 6.0, -2.4, 7.0, 0.32, BONc],
+        [41.7, 43.5, "THAT'S WHAT THE", 4.4, 4.7, -3.0, 3.1, 0.14, BONc], [42.1, 43.5, "DO-NOT LIST IS FOR.", 4.4, 3.95, -3.0, 3.1, 0.14, EMBc],
+        [44.2, 47.9, "IMAGES.", -2.6, 4.4, -4.72, 1.2, 0.1, BONc], [45.0, 47.9, "MOTION.", 0, 4.4, -4.72, 1.2, 0.1, BONc], [45.8, 47.9, "MUSIC.", 2.6, 4.4, -4.72, 1.2, 0.1, BONc],
+        [48.7, 52.2, "THE SYSTEM", 0, 8.0, -4.5, 4.4, 0.22, EMBc], [49.2, 52.2, "IS YOURS TO KEEP.", 0, 6.85, -4.5, 4.4, 0.22, BONc],
+      ];
+      function wordState(b) { const on = [];
+        for (const w of WORDS) { if (b < w[0] || b >= w[1] + 0.5) continue; const up = eB(r(b, w[0], w[0] + 0.5)), dn = r(b, w[1], w[1] + 0.5), fall = w[4] + w[6] * 0.25 + 0.2; on.push({ l: L(w[2]), x: w[3], y: w[4], z: w[5], w: w[6], d: w[7], c: w[8], off: Math.min(0.12, -fall * (1 - up)) - fall * eIO(dn) }); }
+        return on.slice(0, 3);
+      }
+
+      // ---------------- the wall: 9 by 5. Which picture, which palette, and the order they arrive in
+      const COLS = 9, ROWS = 5, NC = COLS * ROWS, PINK = 3 * 9 + 6, PICS = [], PALS = [];
+      for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) { PICS.push((x * 2 + y * 3 + (y > 2 ? 1 : 0)) % 7); PALS.push((x + y * 2) % 3); }
+      PICS[2 * 9 + 3] = 0; PICS[2 * 9 + 4] = 1; PICS[2 * 9 + 5] = 7; PALS[2 * 9 + 3] = 0; PALS[2 * 9 + 4] = 1; PALS[2 * 9 + 5] = 2; PICS[PINK] = 3; PALS[PINK] = 3;
+      const cellPos = (i) => [((i % 9) - 4) * 2.6, 6.6 + (Math.floor(i / 9) - 2) * 2.0, -4.2];
+      const ORDER = [...Array(NC).keys()].filter((i) => i !== PINK).sort((a, c) => { const A = cellPos(a), C = cellPos(c), d = Math.hypot(A[0] * 0.8, A[1] - 6.6) - Math.hypot(C[0] * 0.8, C[1] - 6.6); return d || a - c; }).concat([PINK]);
+      // when each cell's picture leaves, and where from. The first six are the approved set
+      const FLIGHTS = []; let oi = 0; const ROW = (i) => [(i - 2.5) * 2.15, 0.82, 0];
+      for (let i = 0; i < 6; i++) FLIGHTS.push({ c: ORDER[oi++], t: TB.fly + i * 0.08, from: ROW(i), hw0: 0.95, hh0: 0.72, row: i });
+      TB.slams.forEach((t, j) => { const n = TB.bursts[j]; for (let i = 0; i < n; i++) FLIGHTS.push({ c: ORDER[oi++], t: t + 0.04 + i * 0.03, from: [0, 0.7, 1.7], hw0: 0.5, hh0: 0.38, row: -1 }); });
+      const OPEN = [[-6.3, 0.72, 0.62, 2, 10], [-3.75, 0.92, 0.72, 5, 11], [-1.2, 0.8, 0.92, 7, 12], [1.45, 1.16, 0.58, 3, 13], [3.95, 0.66, 0.86, 4, 14], [6.2, 0.86, 0.66, 6, 15]];
+      const ROWPICS = FLIGHTS.slice(0, 6).map((f) => [PICS[f.c], PALS[f.c]]);
+
+      function pose(n) {
+        const b = n / POSES / BEAT, S = { A: ["heap"], B: [], morph: 0, ...camera(b), wall: [0.10, 0.10, 0.125], floor: [0.24, 0.215, 0.20], key: [-7, 16, 15], spot: spot(b),
+          HP: new Array(40).fill(0), HQ: new Array(40).fill(0), HC: new Array(40).fill(0), thumb: [0, 0, 0, 0], lump: [0, 0, 0, 1], lr: 0, roll: 0, tw: 0, sys: 0,
+          stack: [0, 4.4, 0, 0], Pl: new Array(16).fill(0), P0: new Array(20).fill(0), P1: new Array(20).fill(0), stampP: [0, 0, 0, 0], land: new Array(NC).fill(0), pal: PALS.slice(), pic: PICS.slice(), move: b < TB.moves ? b * BEAT * 0.25 : (TB.moves * BEAT * 0.25 + (b - TB.moves) * BEAT * 2.2) };
+        const put = (i, x, y, z, rz, hw, hh, ry, seal, pic, pal) => { S.HP.splice(i * 4, 4, x, y, z, rz); S.HQ.splice(i * 4, 4, hw, hh, ry, seal); S.HC.splice(i * 4, 4, pic, pal, 0, 0); };
+        // ---- 1. the mismatch: pictures drop in, in six colour schemes and six shapes, and wobble
+        if (b < TB.morph + 0.9) OPEN.forEach((o, i) => { const t = TB.drops[i], fall = r(b, t - 0.5, t), a = Math.max(0, b - t), g = eIO(r(b, TB.gather, TB.morph + 0.2)), y = b < t ? lerp(11, o[2], fall * fall) : o[2] + Math.abs(Math.sin(a * 3.4)) * 0.26 * Math.exp(-a * 2.4), tilt = decay(b, t, 1.6, 6.5) * 0.2 + 0.03 * Math.sin(b * 1.8 + i); if (b >= t - 0.5) put(i, lerp(o[0], o[0] * 0.14, g), lerp(y, 1.3, g), lerp(0, (i - 2.5) * 0.14, g), tilt * (1 - g) + g * (i - 2.5) * 0.5, o[1], o[2], g * (i - 2.5) * 0.4, 0, o[3], o[4]); });
+        // ---- 2. they're squashed into one lump, and kneaded. The colour twists through it
+        const P = TB.pressHit, pb = TB.morph;
+        if (b >= pb && b < TB.lumpEnd) { S.lr = 1.7; const k = eIO(r(b, pb, pb + 0.8)); S.A = ["heap"]; S.B = ["lump"]; S.morph = k; if (k >= 1) { S.A = ["lump"]; S.B = []; }
+          const kn = b - pb, beatSq = Math.pow(Math.abs(Math.sin(kn * Math.PI / 2)), 6);
+          S.lump = [0, 1.7, 0, 1 - 0.34 * beatSq * (b < TB.plates[0] ? 1 : 0.3)]; S.roll = eIO(r(b, pb, TB.plates[0])) * 7 + (b - TB.plates[0] > 0 ? (b - TB.plates[0]) * 0.1 : 0); S.tw = r(b, pb, TB.plates[3] + 1) * 5; S.sys = eIO(r(b, TB.plates[0], TB.plates[3] + 1.2)); S.lump[1] = 1.7 * S.lump[3]; }
+        // ---- 3. the press: a screw comes down, four plates slide onto it from alternate sides, one by one
+        const stackOn = (b >= TB.rod && b < TB.retract + 1) || b >= TB.yours;
+        if (stackOn) { S.A = S.A.concat(["mould"]);
+          const labels = ["REFERENCES", "RECIPES", "RULES", "DO-NOT"];
+          for (let i = 0; i < 4; i++) { const t = b >= TB.yours ? -10 : TB.plates[i], u = eB(r(b, t - 0.5, t)), sh = decay(b, t, 3.5, 10) * 0.08; if (b >= t - 0.5) { const sd = i % 2 ? 1 : -1; S.Pl.splice(i * 4, 4, sd * lerp(16, 0, u) + sd * sh, 0.5 + i, 0, 1); const wa = eB(r(b, t - 0.05, t + 0.35)); if (wa > 0) { S.P0.splice(i * 4, 4, sd * lerp(16, 0, u) + sd * sh, 0.5 + i, 0.98, 0); S.P1.splice(i * 4, 4, 1.9 * wa, 0.05, L(labels[i]), 0); } } }
+          let y = 4.4, w = 1;
+          if (b < TB.plates[0]) y = lerp(24, 4.4, eO(r(b, TB.rod, TB.plates[0] - 0.4)));
+          if (b >= TB.pressStart) { const k = r(b, TB.pressStart, P); y = lerp(4.4, 0.25, k * k * k * k); }
+          if (b >= P) { const q = decay(b, P, 7, 18) * 0.05; y = 0.25 + q; if (b >= P + 0.45) y = lerp(0.25, 16, eIO(r(b, P + 0.45, P + 1.5))); }
+          if (b >= TB.slams[0] - 0.9) { let i = -1; for (let j = 0; j < TB.slams.length; j++) if (b >= TB.slams[j] - 0.18) i = j; if (i < 0) y = lerp(16, 3.8, eO(r(b, TB.slams[0] - 0.9, TB.slams[0] - 0.25))); else { const t = TB.slams[i], d = b - t; y = d < 0 ? lerp(3.8, 0.25, r(b, t - 0.18, t)) : lerp(0.25, 3.8, eO(r(d, 0.06, 0.62))); } }
+          if (b >= TB.retract) y = lerp(3.8, 26, eIO(r(b, TB.retract, TB.retract + 0.8)));
+          if (b >= TB.yours) { w = 0; const u = r(b, TB.yours, TB.yours + 0.6), a = Math.max(0, b - TB.yours - 0.6); y = u < 1 ? lerp(16, 0, u * u) : Math.abs(Math.sin(a * 3.2)) * 0.18 * Math.exp(-a * 3); }
+          S.stack = [0, y, b >= TB.slide ? Math.pow(r(b, TB.slide, TB.logo), 3) * 17.2 : 0, w];
+          if (b < TB.lumpEnd && b >= TB.pressStart) { const gap = Math.max(0.18, y) / (2 * 1.7); S.lump[3] = Math.min(S.lump[3], Math.max(0.09, gap)); S.lump[1] = 1.7 * S.lump[3]; }
+        }
+        // ---- 4. the first set: six pictures slide out from under, and a thumb marks each one
+        if (b >= P + 0.5) { S.A = S.A.concat(["heap"]); if (b < TB.lumpEnd) S.lr = 1.7 * (1 - r(b, P + 0.55, P + 1.2));
+          if (b < TB.fly + 0.8) ROWPICS.forEach((pp, i) => { const u = eB(r(b, P + 0.5 + i * 0.06, P + 1.25 + i * 0.06)), q = ROW(i), sc = lerp(0.2, 1, Math.min(u, 1)); if (b < FLIGHTS[i].t) put(i, q[0] * u, lerp(0.3, 0.82, Math.min(u, 1)), 0, decay(b, P + 1.25 + i * 0.06, 3, 11) * 0.06, 0.95 * sc, 0.72 * sc, 0, r(b, TB.seals + i * 0.42, TB.seals + i * 0.42 + 0.08), pp[0], pp[1]); });
+          if (b >= TB.seals - 0.6 && b < TB.seals + 3.0) { const u = (b - TB.seals) / 0.42, i = Math.max(0, Math.min(5, Math.floor(u + 0.5))), f = u - Math.floor(u), q = ROW(i), hop = u < -0.3 ? 1 : Math.min(1, Math.abs(f - 0.5) * 2 + 0), out = r(b, TB.seals + 2.5, TB.seals + 3.0); S.thumb = [q[0] + 0.62 + out * 16 + (1 - eIO(r(b, TB.seals - 0.6, TB.seals - 0.1))) * 16, 1.32 + hop * 0.5, 0.5 + hop * 0.7, 0.38]; }
+        }
+        // ---- 5. the run: the press slams on the beat, and each picture flies to the wall
+        if (b >= TB.fly) { if (!S.A.includes("wall")) S.A = S.A.concat(["wall"]); if (!S.A.includes("heap")) S.A = S.A.concat(["heap"]); let slot = 0; S.HQ.fill(0);
+          for (const f of FLIGHTS) { const u = r(b, f.t, f.t + 0.72); if (b >= f.t + 0.72) { S.land[f.c] = 1 + 0.42 * Math.max(0, decay(b, f.t + 0.72, 6, 10)); continue; } if (b < f.t) { if (f.row >= 0) put(slot++, f.from[0], f.from[1], 0, 0, f.hw0, f.hh0, 0, 1, PICS[f.c], PALS[f.c]); continue; } if (slot >= 10) continue; const e = eIO(u), to = cellPos(f.c); put(slot++, lerp(f.from[0], to[0], e), lerp(f.from[1], to[1], e) + Math.sin(u * Math.PI) * 2.2, lerp(f.from[2], to[2], e), 0, lerp(f.hw0, 1.15, e), lerp(f.hh0, 0.85, e), (1 - e) * 6.283 * (f.c % 2 ? 1 : -1), f.row >= 0 ? 1 : 0, PICS[f.c], PALS[f.c]); }
+        }
+        // ---- 6. the do-not: the hit, the splat, and a picture that fits
+        if (b >= TB.stamp - 0.6) { const c = cellPos(PINK); if (b < TB.stamp + 1.6) { const z = b < TB.stamp ? lerp(30, -3.35, Math.pow(r(b, TB.stamp - 0.6, TB.stamp), 3)) : (b < TB.stamp + 0.5 ? -3.35 + decay(b, TB.stamp, 8, 20) * 0.06 : lerp(-3.35, 34, Math.pow(r(b, TB.stamp + 0.5, TB.stamp + 1.3), 2))); S.A = S.A.filter((x) => x !== "stamp").concat(["stamp"]); S.stampP = [c[0], c[1], z, 1]; S.P0.splice(16, 4, 0, 0, 0.74, 0); S.P1.splice(16, 4, 1.62, 0.06, L("DO-NOT"), 0); }
+          if (b >= TB.stamp) { S.land[PINK] = 0; const a = b - TB.stamp - 0.45, fa = Math.max(0, a); if (b < TB.stamp + 1.7) put(9, c[0], c[1] - fa * fa * 4.2, -4.12, 0.04 * fa, 1.5, 1.1, 0, 0, 3, 3);
+            if (b >= TB.replace) { const u = r(b, TB.replace, TB.replace + 0.62); S.pal[PINK] = 0; S.pic[PINK] = 2; if (u < 1) { const e = eIO(u); put(8, lerp(9, c[0], e), lerp(16, c[1], e), lerp(3, c[2], e), 0, 1.15, 0.85, (1 - e) * 6.283, 0, 2, 0); } else S.land[PINK] = 1 + 0.42 * Math.max(0, decay(b, TB.replace + 0.62, 6, 10)); } } }
+        if (b >= TB.stamp + 2) { S.A = S.A.filter((x) => x !== "heap" && x !== "stamp"); }
+        if (b >= TB.yours + 0.6) S.A = S.A.filter((x) => x !== "wall");
+        if (b >= TB.retract + 1 && b < TB.yours) { S.A = S.A.filter((x) => x !== "mould"); }
+        // ---- 7. everything but three pictures sinks back into the wall
+        if (b >= TB.sink) for (let i = 0; i < NC; i++) { if (i === 21 || i === 22 || i === 23) { if (b >= TB.yours) S.land[i] = Math.max(0, 1 - r(b, TB.yours - 0.1, TB.yours + 0.5)); continue; } const k = 1 - r(b, TB.sink + h1(i * 0.37) * 0.5, TB.sink + 0.5 + h1(i * 0.37) * 0.5); S.land[i] = k <= 0 ? 0 : k; }
+        // ---- 8. the light comes round with the press as it slides to the camera
+        if (b >= TB.slide) { const k = r(b, TB.slide, TB.logo); S.key = l3([-7, 16, 15], [-5, 9, 38], eIO(k)); S.spot = [0, 2, S.stack[2], lerp(0.30, 0.56, k)]; }
+        S.words = wordState(b);
+        return S;
+      }
+      let lastPose = -1;
+      function render(n) {
+        const S = pose(n), P = compile([...new Set(S.A)], S.B), U = P.U, seed = h1(n * 0.73);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, accF); gl.viewport(0, 0, W, H); gl.clearColor(0, 0, 0, 0); gl.disable(gl.SCISSOR_TEST); gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.useProgram(P.p); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D_ARRAY, words); gl.uniform1i(U.uWords, 0);
+        gl.uniform2f(U.uRes, W, H); const j = 0.0035;
+        gl.uniform3f(U.uEye, S.eye[0] + (seed - 0.5) * j, S.eye[1] + (h1(n * 1.9) - 0.5) * j, S.eye[2]); gl.uniform3fv(U.uTar, S.tar); gl.uniform1f(U.uFov, S.fov); gl.uniform1f(U.uSeed, seed); gl.uniform1f(U.uMorph, S.morph);
+        gl.uniform4fv(U.uHP, S.HP); gl.uniform4fv(U.uHQ, S.HQ); gl.uniform4fv(U.uHC, S.HC); gl.uniform4fv(U.uThumb, S.thumb);
+        gl.uniform4fv(U.uLump, S.lump); gl.uniform1f(U.uLR, S.lr); gl.uniform1f(U.uRoll, S.roll); gl.uniform1f(U.uTw, S.tw); gl.uniform1f(U.uSys, S.sys);
+        gl.uniform4fv(U.uStack, S.stack); gl.uniform4fv(U.uPl, S.Pl); gl.uniform4fv(U.uP0, S.P0); gl.uniform4fv(U.uP1, S.P1); gl.uniform4fv(U.uStamp, S.stampP);
+        gl.uniform1fv(U.uLand, S.land); gl.uniform1fv(U.uPicW, S.pic); gl.uniform1fv(U.uPalW, S.pal); gl.uniform1f(U.uMove, S.move);
+        gl.uniform3fv(U.uWall, S.wall); gl.uniform3fv(U.uFloor, S.floor); gl.uniform3fv(U.uKey, S.key); gl.uniform4fv(U.uSpot, S.spot);
+        const a = S.words[0], c = S.words[1], d = S.words[2];
+        gl.uniform4f(U.uA0, a ? a.x : 0, a ? a.y : 0, a ? a.z : 0, a ? a.off : 0); gl.uniform4f(U.uA1, a ? a.w : 0, a ? a.d : 0, a ? a.l : 0, 0); gl.uniform3fv(U.uAC, a ? a.c : [0, 0, 0]);
+        gl.uniform4f(U.uB0, c ? c.x : 0, c ? c.y : 0, c ? c.z : 0, c ? c.off : 0); gl.uniform4f(U.uB1, c ? c.w : 0, c ? c.d : 0, c ? c.l : 0, 0); gl.uniform3fv(U.uBC, c ? c.c : [0, 0, 0]);
+        gl.uniform4f(U.uC0, d ? d.x : 0, d ? d.y : 0, d ? d.z : 0, d ? d.off : 0); gl.uniform4f(U.uC1, d ? d.w : 0, d ? d.d : 0, d ? d.l : 0, 0); gl.uniform3fv(U.uCC, d ? d.c : [0, 0, 0]);
+        gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); gl.enable(gl.SCISSOR_TEST);
+        for (const q of AA) { gl.uniform2f(U.uJit, q[0], q[1]); for (let y = 0; y < H; y += 135) { gl.scissor(0, y, W, 135); gl.drawArrays(gl.TRIANGLES, 0, 3); gl.flush(); } }
+        gl.disable(gl.SCISSOR_TEST); gl.disable(gl.BLEND); gl.finish();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.useProgram(PP); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, accT); gl.uniform1i(UP.uT, 0);
+        gl.uniform1f(UP.uTime, seed * 10); gl.uniform1f(UP.uFlick, 1 + 0.02 * (h1(n * 3.1) - 0.5));
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+      }
+
+      // ---------------- the flat layer: the demo label, and the end card with the mark placed flat
+      const BONE = "#F3EAD6", DARK = "#0B0C12";
+      function mono(g, s, x, y, size, col, al = "left") { g.font = `500 ${size}px JBM`; g.letterSpacing = "0.08em"; g.textAlign = al; g.textBaseline = "alphabetic"; g.fillStyle = col; g.fillText(s, x, y); g.letterSpacing = "0px"; }
+      function overlay(g, n) {
+        const b = n / POSES / BEAT; g.clearRect(0, 0, W, H);
+        if (b >= 0.6 && b < TB.logo) { g.font = "500 18px JBM"; g.letterSpacing = "0.08em"; const s = "AI BRAND VISUALS · DEMO PICTURES", w = g.measureText(s).width + 22; g.fillStyle = "rgba(11,12,18,0.86)"; g.fillRect(40, 36, w, 32); g.letterSpacing = "0px"; mono(g, s, 51, 58, 18, BONE); }
+        if (b >= TB.logo - 0.34) { const u = r(b, TB.logo, TB.logo + 0.7), lw = 926 * 0.72, lh = 193 * 0.72, a = 1 - r(b, TB.beats - 0.6, TB.beats);
+          g.fillStyle = DARK; g.globalAlpha = r(b, TB.logo - 0.34, TB.logo); g.fillRect(0, 0, W, H);
+          g.globalAlpha = eO(u) * a; g.drawImage($("#logo"), W / 2 - lw / 2, 300 - (1 - eO(u)) * 14, lw, lh);
+          g.font = '800 88px "Archivo"'; g.textAlign = "center"; g.textBaseline = "alphabetic"; g.fillStyle = BONE; g.globalAlpha = a * r(b, TB.logo + 0.4, TB.logo + 1); g.fillText("AI Brand Visuals", W / 2, 610);
+          g.globalAlpha = a * r(b, TB.logo + 1, TB.logo + 1.6); mono(g, "ai.joaoqueiros.com", W / 2, 690, 28, BONE, "center"); mono(g, "A SERVICE · THIS FILM IS CODE", W / 2, 744, 20, "#E2A23A", "center"); g.globalAlpha = 1; }
+      }
+      function paint(t) { const n = Math.floor(t * POSES + 1e-6); if (n !== lastPose) { lastPose = n; render(n); overlay(ovG, n); } }
+      const tl = gsap.timeline({ paused: true }), clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+      async function build() {
+        await Promise.all([$("#logo").decode(), document.fonts.load('900 condensed 40px "Archivo"'), document.fonts.load('800 condensed 40px "Archivo"'), document.fonts.load('800 40px "Archivo"'), document.fonts.load('500 20px "JBM"')]);
+        ovG = $("#over").getContext("2d"); initGL();
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(0);
+        window.__timelines = window.__timelines || {}; window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+      window.__hf = window.__hf || {}; window.__hf.buildReady = window.__hf.buildReady || {}; window.__hf.buildReady["mould"] = build();
+    </script>
+  </body>
+</html>

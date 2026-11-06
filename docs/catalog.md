@@ -106,6 +106,14 @@ Made for: Imagined Worlds · Stills. Stack: Three.js, TSL, GSAP, Python (score).
 
 ## Products and systems
 
+### R49 · Mould
+
+A press built from a style system: mismatched clay pictures are squashed into one marbled lump, then pressed out as a whole wall with one look. One wrong picture in hot pink gets flattened by a heavy stamp.
+
+Made for: AI Brand Visuals · JQ AI SYSTEMS. Stack: HyperFrames, WebGL2, Canvas 2D, GSAP, Python, FFmpeg.
+
+[Recipe and poster](../recipes/r49-mould/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r49-mould-v1)
+
 ### R48 · Reflow
 
 A website made of clay and squeezed: two huge walls slam in, the page buckles, and its three columns slump into two and then one, in one take. Then a clay cursor, the plumbing on the back, and a folder.
