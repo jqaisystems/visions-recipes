@@ -1,0 +1,6 @@
+assets/bgm/
+renders/
+work/
+.hyperframes/
+assets/events.js
+bake/flips.npz

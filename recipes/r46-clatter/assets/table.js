@@ -1,0 +1,1 @@
+window.TABLE={"dur": 34.2857, "beat": 0.535714, "bpm": 112, "beats": 64, "cols": 300, "rows": 100, "ta": 1.7, "step": 0.035, "chars": " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,:;'?!/-@&()+=·", "hx": 61, "hy": 46, "scx": 45};

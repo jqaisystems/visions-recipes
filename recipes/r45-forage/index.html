@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <!--
+      R45 · Forage. 34.44 s at 108 bpm, 62 beats (season 6, ink feedback, film 3). For the AI Client Acquisition System, whose
+      bottleneck is turning 500 cold results into 30 qualified prospects. Slime mould does that physically.
+      409,600 agents live in a float texture. Each one senses the trail ahead, turns towards the strongest and leaves a
+      little more trail, in one feedback buffer that diffuses and decays. A mask steers them: food in red, repellent in green,
+      words in blue. The trail is shown as a wet height field with real specular light. Crisp type and data sit on a 2D layer.
+      The simulation runs forward from one anchor at time 0, so any frame is rebuilt the same way. All data is fictional.
+    -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/table.js"></script>
+    <style>
+      @font-face { font-family: "Archivo"; src: url("assets/fonts/Archivo.ttf") format("truetype"); font-weight: 100 900; font-stretch: 62% 125%; }
+      @font-face { font-family: "JBM"; src: url("assets/fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 100 800; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #060709; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #060709; }
+      #ct-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #stage { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #logo { position: absolute; left: -2000px; top: 0; width: 926px; height: 193px; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="34.4444" data-width="1920" data-height="1080">
+      <div id="ct-stage" class="clip" data-start="0" data-duration="34.4444" data-track-index="0">
+        <canvas id="stage" width="1920" height="1080" data-layout-allow-overflow></canvas>
+        <img id="logo" src="assets/brand/your-mark.svg" alt="Your mark" data-layout-allow-overflow>
+      </div>
+      <audio id="score" src="assets/bgm/score.wav" data-start="0" data-duration="34.4444" data-track-index="7" data-volume="0.9"></audio>
+    </div>
+
+    <script>
+      const VS = "#version 300 es\nin vec2 p; void main(){ gl_Position = vec4(p, 0.0, 1.0); }";
+      // each agent: sense ahead, turn, move. xy position, z heading, w its id
+      const AG_FS = `#version 300 es
+precision highp float;
+uniform sampler2D uA, uT, uM;
+uniform vec2 uC;
+uniform float uR, uSO, uSA, uRA, uSS, uWF, uWT, uWR, uPull, uFrame, uJit, uActive, uCrowd, uCap, uOut;
+out vec4 o;
+const vec2 SZ = vec2(1280.0, 720.0);
+float h(vec3 p){ p = fract(p * vec3(0.1031, 0.1030, 0.0973)); p += dot(p, p.yzx + 33.33); return fract((p.x + p.y) * p.z); }
+vec2 dr(float a){ return vec2(cos(a), sin(a)); }
+float S(vec2 p){ vec2 uv = p / SZ; vec4 m = textureLod(uM, uv, 0.0); float q = textureLod(uT, uv, 0.0).r; q = q < uCap ? q : uCap - (q - uCap) * uCrowd; return q + uWF * m.r + uWT * m.b - uWR * m.g; }
+void main(){
+  vec4 s = texelFetch(uA, ivec2(gl_FragCoord.xy), 0);
+  vec2 p = s.xy; float a = s.z, id = s.w;
+  if (id > uActive) { o = s; return; }
+  float c = S(p + uSO * dr(a)), l = S(p + uSO * dr(a + uSA)), r = S(p + uSO * dr(a - uSA));
+  float n1 = h(vec3(gl_FragCoord.xy, uFrame)), n2 = h(vec3(gl_FragCoord.yx + 17.0, uFrame * 1.7));
+  if (c > l && c > r) { }
+  else if (c < l && c < r) a += (n1 < 0.5 ? 1.0 : -1.0) * uRA;
+  else if (l > r) a += uRA; else a -= uRA;
+  a += (n2 - 0.5) * uJit;
+  vec2 to = uC - p; float dd = length(to);
+  if (dd > uR) a = atan(to.y, to.x) + (n1 - 0.5) * 1.4;
+  float sp = uSS;
+  if (uOut > 0.0 && dd > 1.0) { float ta = atan(-to.y, -to.x); a += atan(sin(ta - a), cos(ta - a)) * uOut; }
+  if (uPull > 0.0) { float ta = atan(to.y, to.x); a += atan(sin(ta - a), cos(ta - a)) * uPull; sp *= min(1.0, dd / 30.0) * 0.8 + 0.2; }
+  p += sp * dr(a);
+  if (p.x < 1.0 || p.y < 1.0 || p.x > SZ.x - 1.0 || p.y > SZ.y - 1.0) { p = clamp(p, vec2(1.0), SZ - 1.0); a += 3.14159 * (0.6 + 0.8 * n1); }
+  o = vec4(p, a, id);
+}`;
+      const DEP_VS = `#version 300 es
+precision highp float;
+uniform sampler2D uA; uniform float uActive; uniform int uN;
+const vec2 SZ = vec2(1280.0, 720.0);
+void main(){
+  vec4 s = texelFetch(uA, ivec2(gl_VertexID % uN, gl_VertexID / uN), 0);
+  gl_Position = s.w > uActive ? vec4(9.0, 9.0, 9.0, 1.0) : vec4(s.xy / SZ * 2.0 - 1.0, 0.0, 1.0);
+  gl_PointSize = 1.0;
+}`;
+      const DEP_FS = `#version 300 es
+precision highp float;
+uniform float uDep; out vec4 o; void main(){ o = vec4(uDep, 0.0, 0.0, 1.0); }`;
+      // the feedback: diffuse and decay. Where a word is being grown, what's outside it dims faster
+      const FLD_FS = `#version 300 es
+precision highp float;
+uniform sampler2D uT, uM; uniform vec2 uTex; uniform float uDecay, uDim, uFade;
+out vec4 o;
+void main(){
+  vec2 uv = gl_FragCoord.xy * uTex; float s = 0.0;
+  for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) s += textureLod(uT, uv + vec2(x, y) * uTex, 0.0).r * (x == 0 && y == 0 ? 0.28 : (x == 0 || y == 0) ? 0.12 : 0.06);
+  vec4 m = textureLod(uM, uv, 0.0);
+  float k = uDecay - uDim * (1.0 - smoothstep(0.1, 0.6, m.b));
+  o = vec4(s * k * uFade, 0.0, 0.0, 1.0);
+}`;
+      // the look: the trail is a wet height field, lit by one moving light
+      const DISP_FS = `#version 300 es
+precision highp float;
+uniform sampler2D uT, uOv, uM;
+uniform vec2 uCam, uOff; uniform float uZ, uTime, uInv, uGain, uK, uWord;
+out vec4 o;
+const vec2 RES = vec2(1920.0, 1080.0), TX = vec2(1.0 / 1280.0, 1.0 / 720.0);
+float h(vec2 p){ vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+float H(vec2 q, float l){ return 1.0 - exp(-textureLod(uT, q, l).r * uK); }
+float G(vec2 q, float l, float k){ vec2 d = TX * pow(2.0, l) * 0.75; float s = 0.0;
+  for (int i = 0; i < 8; i++) { float a = float(i) * 0.7854 + 0.39; s += textureLod(uT, q + d * vec2(cos(a), sin(a)), l).r; }
+  s = s * 0.0625 + textureLod(uT, q, l).r * 0.5; return 1.0 - exp(-s * k); }
+void main(){
+  vec2 uv = vec2(gl_FragCoord.x, RES.y - gl_FragCoord.y) / RES;
+  vec2 q = uCam + (uv - 0.5) / uZ + uOff;
+  float lod = max(0.0, log2(1.5 / uZ));
+  float v = H(q, lod);
+  vec2 e = TX * 1.3 / max(1.0, uZ * 0.55);
+  float hx = H(q + vec2(e.x, 0.0), lod + 0.4) - H(q - vec2(e.x, 0.0), lod + 0.4), hy = H(q + vec2(0.0, e.y), lod + 0.4) - H(q - vec2(0.0, e.y), lod + 0.4);
+  vec3 n = normalize(vec3(-hx * 3.2, -hy * 3.2, 1.0));
+  vec3 L = normalize(vec3(0.5 * sin(uTime * 0.7) - 0.4, -0.65 + 0.2 * cos(uTime * 0.5), 0.75));
+  float spec = pow(max(dot(n, normalize(L + vec3(0.0, 0.0, 1.0))), 0.0), 46.0) * smoothstep(0.08, 0.5, v);
+  float dif = max(dot(n, L), 0.0);
+  float g1 = G(q, 2.5, uK), g2 = G(q, 4.0, uK * 1.6), g3 = G(q, 5.5, uK * 2.2);
+  vec3 Y = vec3(0.96, 0.82, 0.09), A = vec3(0.50, 0.25, 0.015), W = vec3(1.0, 0.97, 0.74);
+  vec3 c = vec3(0.022, 0.024, 0.03) * (0.8 + 0.4 * h(floor(q * 900.0)));
+  c += A * g3 * 0.40 + Y * g2 * 0.18 + Y * g1 * 0.12;
+  vec3 body = mix(A * 0.9, Y, smoothstep(0.10, 0.52, v)); body = mix(body, W, smoothstep(0.72, 0.98, v));
+  c = mix(c, body * (0.55 + 0.6 * dif), smoothstep(0.03, 0.2, v));
+  c += W * spec * 0.8;
+  float mb = texture(uM, q).b; c *= 1.0 - uWord * 0.72 * (1.0 - mb); c += uWord * mb * (A * 0.55 + Y * 0.1);
+  c *= uGain;
+  vec2 vg = uv - 0.5; c *= 1.0 - dot(vg, vg) * 0.75;
+  // the flip: black ink on yellow
+  vec3 inv = Y * (1.0 - smoothstep(0.08, 0.42, v) * 0.97) * (0.92 + 0.1 * h(floor(q * 700.0)));
+  c = mix(c, inv, uInv);
+  vec4 ov = texture(uOv, uv);
+  c = c * (1.0 - ov.a) + ov.rgb;
+  c += (h(gl_FragCoord.xy + uTime * 61.0) - 0.5) * 0.012;
+  o = vec4(c, 1.0);
+}`;
+
+      const TB = window.TABLE, DUR = TB.dur, BEAT = TB.beat, W = 1920, H = 1080, SW = TB.sw, SH = TB.sh, AN = 640, STEPS = 2, FPS = 30, SX = W / SW;
+      const $ = (s) => document.querySelector(s);
+      const r = (x, a, b) => Math.min(1, Math.max(0, (x - a) / (b - a))), lerp = (a, b, k) => a + (b - a) * k;
+      const eO = (k) => 1 - Math.pow(1 - k, 3), eI = (k) => k * k * k, eS = (k) => k * k * (3 - 2 * k);
+      const eX = (k) => k >= 1 ? 1 : 1 - Math.pow(2, -10 * k), eB = (k) => { const c = 1.9; return 1 + (c + 1) * Math.pow(k - 1, 3) + c * Math.pow(k - 1, 2); };
+      const eIO = (k) => k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+      const Y = "#F5D117", BONE = "#F4F0DC", INK = "#07080A", DROP = 25.5, FLY = 31, FLIP = 37, MAIL = 39, NEV = 46, CLOSE = 53, LOGO = 57;
+      const C = [SW / 2, SH / 2];
+      const N = TB.nodes, H_ = N[TB.hero], R_ = N[TB.rej];
+
+      // ---------------- the simulation's settings, as a function of the beat
+      function reach(B) { return B < 4 ? 6 + 44 * r(B, 0.2, 4) : B >= 13 ? 3000 : 50 + 710 * Math.pow(r(B, 4, 13), 1.6); }
+      function params(B) {
+        const cc = r(B, DROP, DROP + 1.2), set = r(B, DROP + 3, DROP + 5.5), sp = r(B, NEV, NEV + 2.5), pull = r(B, CLOSE, CLOSE + 2.4);
+        const w1 = r(B, 14, 15) * (1 - r(B, 17.3, 17.9)), w2 = r(B, 18, 19) * (1 - r(B, 21, 21.6)), word = Math.max(w1, w2);
+        let p = {
+          R: reach(B), SO: 9, SA: 0.6, RA: 0.45, SS: 3.0, out: 0.02 * (1 - r(B, 12, 14)), jit: 0.16, WF: 1.6, WT: 0, WR: 2.5, dep: 0.018, decay: 0.92, dim: 0, pull: 0, fade: 1, crowd: 1.2, cap: 0.3,
+          active: Math.min(1, Math.pow(reach(B) / 760, 2)),
+        };
+        p.crowd = lerp(p.crowd, 0.5, word); p.cap = lerp(p.cap, 0.7, word); p.WT = 14 * word; p.dim = 0.11 * word; p.WF = lerp(1.6, 0.2, word);
+        // the contraction: long senses, fast legs, and only the fed routes pay
+        p.SO = lerp(p.SO, 30, cc * (1 - set)); p.SS = lerp(p.SS, 6.5, cc * (1 - set)); p.decay = lerp(p.decay, 0.85, cc * (1 - set)); p.WF = lerp(p.WF, 16, cc); p.RA = lerp(p.RA, 0.7, cc * (1 - set));
+        p.crowd = lerp(p.crowd, 0, cc); p.cap = lerp(p.cap, 50, cc); p.jit = lerp(p.jit, 0.05, cc); p.SO = lerp(p.SO, 9, set); p.SS = lerp(p.SS, 1.7, set); p.decay = lerp(p.decay, 0.9, set);
+        // spreading again, around the contacted
+        p.crowd = lerp(p.crowd, 1.2, sp); p.cap = lerp(p.cap, 0.3, sp); p.out = 0.015 * sp * (1 - pull); p.WF = lerp(p.WF, 2.2, sp); p.SO = lerp(p.SO, 15, sp); p.SS = lerp(p.SS, 2.6, sp); p.jit = lerp(p.jit, 0.16, sp); p.decay = lerp(p.decay, 0.925, sp); p.WR = lerp(p.WR, 30, r(B, NEV - 0.5, NEV + 0.5));
+        // home
+        p.crowd = lerp(p.crowd, 0, pull); p.pull = 0.34 * eI(pull); p.SS = lerp(p.SS, 7.5, pull); p.WF = lerp(p.WF, 0, pull); p.WR = lerp(p.WR, 0, pull); p.decay = lerp(p.decay, 0.82, pull);
+        p.fade = 1 - r(B, LOGO - 0.8, LOGO + 0.1);
+        return p;
+      }
+
+      // ---------------- the mask: food in red, repellent in green, words in blue
+      let mC, mG, mKey = "";
+      function drawWord(g, a, y, size) { g.font = `900 condensed ${size}px Archivo`; g.textAlign = "center"; g.textBaseline = "alphabetic"; g.fillText(a, SW / 2, y); }
+      function mask(B) {
+        const key = Math.floor(B * 12);
+        if (key === mKey) return false;
+        mKey = key;
+        const g = mG; g.globalCompositeOperation = "source-over"; g.fillStyle = "#000"; g.fillRect(0, 0, SW, SH);
+        g.globalCompositeOperation = "lighter";
+        // food
+        const sp = r(B, NEV, NEV + 1.5), pull = r(B, CLOSE, CLOSE + 1);
+        if (pull < 1) {
+          g.fillStyle = "rgb(255,0,0)";
+          for (let i = 0; i < N.length; i++) {
+            const gone = TB.gone[i];
+            if (gone !== undefined && B >= gone) continue;
+            if (N[i][3] && B >= NEV && TB.contacted.includes(i)) continue;
+            if (i === TB.rej && B >= 44.5) continue;
+            const R = N[i][3] && B >= DROP ? 7 : 4;
+            g.globalAlpha = gone !== undefined ? 0.55 : 1;
+            g.beginPath(); g.arc(N[i][0], N[i][1], R, 0, 7); g.fill();
+          }
+          // a fresh search
+          if (sp > 0) { g.globalAlpha = sp; for (const f of TB.fresh) { g.beginPath(); g.arc(f[0], f[1], 3, 0, 7); g.fill(); } }
+          g.globalAlpha = 1;
+          // the arteries: the routes the survivors feed
+          const a = r(B, DROP, DROP + 1.6) * (1 - sp * 0.75);
+          if (a > 0) {
+            g.strokeStyle = "rgb(255,0,0)"; g.lineCap = "round"; g.lineJoin = "round";
+            for (let k = 0; k < TB.arteries.length; k++) {
+              const e = TB.arteries[k]; if (k === TB.rejEdge && B >= 44.5) continue;
+              if (B >= NEV && (TB.contacted.includes(e.a) || TB.contacted.includes(e.b))) continue;
+              g.globalAlpha = a; g.lineWidth = 3.4; g.beginPath(); e.pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.stroke();
+            }
+            g.globalAlpha = 1;
+          }
+        }
+        // repellent
+        if (B >= 44.5 && pull < 1) {
+          const e = TB.arteries[TB.rejEdge].pts, m = e[Math.floor(e.length * 0.35)];
+          g.fillStyle = "rgb(0,255,0)"; if (B < 46) { g.beginPath(); g.arc(m[0], m[1], 11, 0, 7); g.fill(); }
+          if (B >= NEV) for (const c of TB.contacted) { g.beginPath(); g.arc(N[c][0], N[c][1], 46 * eO(r(B, NEV, NEV + 1.2)), 0, 7); g.fill(); }
+        }
+        // words
+        g.fillStyle = "rgb(0,0,255)";
+        if (B >= 14 && B < 17.9) drawWord(g, "SEARCH", 470, 340);
+        if (B >= 18 && B < 21.6) drawWord(g, "SCORE", 470, 350);
+        g.globalCompositeOperation = "source-over";
+        return true;
+      }
+
+      // ---------------- the camera
+      function heroPath(k) { const p = TB.arteries[TB.heroEdge].pts, f = k * (p.length - 1), i = Math.min(p.length - 2, Math.floor(f)), u = f - i; return [lerp(p[i][0], p[i + 1][0], u), lerp(p[i][1], p[i + 1][1], u)]; }
+      function camera(B, t) {
+        let z = lerp(7, 1, eIO(r(B, 2.5, 14))), cx = C[0], cy = C[1];
+        z += 0.05 * eS(r(B, 14, 25));
+        z -= 0.05 * eX(r(B, DROP, DROP + 0.8));
+        const heroAim = [H_[0] + 150, H_[1]];
+        if (B >= FLY - 1) {
+          const k = eIO(r(B, FLY - 1, FLY + 1.6)), q = heroPath(k * 0.999 + 0.001);
+          const j = eS(r(B, FLY - 1, FLY + 0.2));
+          cx = lerp(cx, q[0] + 150 * k, j); cy = lerp(cy, q[1], j); z = lerp(z, 3.0, k);
+          z += 0.14 * r(B, FLY + 1.6, FLIP);
+        }
+        if (B >= MAIL - 0.2) { const k = eIO(r(B, MAIL - 0.2, MAIL + 1.4)), mid = [(H_[0] + R_[0]) / 2 + 80, (H_[1] + R_[1]) / 2]; cx = lerp(cx, mid[0], k); cy = lerp(cy, mid[1], k); z = lerp(z, Math.max(1.5, Math.min(2.2, 560 / (Math.hypot(H_[0] - R_[0], H_[1] - R_[1]) + 150))), k); }
+        if (B >= NEV - 0.4) { const k = eIO(r(B, NEV - 0.4, NEV + 1.6)); cx = lerp(cx, C[0], k); cy = lerp(cy, C[1], k); z = lerp(z, 1.0, k); }
+        if (B >= CLOSE) { z = lerp(z, 3.4, eI(r(B, CLOSE + 0.5, LOGO - 0.4))); }
+        // keep the frame inside the dish
+        const hw = SW / 2 / z, hh = SH / 2 / z; cx = Math.max(hw, Math.min(SW - hw, cx)); cy = Math.max(hh, Math.min(SH - hh, cy));
+        let ox = 0, oy = 0;
+        for (const [h, a] of HITS) { const d = t - h * BEAT; if (d < 0 || d > 0.7) continue; const q = Math.exp(-d * 8) * a; ox += q * Math.sin(d * 71); oy += q * Math.cos(d * 59); z *= 1 + q * 0.0006; }
+        return { z, cx, cy, ox, oy };
+      }
+      const HITS = [[DROP, 26], [DROP + 2.5, 14], [FLIP, 18], [FLIP + 0.5, 10], [FLIP + 1, 10], [14, 8], [18, 8], [44.5, 10], [NEV, 8], [NEV + 1.5, 8], [LOGO, 6]];
+      const w2s = (cam, x, y) => [(x - cam.cx) * cam.z * SX + W / 2 + cam.ox, (y - cam.cy) * cam.z * SX + H / 2 + cam.oy];
+
+      // ---------------- WebGL2
+      let gl, PA, PD, PF, PS, UA = {}, UD = {}, UF = {}, US = {}, ag = [], agF = [], tr = [], trF = [], cur = 0, curT = 0, mT, ovT, ovC, ovG, simN = -1, vaoP;
+      function initAgents() {
+        let s = 44 >>> 0;
+        const rnd = () => { s = (s + 0x6D2B79F5) >>> 0; let z = s; z = Math.imul(z ^ (z >>> 15), z | 1); z ^= z + Math.imul(z ^ (z >>> 7), z | 61); return ((z ^ (z >>> 14)) >>> 0) / 4294967296; };
+        const D = new Float32Array(AN * AN * 4);
+        for (let i = 0; i < AN * AN; i++) { const x = rnd() * SW, y = rnd() * SH, d = Math.hypot(x - C[0], y - C[1]); D[i * 4] = x; D[i * 4 + 1] = y; D[i * 4 + 2] = rnd() * 6.2832; D[i * 4 + 3] = Math.pow(d / 760, 2); }
+        return D;
+      }
+      function resetSim() {
+        const D = initAgents();
+        gl.bindTexture(gl.TEXTURE_2D, ag[0]); gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, AN, AN, gl.RGBA, gl.FLOAT, D);
+        for (const f of trF) { gl.bindFramebuffer(gl.FRAMEBUFFER, f); gl.viewport(0, 0, SW, SH); gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT); }
+        cur = 0; curT = 0; simN = 0; mKey = "";
+      }
+      function initGL() {
+        gl = $("#stage").getContext("webgl2", { antialias: false, alpha: false, depth: false, stencil: false, preserveDrawingBuffer: true });
+        if (!gl.getExtension("EXT_color_buffer_float")) throw new Error("EXT_color_buffer_float is needed");
+        const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+        const prog = (vs, fs) => { const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs)); gl.bindAttribLocation(p, 0, "p"); gl.linkProgram(p); if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p)); return p; };
+        PA = prog(VS, AG_FS); PD = prog(DEP_VS, DEP_FS); PF = prog(VS, FLD_FS); PS = prog(VS, DISP_FS);
+        for (const n of ["uA", "uT", "uM", "uC", "uR", "uSO", "uSA", "uRA", "uSS", "uWF", "uWT", "uWR", "uPull", "uFrame", "uJit", "uActive", "uCrowd", "uCap", "uOut"]) UA[n] = gl.getUniformLocation(PA, n);
+        for (const n of ["uA", "uActive", "uN"]) UD[n] = gl.getUniformLocation(PD, n);
+        UD.uDep = gl.getUniformLocation(PD, "uDep");
+        for (const n of ["uT", "uM", "uTex", "uDecay", "uDim", "uFade"]) UF[n] = gl.getUniformLocation(PF, n);
+        for (const n of ["uT", "uOv", "uCam", "uOff", "uZ", "uTime", "uInv", "uGain", "uK", "uWord", "uM"]) US[n] = gl.getUniformLocation(PS, n);
+        vaoP = gl.createVertexArray();
+        const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+        const nearest = () => { gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); };
+        const fb = (t) => { const f = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, f); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0); return f; };
+        for (let k = 0; k < 2; k++) {
+          const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t); gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA32F, AN, AN); nearest(); ag[k] = t; agF[k] = fb(t);
+          const u = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, u); gl.texStorage2D(gl.TEXTURE_2D, 8, gl.RGBA16F, SW, SH); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); tr[k] = u; trF[k] = fb(u);
+        }
+        const t2 = () => { const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); return t; };
+        mT = t2(); ovT = t2();
+        mC = document.createElement("canvas"); mC.width = SW; mC.height = SH; mG = mC.getContext("2d", { alpha: false });
+        ovC = document.createElement("canvas"); ovC.width = W; ovC.height = H; ovG = ovC.getContext("2d");
+        resetSim();
+      }
+      function stepSim() {
+        const n = simN; simN += 1;
+        const B = (n / (FPS * STEPS)) / BEAT, p = params(B);
+        if (mask(B)) { gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, mT); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, mC); }
+        gl.bindVertexArray(null); gl.disable(gl.BLEND);
+        // agents move
+        const a2 = 1 - cur;
+        gl.useProgram(PA); gl.bindFramebuffer(gl.FRAMEBUFFER, agF[a2]); gl.viewport(0, 0, AN, AN);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, ag[cur]);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, tr[curT]);
+        gl.uniform1i(UA.uA, 0); gl.uniform1i(UA.uT, 1); gl.uniform1i(UA.uM, 2);
+        gl.uniform2f(UA.uC, C[0], C[1]); gl.uniform1f(UA.uR, p.R); gl.uniform1f(UA.uSO, p.SO); gl.uniform1f(UA.uSA, p.SA); gl.uniform1f(UA.uRA, p.RA); gl.uniform1f(UA.uSS, p.SS);
+        gl.uniform1f(UA.uWF, p.WF); gl.uniform1f(UA.uWT, p.WT); gl.uniform1f(UA.uWR, p.WR); gl.uniform1f(UA.uPull, p.pull); gl.uniform1f(UA.uFrame, n % 4096); gl.uniform1f(UA.uJit, p.jit); gl.uniform1f(UA.uActive, p.active); gl.uniform1f(UA.uCrowd, p.crowd); gl.uniform1f(UA.uCap, p.cap); gl.uniform1f(UA.uOut, p.out);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        cur = a2;
+        // they leave trail
+        gl.useProgram(PD); gl.bindFramebuffer(gl.FRAMEBUFFER, trF[curT]); gl.viewport(0, 0, SW, SH);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, ag[cur]);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, null);
+        gl.uniform1i(UD.uA, 0); gl.uniform1f(UD.uActive, p.active); gl.uniform1i(UD.uN, AN); gl.uniform1f(UD.uDep, p.dep);
+        gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); gl.bindVertexArray(vaoP); gl.drawArrays(gl.POINTS, 0, AN * AN); gl.bindVertexArray(null); gl.disable(gl.BLEND);
+        // the trail spreads and decays
+        const t2 = 1 - curT;
+        gl.useProgram(PF); gl.bindFramebuffer(gl.FRAMEBUFFER, trF[t2]);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tr[curT]);
+        gl.uniform1i(UF.uT, 0); gl.uniform1i(UF.uM, 2); gl.uniform2f(UF.uTex, 1 / SW, 1 / SH); gl.uniform1f(UF.uDecay, p.decay); gl.uniform1f(UF.uDim, p.dim); gl.uniform1f(UF.uFade, p.fade);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        curT = t2;
+      }
+      function simTo(t) {
+        const target = Math.floor(t * FPS + 1e-6) * STEPS;
+        if (target < simN || simN < 0) resetSim();
+        while (simN < target) stepSim();
+      }
+
+      // ---------------- the crisp layer
+      function setFont(g, s, w = 900, cond = true, fam = "Archivo") { g.font = `${w} ${cond ? "condensed " : ""}${s}px ${fam}`; }
+      function line(g, text, x, y, size, col, B, a, b = 1e9, opt = {}) {
+        // letters rise out of a mask line, and leave upward
+        if (B < a || B >= b + 0.4) return;
+        setFont(g, size, opt.w || 900, opt.cond !== false, opt.fam || "Archivo"); g.textBaseline = "alphabetic"; g.textAlign = "left";
+        const wd = g.measureText(text).width, x0 = opt.align === "l" ? x : x - wd / 2;
+        const halo = col === INK ? Y : "rgb(7,8,10)";
+        g.save(); g.fillStyle = halo; g.shadowColor = halo; g.shadowBlur = size * 0.2;
+        for (let pass = 0; pass < 3; pass++) { let hx = x0; for (let i = 0; i < text.length; i++) { const nx = x0 + g.measureText(text.slice(0, i + 1)).width; g.globalAlpha = r(B, a + i * 0.02 + 0.1, a + i * 0.02 + 0.4) * (1 - r(B, b + i * 0.012, b + i * 0.012 + 0.2)); g.fillText(text[i], hx, y); hx = nx; } }
+        g.restore();
+        g.save(); g.beginPath(); g.rect(x0 - 40, y - size * 0.92, wd + 80, size * 1.12); g.clip(); g.fillStyle = col;
+        let cx = x0;
+        for (let i = 0; i < text.length; i++) {
+          const pre = text.slice(0, i + 1), nx = x0 + g.measureText(pre).width;
+          const u = eB(r(B, a + i * 0.02, a + i * 0.02 + 0.5)), v = eI(r(B, b + i * 0.012, b + i * 0.012 + 0.3));
+          g.fillText(text[i], cx, y + (1 - u) * size * 1.05 - v * size * 1.05);
+          cx = nx;
+        }
+        g.restore();
+      }
+      function mono(g, s, x, y, size, col, al = "left", w = 500, sp = "0.08em") { g.font = `${w} ${size}px JBM`; g.letterSpacing = sp; g.textAlign = al; g.textBaseline = "alphabetic"; const halo = col === INK ? Y : "rgb(7,8,10)"; g.save(); g.fillStyle = halo; g.shadowColor = halo; g.shadowBlur = size * 0.5; g.fillText(s, x, y); g.fillText(s, x, y); g.restore(); g.fillStyle = col; g.fillText(s, x, y); g.letterSpacing = "0px"; }
+      function drawNodes(g, B, cam) {
+        // the flare as the front reaches each business, then its score
+        g.globalCompositeOperation = "lighter";
+        const scoresOn = r(B, 21, 22) * (1 - r(B, DROP + 3, DROP + 5));
+        g.font = "600 17px JBM"; g.textAlign = "center"; g.textBaseline = "alphabetic";
+        for (let i = 0; i < N.length; i++) {
+          const n = N[i], d = Math.hypot(n[0] - C[0], n[1] - C[1]);
+          const gone = TB.gone[i];
+          if (gone !== undefined && B >= gone + 0.3) continue;
+          const reachB = RB(d);
+          if (B < reachB || B > 33) continue;
+          const u = B - reachB, [x, y] = w2s(cam, n[0], n[1]);
+          if (x < -40 || y < -40 || x > W + 40 || y > H + 40) continue;
+          if (u < 1.1) { const k = 1 - u / 1.1; g.strokeStyle = `rgba(245,209,23,${0.75 * k})`; g.lineWidth = 1.5; g.beginPath(); g.arc(x, y, (5 + 26 * eO(u / 1.1)) * Math.min(2, cam.z), 0, 7); g.stroke(); }
+          const fade = gone !== undefined ? 1 - r(B, gone - 0.2, gone + 0.2) : 1;
+          g.fillStyle = `rgba(255,246,190,${0.8 * fade})`; g.beginPath(); g.arc(x, y, (n[3] && B >= DROP ? 5 : 1.7), 0, 7); g.fill();
+          if (scoresOn > 0 && cam.z < 1.4) {
+            const roll = B < 23 ? Math.floor(((i * 37 + Math.floor(B * 18) * 53) % 100)) : n[2];
+            g.fillStyle = n[2] >= 60 && B >= 23 ? `rgba(255,240,150,${scoresOn})` : `rgba(245,209,23,${0.8 * scoresOn * fade})`;
+            g.fillText(String(roll), x, y - 8);
+          }
+        }
+        g.globalCompositeOperation = "source-over";
+      }
+      const RBT = []; for (let b = 0; b <= 14; b += 0.05) RBT.push([b, reach(b)]);
+      function RB(d) { for (const [b, q] of RBT) if (q >= d) return b; return 14; }
+      function card(g, x, y, w, h, line1, sub, col = Y) {
+        g.fillStyle = "rgba(7,8,10,0.94)"; g.fillRect(x, y, w, h); g.strokeStyle = col; g.lineWidth = 2; g.strokeRect(x, y, w, h);
+      }
+      function drawOv(g, t) {
+        const B = t / BEAT; g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, W, H);
+        const cam = camera(B, t);
+        if (B < 33) drawNodes(g, B, cam);
+        // the frame's labels
+        if (B >= 4 && B < LOGO - 0.5) {
+          const inv = B >= FLIP && B < MAIL;
+          const c = inv ? INK : "rgba(244,240,220,0.8)";
+          mono(g, "AI CLIENT ACQUISITION SYSTEM · DEMO DATA", 72, 66, 19, c);
+          const sec = B < 14 ? "SEARCH" : B < 21 ? "SEARCH + SCORE" : B < FLY ? "SCORE" : B < MAIL ? "SCORE + REASON" : B < NEV ? "REVIEW" : "NO DUPLICATES";
+          mono(g, sec, W - 72, 66, 19, c, "right");
+        }
+        // 1. one spore
+        line(g, "500 COLD RESULTS.", W / 2, 880, 118, BONE, B, 1.2, 4.4);
+        // 2. grown words carry their labels
+        if (B >= 14.4 && B < 17.7) mono(g, "BY INDUSTRY AND LOCATION", W / 2, 960, 28, BONE, "center");
+        if (B >= 18.4 && B < 21.4) mono(g, "0 TO 100, WITH A WRITTEN REASON", W / 2, 960, 28, BONE, "center");
+        // 3. the contraction
+        if (B >= DROP && B < FLY - 0.6) {
+          const k = r(B, DROP + 2.5, DROP + 2.8);
+          if (B < DROP + 2.5) line(g, "500", W / 2, 700, 520, BONE, B, DROP, DROP + 2.2);
+          if (B >= DROP + 2.5) line(g, "30", W / 2, 700, 520, Y, B, DROP + 2.5, FLY - 1);
+          if (B >= DROP + 0.5 && B < DROP + 2.4) mono(g, "BELOW 40: FILTERED OUT", W / 2, 860, 34, BONE, "center", 600);
+          if (B >= DROP + 3) mono(g, "QUALIFIED, OUT OF 500", W / 2, 860, 34, BONE, "center", 600);
+        }
+        // 4. judgement: one business
+        const [hx, hy] = w2s(cam, H_[0], H_[1]);
+        if (B >= FLY + 0.8 && B < FLIP) {
+          const k = eX(r(B, FLY + 0.8, FLY + 1.4)), x = hx + 90, y = hy - 180, ww = 640;
+          g.strokeStyle = Y; g.lineWidth = 2.5; g.beginPath(); g.arc(hx, hy, 24 + 8 * Math.sin(B * 3), 0, 7); g.stroke();
+          g.beginPath(); g.moveTo(hx + 24, hy); g.lineTo(x, hy); g.stroke();
+          g.save(); g.beginPath(); g.rect(x, y, ww * k, 360); g.clip();
+          card(g, x, y, ww, 360);
+          mono(g, "FICTIONAL BUSINESS · DEMO DATA", x + 32, y + 50, 18, Y);
+          line(g, "TIDAL BAKERY", x + 32, y + 130, 80, BONE, B, FLY + 1.1, 1e9, { align: "l" });
+          const sc = Math.round(87 * eO(r(B, FLY + 1.4, FLY + 2.6)));
+          setFont(g, 120); g.textAlign = "left"; g.fillStyle = Y; g.fillText(String(sc), x + 32, y + 256);
+          mono(g, "/ 100", x + 190, y + 256, 26, BONE);
+          const reason = "NO WEBSITE. SOCIAL PAGE ONLY.", n = Math.floor(r(B, FLY + 2.6, FLY + 4) * reason.length);
+          mono(g, reason.slice(0, n), x + 32, y + 318, 25, BONE, "left", 600, "0.02em");
+          g.restore();
+        }
+        // 5. the flip
+        if (B >= FLIP && B < MAIL) {
+          line(g, "SOMETHING", W / 2, 440, 300, INK, B, FLIP - 0.05, 1e9);
+          line(g, "SPECIFIC", W / 2, 720, 300, INK, B, FLIP + 0.45, 1e9);
+          line(g, "ABOUT THEM.", W / 2, 1000, 300, INK, B, FLIP + 0.95, 1e9);
+        }
+        // 6. the email: a person decides
+        if (B >= MAIL + 0.6 && B < NEV - 0.2) {
+          const out = eI(r(B, NEV - 0.7, NEV - 0.2)), k = eX(r(B, MAIL + 0.6, MAIL + 1.2)), x = W - 900 + out * 1000, y = 150, ww = 820, hh = 500;
+          g.save(); g.beginPath(); g.rect(x, y, ww, hh * k); g.clip();
+          card(g, x, y, ww, hh);
+          mono(g, "DRAFT · NOT SENT · DEMO TEXT", x + 36, y + 52, 19, Y);
+          mono(g, "TO      HELLO@TIDALBAKERY.DEMO", x + 36, y + 102, 21, BONE, "left", 500, "0.02em");
+          g.fillStyle = "rgba(245,209,23,0.4)"; g.fillRect(x + 36, y + 124, ww - 72, 1.5);
+          const body = ["Hi Tidal Bakery,", "the queue outside your shop is lovely, but there's", "no website to send those people to.", "Could I show you what a brand of your own", "would look like?"];
+          let left = Math.floor(r(B, MAIL + 1, MAIL + 3.4) * 170);
+          body.forEach((s, i) => { mono(g, s.slice(0, Math.max(0, left)), x + 36, y + 172 + i * 42, 25, BONE, "left", 500, "0"); left -= s.length; });
+          const ok = B >= 42.6, pr = 1 - 0.06 * Math.exp(-Math.max(0, B - 42.6) * 7) * (ok ? 1 : 0);
+          g.save(); g.translate(x + 150, y + 430); g.scale(pr, pr); g.fillStyle = ok ? Y : "transparent"; g.strokeStyle = Y; g.lineWidth = 2; g.fillRect(-114, -32, 228, 64); g.strokeRect(-114, -32, 228, 64); setFont(g, 40); g.textAlign = "center"; g.fillStyle = ok ? INK : Y; g.fillText("APPROVE", 0, 14); g.restore();
+          g.strokeStyle = "rgba(244,240,220,0.6)"; g.strokeRect(x + 300, y + 398, 200, 64); setFont(g, 40); g.textAlign = "center"; g.fillStyle = "rgba(244,240,220,0.75)"; g.fillText("REJECT", x + 400, y + 444);
+          g.restore();
+          // the other lead is rejected, and its vein dies
+          const [rx, ry] = w2s(cam, R_[0], R_[1]);
+          if (B >= 43.4) {
+            const a = 1 - r(B, 45.2, 45.8), rj = B >= 44.5;
+            g.globalAlpha = a; g.strokeStyle = BONE; g.lineWidth = 2; g.beginPath(); g.arc(rx, ry, 20, 0, 7); g.stroke();
+            const lx = rx - 110, ly = ry + 86;
+            g.fillStyle = rj ? BONE : "rgba(7,8,10,0.94)"; g.fillRect(lx, ly - 34, 220, 58); g.strokeRect(lx, ly - 34, 220, 58);
+            setFont(g, 38); g.textAlign = "center"; g.fillStyle = rj ? INK : BONE; g.fillText("REJECT", rx, ly + 8); g.globalAlpha = 1;
+          }
+          if (B >= 44.5 && B < 45) {
+            const e = TB.arteries[TB.rejEdge].pts, m = e[Math.floor(e.length * 0.35)], [sx, sy] = w2s(cam, m[0], m[1]), q = eO(r(B, 44.5, 44.75));
+            g.strokeStyle = BONE; g.lineWidth = 4; g.globalAlpha = 1 - r(B, 44.7, 45); g.beginPath(); g.moveTo(sx - 60 * q, sy - 60 * q); g.lineTo(sx + 60 * q, sy + 60 * q); g.stroke(); g.globalAlpha = 1;
+          }
+        }
+        line(g, "YOU DECIDE WHAT GOES OUT.", W / 2, 1010, 104, BONE, B, 42.8, NEV - 0.8);
+        // 7. never twice
+        if (B >= NEV && B < CLOSE + 0.8) {
+          g.strokeStyle = BONE; g.lineWidth = 2;
+          const a = r(B, NEV, NEV + 0.6) * (1 - r(B, CLOSE, CLOSE + 0.7));
+          for (const c of TB.contacted) {
+            const [x, y] = w2s(cam, N[c][0], N[c][1]), R = 34 * cam.z * SX * eO(r(B, NEV, NEV + 1.2));
+            g.globalAlpha = a; g.setLineDash([9, 7]); g.beginPath(); g.arc(x, y, R, 0, 7); g.stroke(); g.setLineDash([]);
+            g.fillStyle = BONE; g.beginPath(); g.arc(x, y, 3, 0, 7); g.fill();
+            mono(g, "CONTACTED", x, y + 6 + R + 18, 14, BONE, "center"); g.globalAlpha = 1;
+          }
+        }
+        line(g, "NO PROSPECT", W / 2, 560, 200, BONE, B, NEV + 0.6, CLOSE - 0.5);
+        line(g, "EMAILED TWICE.", W / 2, 760, 200, Y, B, NEV + 1.1, CLOSE - 0.5);
+        // 8. the close
+        if (B >= LOGO) {
+          const u = eO(r(B, LOGO, LOGO + 0.8)), a = u * (1 - r(B, 61.5, 62)), lw = 926 * 0.72, lh = 193 * 0.72;
+          g.globalAlpha = a; g.drawImage($("#logo"), W / 2 - lw / 2, 300 - (1 - u) * 16, lw, lh); g.globalAlpha = 1;
+          if (B < 61.5) {
+            line(g, "AI Client Acquisition System", W / 2, 610, 92, BONE, B, LOGO + 0.3, 61.2, { cond: false, w: 800 });
+            if (B >= LOGO + 1) { g.globalAlpha = r(B, LOGO + 1, LOGO + 1.5); mono(g, "ai.joaoqueiros.com", W / 2, 690, 28, BONE, "center"); mono(g, "INTERNAL SYSTEM · DEMO DATA", W / 2, 744, 20, Y, "center"); g.globalAlpha = 1; }
+          }
+        }
+      }
+      function display(t) {
+        const B = t / BEAT, cam = camera(B, t);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, W, H); gl.useProgram(PS);
+        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+        gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, ovT); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, ovC);
+        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tr[curT]); gl.generateMipmap(gl.TEXTURE_2D);
+        gl.uniform1i(US.uT, 0); gl.uniform1i(US.uOv, 3);
+        gl.uniform2f(US.uCam, cam.cx / SW, cam.cy / SH); gl.uniform2f(US.uOff, cam.ox / W / cam.z, cam.oy / H / cam.z); gl.uniform1f(US.uZ, cam.z); gl.uniform1f(US.uTime, t);
+        const inv = (B >= FLIP && B < MAIL) ? 1 : 0;
+        gl.uniform1f(US.uInv, inv); gl.uniform1f(US.uGain, 1.0 + 0.9 * Math.exp(-Math.max(0, t - DROP * BEAT) * 3) * (B >= DROP ? 1 : 0)); gl.uniform1f(US.uK, 2.6);
+        gl.uniform1i(US.uM, 2); gl.uniform1f(US.uWord, Math.max(B < 18 ? r(B, 14, 15.2) : r(B, 18, 18.8) * (1 - r(B, 21.2, 21.7)), 0.6 * r(B, 21.4, 22.2) * (1 - r(B, 25.2, DROP))));
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+      }
+      function paint(t) { simTo(t); drawOv(ovG, t); display(t); }
+
+      const tl = gsap.timeline({ paused: true });
+      const clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+      async function build() {
+        await Promise.all([$("#logo").decode(), document.fonts.load('900 condensed 40px "Archivo"'), document.fonts.load('800 40px "Archivo"'), document.fonts.load('500 20px "JBM"'), document.fonts.load('600 20px "JBM"')]);
+        initGL();
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = window.__hf.buildReady || {};
+      window.__hf.buildReady["forage"] = build();
+    </script>
+  </body>
+</html>

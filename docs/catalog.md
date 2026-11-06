@@ -106,6 +106,30 @@ Made for: Imagined Worlds · Stills. Stack: Three.js, TSL, GSAP, Python (score).
 
 ## Products and systems
 
+### R46 · Clatter
+
+A funnel told as a list being rewritten: a physical wall of 30,000 split-flap tiles where each row is a fictional business and every flap you see is a click you hear.
+
+Made for: AI Client Acquisition System · two internal tools that find, score and draft, with a person deciding. Stack: WebGL2, Canvas 2D, GSAP, Python (schedule, score), FFmpeg.
+
+[Recipe and poster](../recipes/r46-clatter/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r46-clatter-v1)
+
+### R45 · Forage
+
+A funnel told as an organism: 409,600 agents grow over 500 fictional businesses like slime mould, then starve back into 30 glowing arteries when the weak food stops feeding.
+
+Made for: AI Client Acquisition System · two internal tools that find, score and draft, with a person deciding. Stack: WebGL2, Canvas 2D, GSAP, Python (table, score), FFmpeg.
+
+[Recipe and poster](../recipes/r45-forage/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r45-forage-v1)
+
+### R44 · Main Street
+
+A funnel told as a place: a tilt-shift miniature town of 500 fictional businesses, where each shop plays one note as it's found and most of the town sinks into the ground on the drop.
+
+Made for: AI Client Acquisition System · two internal tools that find, score and draft, with a person deciding. Stack: WebGL2, Canvas 2D, GSAP, Python (table, score), FFmpeg.
+
+[Recipe and poster](../recipes/r44-main-street/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r44-main-street-v1)
+
 ### R43 · Trace
 
 A film whose soundtrack is its picture: one beam of light steered by the WAV's left and right channels draws every word and wire form, and how fast it redraws them is the note you hear.
