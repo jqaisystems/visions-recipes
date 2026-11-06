@@ -106,6 +106,14 @@ Made for: Imagined Worlds · Stills. Stack: Three.js, TSL, GSAP, Python (score).
 
 ## Products and systems
 
+### R47 · Flywheel
+
+A stop-motion clay film with no clay: one lump becomes shelves, a batch of 108 pins and a heavy wheel that clicks round a notch a day while the seasons pass, then melts back into the lump.
+
+Made for: Pinterest Growth Automation · JQ AI SYSTEMS. Stack: HyperFrames, WebGL2, Canvas 2D, GSAP, Python, FFmpeg.
+
+[Recipe and poster](../recipes/r47-flywheel/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r47-flywheel-v1)
+
 ### R46 · Clatter
 
 A funnel told as a list being rewritten: a physical wall of 30,000 split-flap tiles where each row is a fictional business and every flap you see is a click you hear.
