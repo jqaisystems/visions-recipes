@@ -1,0 +1,221 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <title>Hands Off</title>
+    <!-- Hands Off: sand animation on a lightbox, made entirely in code. A fingertip draws the same task over and over, then the map and the code, then lifts off the table, and the sand carries on without it.
+         The workflow and the script are demos, and this film is code. -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/table.js"></script>
+    <style>
+      @font-face { font-family: "Archivo"; src: url("assets/fonts/Archivo.ttf") format("truetype"); font-weight: 100 900; font-stretch: 62% 125%; }
+      @font-face { font-family: "JBM"; src: url("assets/fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 100 800; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #0B0C12; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #0B0C12; }
+      #ct-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #stage, #over { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #logo { position: absolute; left: -2000px; top: 0; width: 926px; height: 193px; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="33.6" data-width="1920" data-height="1080">
+      <div id="ct-stage" class="clip" data-start="0" data-duration="33.6" data-track-index="0">
+        <canvas id="stage" width="1920" height="1080" data-layout-allow-overflow></canvas>
+        <canvas id="over" width="1920" height="1080" data-layout-allow-overflow></canvas>
+        <img id="logo" src="assets/brand/your-mark.svg" alt="Your mark" data-layout-allow-overflow>
+      </div>
+      <audio id="score" src="assets/bgm/score.wav" data-start="0" data-duration="33.6" data-track-index="7" data-volume="1"></audio>
+    </div>
+
+    <script>
+      const VS = `#version 300 es
+void main(){ vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2); gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }`;
+
+      const NOISE = `
+float h21(vec2 p){ vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+float n2(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(h21(i), h21(i + vec2(1, 0)), f.x), mix(h21(i + vec2(0, 1)), h21(i + vec2(1, 1)), f.x), f.y); }
+float fbm(vec2 p){ return 0.55 * n2(p) + 0.3 * n2(p * 2.1 + 3.7) + 0.15 * n2(p * 4.3 + 9.1); }
+float level(vec2 p){ float f = fbm(vec2(p.x * 0.0026, p.y * 0.0052) + 2.0); vec2 q = p / vec2(RW, RH) - 0.5; float mid = exp(-dot(q * vec2(1.15, 1.45), q * vec2(1.15, 1.45)) * 3.4); return 0.05 + 1.25 * smoothstep(0.34, 0.62, f + 0.62 * mid) + 0.05 * n2(p * 0.05); }`;
+
+      // ---------------- the sand: one height per pixel. Strokes push it about
+      const STROKES = `#version 300 es
+precision highp float;
+uniform sampler2D uH; uniform vec4 uA[48]; uniform vec4 uB[48]; uniform int uN; uniform vec3 uPour; out vec4 o;` + NOISE + `
+void main(){
+  vec2 px = gl_FragCoord.xy; float h = texelFetch(uH, ivec2(px), 0).r;
+  if (uPour.z > 0.0) { float d = length(px - uPour.xy), ang = atan(px.y - uPour.y, px.x - uPour.x);
+    float edge = uPour.z * (1.0 + 0.22 * (fbm(vec2(cos(ang), sin(ang)) * 2.4 + uPour.z * 0.0012) - 0.5) + 0.1 * (n2(px * 0.03) - 0.5));
+    h = max(h, level(px) * (1.0 - smoothstep(edge * 0.82, edge, d))); }
+  float jag0 = n2(px * 0.13) - 0.5, jag1 = fbm(px * 0.035) - 0.5;
+  for (int i = 0; i < uN; i++) {
+    vec2 a = uA[i].xy, b = uA[i].zw, ba = b - a, pa = px - a; float r = uB[i].x, k = uB[i].y;
+    float dd = max(dot(ba, ba), 1e-3), t = clamp(dot(pa, ba) / dd, 0.0, 1.0), d = length(pa - ba * t);
+    if (d > r * 2.4) continue;
+    if (k < 0.5) {             // a finger pushes the sand aside, and leaves a ridge
+      float m = 1.0 - smoothstep(r * 0.3, r * 1.22, d + jag0 * r * 0.16 + jag1 * r * 0.2);
+      float ridge = exp(-pow((d - r * 1.32) / (r * 0.42), 2.0));
+      h = h * (1.0 - m * 0.995); h = min(h + ridge * 0.05 * min(h, 1.0), 1.9);
+    } else if (k < 1.5) {      // the side of a hand sweeps it back over, in streaks
+      vec2 dir = ba / sqrt(dd), per = vec2(-dir.y, dir.x);
+      float m = 1.0 - smoothstep(r * 0.72, r * 1.04, d + jag1 * r * 0.26);
+      float s = fbm(vec2(dot(px, per) * 0.011, dot(px, dir) * 0.0011));
+      h = mix(h, level(px) * (0.45 + 1.1 * s) + 0.04 * n2(px * 0.5), m);
+    } else {                   // sand laid down
+      float m = 1.0 - smoothstep(r * 0.56, r * 1.04, d + jag0 * r * 0.3 + jag1 * r * 0.2);
+      h = max(h, level(px) * m);
+    }
+  }
+  o = vec4(h, 0.0, 0.0, 1.0);
+}`;
+
+      // sand slides until the slope holds. Only what's over the angle moves, so the amount of sand stays the same
+      const SLUMP = `#version 300 es
+precision highp float;
+uniform sampler2D uH; out vec4 o; const ivec2 MX = ivec2(RES);
+float at(ivec2 p){ return texelFetch(uH, clamp(p, ivec2(0), MX), 0).r; }
+float f(float a, float b){ float d = b - a; return sign(d) * max(abs(d) - 0.12, 0.0) * 0.2; }
+void main(){ ivec2 p = ivec2(gl_FragCoord.xy); float h = texelFetch(uH, p, 0).r;
+  h += f(h, at(p + ivec2(1, 0))) + f(h, at(p - ivec2(1, 0))) + f(h, at(p + ivec2(0, 1))) + f(h, at(p - ivec2(0, 1)));
+  o = vec4(h, 0.0, 0.0, 1.0); }`;
+
+      // ---------------- the picture: light coming up through the sand. A silhouette of a hand above it
+      const SHADE = `#version 300 es
+precision highp float;
+uniform sampler2D uH; uniform vec2 uRes; uniform float uLight, uNight; uniform vec4 uF; uniform vec2 uPiv; out vec4 o;` + NOISE + `
+float cap(vec2 p, vec2 a, vec2 b, float ra, float rb){ vec2 pa = p - a, ba = b - a; float t = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0); return length(pa - ba * t) - mix(ra, rb, t); }
+float smin(float a, float b, float k){ float h = max(k - abs(a - b), 0.0) / k; return min(a, b) - h * h * k * 0.25; }
+float hand(vec2 q){   // q.x along the finger, from the tip towards the wrist. q.y across it
+  float d = cap(q, vec2(19.0, 0.0), vec2(250.0, 3.0), 19.0, 33.0);          // the pointing finger
+  d = smin(d, cap(q, vec2(235.0, 3.0), vec2(340.0, 10.0), 33.0, 44.0), 18.0);
+  d = smin(d, cap(q, vec2(300.0, 66.0), vec2(430.0, 72.0), 30.0, 40.0), 7.0);    // three fingers curled under
+  d = smin(d, cap(q, vec2(322.0, 134.0), vec2(435.0, 136.0), 29.0, 38.0), 7.0);
+  d = smin(d, cap(q, vec2(356.0, 196.0), vec2(446.0, 190.0), 25.0, 32.0), 7.0);
+  d = smin(d, cap(q, vec2(360.0, 34.0), vec2(600.0, 40.0), 92.0, 118.0), 34.0);   // the palm
+  d = smin(d, cap(q, vec2(380.0, 110.0), vec2(610.0, 90.0), 80.0, 100.0), 34.0);
+  d = smin(d, cap(q, vec2(250.0, -86.0), vec2(470.0, -66.0), 27.0, 50.0), 30.0);  // the thumb
+  d = smin(d, cap(q, vec2(640.0, 50.0), vec2(1500.0, 70.0), 88.0, 130.0), 40.0);  // the wrist and arm
+  return d; }
+void main(){
+  vec2 px = gl_FragCoord.xy, uv = px / uRes;
+  ivec2 ip = ivec2(px), mx = ivec2(uRes) - 1;
+  #define AT(o) texelFetch(uH, clamp(ip + (o), ivec2(0), mx), 0).r
+  float h = AT(ivec2(0)), hb = textureLod(uH, uv, 5.0).r, hc = textureLod(uH, uv, 1.5).r;
+  float dx = AT(ivec2(2, 0)) - AT(ivec2(-2, 0)), dy = AT(ivec2(0, 2)) - AT(ivec2(0, -2));
+  vec2 c = (uv - 0.5) * (uRes.x > uRes.y ? vec2(1.0, 0.72) : vec2(0.72, 1.0)); float v = exp(-dot(c, c) * 2.6);
+  vec3 hot = mix(vec3(1.0, 0.76, 0.40), vec3(0.66, 0.84, 1.0), uNight), deep = mix(vec3(0.86, 0.36, 0.06), vec3(0.2, 0.36, 0.95), uNight);
+  vec3 lit = mix(deep, hot, v) * uLight * 1.12;
+  // grains: thin sand is a scatter of single grains, thick sand stops the light
+  float g = mix(h21(floor(px * 0.5)), h21(floor(px) + 7.0), 0.5);
+  float cover = 1.0 - exp(-2.9 * h * (0.8 + 0.4 * n2(px * 0.42)));
+  float dark = smoothstep(g - 0.06, g + 0.06, cover);
+  // what's lit from above: barely anything, a low lamp catching the slopes
+  vec3 nrm = normalize(vec3(-dx * 2.2, -dy * 2.2, 1.0)); float l = max(dot(nrm, normalize(vec3(-0.55, 0.55, 0.62))), 0.0);
+  vec3 sand = mix(vec3(0.082, 0.040, 0.018), vec3(0.016, 0.030, 0.082), uNight) * (0.16 + 2.1 * l * l) * (0.7 + 0.6 * h21(floor(px * 0.5) + 3.0)) * uLight;
+  sand += lit * exp(-3.4 * hc) * 0.62;                                   // light seeping through where it's thin
+  vec3 col = mix(lit, sand, dark);
+  col += lit * pow(clamp(1.0 - hb * 1.05, 0.0, 1.0), 2.2) * 0.09;       // and the wash of it around anything bright
+  // the hand: a shape between the camera and the light, softer the higher it is
+  if (uF.w > 0.5) { vec2 tip = uF.xy, ax = normalize(uPiv - tip), ay = vec2(-ax.y, ax.x); float sc = 1.0 + uF.z * 0.5;
+    vec2 q = vec2(dot(px - tip, ax), dot(px - tip, ay)) / sc; float d = hand(q) * sc, w = 2.5 + uF.z * 46.0;
+    float a = 1.0 - smoothstep(-w, w, d); float bod = smoothstep(-58.0, -4.0, d), sh = n2(q * 0.012 + 4.0); vec3 skin = mix(vec3(0.075, 0.036, 0.022), vec3(0.018, 0.03, 0.06), uNight);
+    vec3 sk = skin * 0.16 * (0.5 + 0.65 * sh) + lit * 0.34 * exp(-abs(d) * 0.16) * (1.0 - bod * 0.4); sk *= uLight;
+    col = mix(col, sk, a * (1.0 - 0.15 * uF.z)); }
+  col = col / (1.0 + 0.1 * col); col = pow(max(col, 0.0), vec3(0.92));
+  o = vec4(col + (h21(px + 11.0) - 0.5) / 255.0, 1.0);
+}`;
+
+      const $ = (s) => document.querySelector(s), TB = window.TABLE, W = TB.w, H = TB.h, FPS = 30, BEAT = TB.beat, DUR = TB.dur;
+      const r = (x, a, b) => Math.min(1, Math.max(0, (x - a) / (b - a))), lerp = (a, b, u) => a + (b - a) * u, eIO = (u) => (u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2), eO = (u) => 1 - Math.pow(1 - u, 3);
+      let gl, ovG, PR = {}, tex = [], fbo = [], cur = 0, frame = -1, segStart = 0;
+
+      function prog(fs, names) {
+        const sh = (t, src) => { const s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+        const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
+        if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+        const U = {}; for (const n of names) U[n] = gl.getUniformLocation(p, n); return { p, U };
+      }
+      function initGL() {
+        gl = $("#stage").getContext("webgl2", { antialias: false, alpha: false, depth: false, stencil: false, preserveDrawingBuffer: true });
+        if (!gl.getExtension("EXT_color_buffer_float")) throw new Error("EXT_color_buffer_float is needed");
+        gl.getExtension("OES_texture_float_linear");
+        gl.bindVertexArray(gl.createVertexArray());
+        const RW = (x) => x.replace(/RW/g, W.toFixed(1)).replace(/RH/g, H.toFixed(1)); PR.s = prog(RW(STROKES), ["uH", "uA", "uB", "uN", "uPour"]); PR.l = prog(SLUMP.replace("RES", `${W - 1}, ${H - 1}`), ["uH"]); PR.v = prog(RW(SHADE), ["uH", "uRes", "uLight", "uNight", "uF", "uPiv"]);
+        for (let i = 0; i < 2; i++) {
+          const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t); gl.texStorage2D(gl.TEXTURE_2D, 7, gl.R16F, W, H);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+          const f = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, f); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+          tex.push(t); fbo.push(f);
+        }
+        reset();
+      }
+      function reset() { for (const f of fbo) { gl.bindFramebuffer(gl.FRAMEBUFFER, f); gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT); } cur = 0; frame = -1; segStart = 0; }
+      function pass(P, setup) {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo[1 - cur]); gl.viewport(0, 0, W, H); gl.useProgram(P.p);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex[cur]); gl.uniform1i(P.U.uH, 0); setup(P.U);
+        gl.drawArrays(gl.TRIANGLES, 0, 3); cur = 1 - cur;
+      }
+      const A = new Float32Array(48 * 4), B = new Float32Array(48 * 4);
+      // One frame of sand. Only ever run forwards from the start, so any frame comes out the same
+      function step(f) {
+        const b0 = (f / FPS) / BEAT, b1 = ((f + 1) / FPS) / BEAT, S = TB.segs; let n = 0, pour = [0, 0, 0];
+        if (b1 > TB.pour[0] && b0 < TB.pour[1]) { const u = r(b1, TB.pour[0], TB.pour[1]); pour = [W * 0.5, H * 0.52, Math.hypot(W, H) * 0.72 * Math.pow(u, 0.72) + 4]; }
+        const flush = () => { const p = pour; pass(PR.s, (U) => { gl.uniform4fv(U.uA, A); gl.uniform4fv(U.uB, B); gl.uniform1i(U.uN, n); gl.uniform3f(U.uPour, p[0], p[1], p[2]); }); pour = [0, 0, 0]; n = 0; };
+        while (segStart < S.length && S[segStart][1] <= b0) { let all = true; if (S[segStart][1] > b0) all = false; if (!all) break; segStart++; }
+        for (let i = segStart; i < S.length; i++) {
+          const s = S[i]; if (s[0] >= b1) break; if (s[1] <= b0) continue;
+          const d = Math.max(1e-6, s[1] - s[0]), u0 = Math.max(0, (b0 - s[0]) / d), u1 = Math.min(1, (b1 - s[0]) / d);
+          A[n * 4] = lerp(s[2], s[4], u0); A[n * 4 + 1] = H - lerp(s[3], s[5], u0); A[n * 4 + 2] = lerp(s[2], s[4], u1); A[n * 4 + 3] = H - lerp(s[3], s[5], u1);
+          B[n * 4] = s[6]; B[n * 4 + 1] = s[7]; n++; if (n === 48) flush();
+        }
+        if (n > 0 || pour[2] > 0) flush();
+        pass(PR.l, () => {});
+      }
+      function finger(b) {
+        const K = TB.keys; if (b < K[0][0] || b > TB.offF) return null;
+        let lo = 0, hi = K.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (K[m][0] <= b) lo = m; else hi = m; }
+        const a = K[lo], c = K[hi], u = c[0] > a[0] ? r(b, a[0], c[0]) : 1; return [lerp(a[1], c[1], u), lerp(a[2], c[2], u), lerp(a[3], c[3], u)];
+      }
+      function shade(n) {
+        const b = (n / FPS) / BEAT;
+        let light = r(b, TB.clickOn, TB.clickOn + 0.04); if (b >= TB.clickOn && b < TB.clickOn + 0.3 && n % 2 === 1) light *= 0.72; if (b >= TB.clickOff) light *= 0;
+        let night = eIO(r(b, TB.night[0], TB.night[1])) * (1 - eIO(r(b, TB.morning[0], TB.morning[1])));
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, W, H); gl.useProgram(PR.v.p); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex[cur]); gl.generateMipmap(gl.TEXTURE_2D);
+        const U = PR.v.U, F = finger(b); gl.uniform1i(U.uH, 0); gl.uniform2f(U.uRes, W, H); gl.uniform1f(U.uLight, light); gl.uniform1f(U.uNight, night);
+        gl.uniform4f(U.uF, F ? F[0] : 0, F ? H - F[1] : 0, F ? F[2] : 0, F ? 1 : 0); gl.uniform2f(U.uPiv, W + 520, -520);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+      }
+
+      // ---------------- the flat layer: the demo label, and the end card with the mark placed flat
+      const BONE = "#F3EAD6", DARK = "#0B0C12";
+      function mono(g, s, x, y, size, col, al = "left") { g.font = `500 ${size}px JBM`; g.letterSpacing = "0.08em"; g.textAlign = al; g.textBaseline = "alphabetic"; g.fillStyle = col; g.fillText(s, x, y); g.letterSpacing = "0px"; }
+      function overlay(g, n) {
+        const b = (n / FPS) / BEAT; g.clearRect(0, 0, W, H);
+        if (b >= TB.clickOn && b < TB.logo) { g.font = "500 18px JBM"; g.letterSpacing = "0.08em"; const s = "AI AUTOMATION SYSTEMS · DEMO WORKFLOW", w = g.measureText(s).width + 22; g.fillStyle = "rgba(11,12,18,0.86)"; g.fillRect(40, 36, w, 32); g.letterSpacing = "0px"; mono(g, s, 51, 58, 18, BONE); }
+        if (b >= TB.logo) { const u = r(b, TB.logo + 0.1, TB.logo + 0.8), lw = 926 * 0.72, lh = 193 * 0.72, a = 1 - r(b, TB.beats - 0.5, TB.beats);
+          g.fillStyle = DARK; g.fillRect(0, 0, W, H);
+          g.globalAlpha = eO(u) * a; g.drawImage($("#logo"), W / 2 - lw / 2, 300 - (1 - eO(u)) * 14, lw, lh);
+          g.font = '800 88px "Archivo"'; g.textAlign = "center"; g.textBaseline = "alphabetic"; g.fillStyle = BONE; g.globalAlpha = a * r(b, TB.logo + 0.5, TB.logo + 1.1); g.fillText("AI Automation Systems", W / 2, 610);
+          g.globalAlpha = a * r(b, TB.logo + 1.1, TB.logo + 1.7); mono(g, "ai.joaoqueiros.com", W / 2, 690, 28, BONE, "center"); mono(g, "A SERVICE · THIS FILM IS CODE", W / 2, 744, 20, "#E2A23A", "center"); g.globalAlpha = 1; }
+      }
+      function paint(t) {
+        const n = Math.floor(t * FPS + 1e-6); if (n === frame) return;
+        if (n < frame) reset();
+        for (let f = frame + 1; f <= n; f++) step(f);
+        frame = n; gl.flush(); shade(n); overlay(ovG, n);
+      }
+      const tl = gsap.timeline({ paused: true }), clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+      async function build() {
+        await Promise.all([$("#logo").decode(), document.fonts.load('800 40px "Archivo"'), document.fonts.load('500 20px "JBM"')]);
+        ovG = $("#over").getContext("2d"); initGL();
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(0);
+        window.__timelines = window.__timelines || {}; window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+      window.__hf = window.__hf || {}; window.__hf.buildReady = window.__hf.buildReady || {}; window.__hf.buildReady["hands-off"] = build();
+    </script>
+  </body>
+</html>

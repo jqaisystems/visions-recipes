@@ -106,6 +106,14 @@ Made for: Imagined Worlds · Stills. Stack: Three.js, TSL, GSAP, Python (score).
 
 ## Products and systems
 
+### R51 · Hands Off
+
+A fingertip draws the same task in sand, wipes it and draws it again. Then it lifts off the table, and the sand carries on without it, faster than any hand could.
+
+Made for: AI Automation Systems · JQ AI SYSTEMS. Stack: HyperFrames, WebGL2, Canvas 2D, GSAP, Python, FFmpeg.
+
+[Recipe and poster](../recipes/r51-hands-off/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r51-hands-off-v1)
+
 ### R50 · Full Stop
 
 One red dot, the full stop at the end of every sentence, won't stay put. It runs through twenty cuts in sixteen graphic styles and stops once, on the last word, and the music stops with it.
