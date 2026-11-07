@@ -106,6 +106,14 @@ Made for: Imagined Worlds · Stills. Stack: Three.js, TSL, GSAP, Python (score).
 
 ## Products and systems
 
+### R50 · Full Stop
+
+One red dot, the full stop at the end of every sentence, won't stay put. It runs through twenty cuts in sixteen graphic styles and stops once, on the last word, and the music stops with it.
+
+Made for: AI Automation Systems · JQ AI SYSTEMS. Stack: HyperFrames, Canvas 2D, WebGL2, GSAP, Python, FFmpeg.
+
+[Recipe and poster](../recipes/r50-full-stop/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r50-full-stop-v1)
+
 ### R49 · Mould
 
 A press built from a style system: mismatched clay pictures are squashed into one marbled lump, then pressed out as a whole wall with one look. One wrong picture in hot pink gets flattened by a heavy stamp.
