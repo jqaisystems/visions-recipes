@@ -106,6 +106,14 @@ Made for: Imagined Worlds · Stills. Stack: Three.js, TSL, GSAP, Python (score).
 
 ## Products and systems
 
+### R52 · Same Sand
+
+One pile of sand flows into a brief, a post, an email, a caption, a carousel and four languages, and once the voice is poured in, not a grain is added or taken away.
+
+Made for: AI Content Systems · JQ AI SYSTEMS. Stack: HyperFrames, WebGL2, Canvas 2D, GSAP, Python, FFmpeg.
+
+[Recipe and poster](../recipes/r52-same-sand/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r52-same-sand-v1)
+
 ### R51 · Hands Off
 
 A fingertip draws the same task in sand, wipes it and draws it again. Then it lifts off the table, and the sand carries on without it, faster than any hand could.

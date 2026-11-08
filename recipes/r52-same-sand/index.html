@@ -1,0 +1,288 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <title>Same Sand</title>
+    <!-- Same Sand: sand animation on a lightbox, made entirely in code. 240,000 grains are poured, and from then on every picture in the film is those same grains flowing into a new shape:
+         a brief, a post, an email, a caption, a carousel, four languages, three drafts, a month and a document. The brand, the brief and the drafts are demos, and this film is code. -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/table.js"></script>
+    <style>
+      @font-face { font-family: "Archivo"; src: url("assets/fonts/Archivo.ttf") format("truetype"); font-weight: 100 900; font-stretch: 62% 125%; }
+      @font-face { font-family: "JBM"; src: url("assets/fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 100 800; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #0B0C12; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #0B0C12; }
+      #ct-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #stage, #over { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #logo { position: absolute; left: -2000px; top: 0; width: 926px; height: 193px; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="36.25" data-width="1920" data-height="1080">
+      <div id="ct-stage" class="clip" data-start="0" data-duration="36.25" data-track-index="0">
+        <canvas id="stage" width="1920" height="1080" data-layout-allow-overflow></canvas>
+        <canvas id="over" width="1920" height="1080" data-layout-allow-overflow></canvas>
+        <img id="logo" src="assets/brand/your-mark.svg" alt="Your mark" data-layout-allow-overflow>
+      </div>
+      <audio id="score" src="assets/bgm/score.wav" data-start="0" data-duration="36.25" data-track-index="7" data-volume="1"></audio>
+    </div>
+
+    <script>
+      // The sand is a fixed set of grains. ND dark grains are poured first and NT tinted grains later; after that no grain is added or taken away.
+      // Each picture is sampled as grain positions, and every grain is matched to a spot in the next picture by sliced optimal transport,
+      // so the grains travel the short way and nearby grains travel together. Every frame is worked out from the time alone.
+      const TB = window.TABLE, W = TB.w, H = TB.h, FPS = 30, BEAT = TB.beat, DUR = TB.dur;
+      const ND = 200000, NT = 40000, N = ND + NT, ITERS = 22;
+
+      const VS = `#version 300 es
+void main(){ vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2); gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }`;
+      const HASH = `
+float h21(vec2 p){ vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+float n2(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(h21(i), h21(i + vec2(1, 0)), f.x), mix(h21(i + vec2(0, 1)), h21(i + vec2(1, 1)), f.x), f.y); }`;
+
+      // ---------------- the grains: each one between where it was and where the next picture needs it
+      const GV = `#version 300 es
+precision highp float;
+layout(location = 0) in vec2 aSrc; layout(location = 1) in vec2 aDst; layout(location = 2) in vec2 aMid;
+uniform float uU, uB; uniform vec2 uRes; uniform int uAlive, uPour0, uPour1; uniform vec4 uPour; uniform float uPointSz;
+uniform vec4 uSeg[8]; uniform vec4 uSegT[8]; uniform int uNSeg, uPushDst;
+out float vT; out float vW;` + HASH + `
+vec2 push(vec2 p){   // the fingertip pushes grains aside as it passes, into a ridge on each side of its line
+  for (int i = 0; i < uNSeg; i++) { vec2 a = uSeg[i].xy, b = uSeg[i].zw, ba = b - a; float s = clamp(dot(p - a, ba) / max(dot(ba, ba), 1e-3), 0.0, 1.0);
+    float when = mix(uSegT[i].x, uSegT[i].y, s); if (uB < when) continue;
+    vec2 q = a + ba * s, d = p - q; float l = length(d), r = uSegT[i].z * (1.0 + 0.25 * (h21(p) - 0.5));
+    if (l < r * 1.25) { vec2 nrm = l > 1e-3 ? d / l : vec2(-ba.y, ba.x) / max(length(ba), 1e-3) * (h21(p + 3.0) < 0.5 ? -1.0 : 1.0); p = q + nrm * (r * 1.25 + (r * 1.25 - l) * 0.5 * h21(p + 7.0)); } }
+  return p; }
+void main(){
+  int id = gl_VertexID; float fid = float(id), h1 = h21(vec2(fid * 0.37, 1.7)), h2 = h21(vec2(fid * 0.91, 5.3));
+  vT = id >= ${ND} ? 1.0 : 0.0; vW = 1.0;
+  if (id >= uAlive) { gl_Position = vec4(2.0, 2.0, 0.0, 1.0); gl_PointSize = 0.0; vW = 0.0; return; }
+  vec2 src = uNSeg > 0 ? push(aSrc) : aSrc, dst = uPushDst > 0 ? push(aDst) : aDst, p;
+  if (id >= uPour0 && id < uPour1) {   // poured: each grain lands where the stream is, then rolls out to its place on the pile
+    float t0 = mix(uPour.z, uPour.w, float(id - uPour0) / float(uPour1 - uPour0)), u = clamp((uB - t0) / 0.55, 0.0, 1.0);
+    if (uB < t0) { gl_Position = vec4(2.0, 2.0, 0.0, 1.0); gl_PointSize = 0.0; vW = 0.0; return; }
+    u = 1.0 - pow(1.0 - u, 2.4); vec2 j = (vec2(h1, h2) - 0.5) * 10.0; p = mix(uPour.xy + j, dst, u);
+  } else {             // flowing: a little late or early by grain, on a gentle curve, all of them home on the beat
+    // the long way along the transport, then the last few pixels to the exact spot, like sand settling
+    float d = h1 * 0.32, uu = clamp((uU - d) / 0.68, 0.0, 1.0), u = clamp(uu / 0.86, 0.0, 1.0); u = u * u * u * (u * (u * 6.0 - 15.0) + 10.0);
+    vec2 mid = uPushDst > 0 ? dst : aMid, m = mid - src; float L = length(m); vec2 per = L > 1e-3 ? vec2(-m.y, m.x) / L : vec2(0.0);
+    p = mix(src, mid, u) + per * sin(3.14159 * u) * (h2 - 0.5) * min(L, 600.0) * 0.18 + (dst - mid) * smoothstep(0.74, 1.0, uu);
+  }
+  gl_Position = vec4(p.x / uRes.x * 2.0 - 1.0, 1.0 - p.y / uRes.y * 2.0, 0.0, 1.0); gl_PointSize = uPointSz;
+}`;
+      const GF = `#version 300 es
+precision highp float; in float vT; in float vW; uniform float uWt; out vec4 o;
+void main(){ vec2 c = gl_PointCoord - 0.5; float k = exp(-dot(c, c) * 9.0) * uWt * vW; o = vec4(k, k * vT, 0.0, 1.0); }`;
+
+      // ---------------- the picture: light coming up through the sand, a low lamp on its slopes, and the hand at the review
+      const SHADE = `#version 300 es
+precision highp float; out vec4 o;` + HASH + `
+uniform sampler2D uS; uniform vec2 uRes; uniform float uLight; uniform vec4 uF; uniform vec2 uPiv;
+float cap(vec2 p, vec2 a, vec2 b, float ra, float rb){ vec2 pa = p - a, ba = b - a; float t = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0); return length(pa - ba * t) - mix(ra, rb, t); }
+float smin(float a, float b, float k){ float h = max(k - abs(a - b), 0.0) / k; return min(a, b) - h * h * k * 0.25; }
+float hand(vec2 q){
+  float d = cap(q, vec2(19.0, 0.0), vec2(250.0, 3.0), 19.0, 33.0);
+  d = smin(d, cap(q, vec2(235.0, 3.0), vec2(340.0, 10.0), 33.0, 44.0), 18.0);
+  d = smin(d, cap(q, vec2(300.0, 66.0), vec2(430.0, 72.0), 30.0, 40.0), 7.0);
+  d = smin(d, cap(q, vec2(322.0, 134.0), vec2(435.0, 136.0), 29.0, 38.0), 7.0);
+  d = smin(d, cap(q, vec2(356.0, 196.0), vec2(446.0, 190.0), 25.0, 32.0), 7.0);
+  d = smin(d, cap(q, vec2(360.0, 34.0), vec2(600.0, 40.0), 92.0, 118.0), 34.0);
+  d = smin(d, cap(q, vec2(380.0, 110.0), vec2(610.0, 90.0), 80.0, 100.0), 34.0);
+  d = smin(d, cap(q, vec2(250.0, -86.0), vec2(470.0, -66.0), 27.0, 50.0), 30.0);
+  d = smin(d, cap(q, vec2(640.0, 50.0), vec2(3200.0, 90.0), 88.0, 150.0), 40.0);
+  return d; }
+void main(){
+  vec2 px = gl_FragCoord.xy, uv = px / uRes;
+  vec2 s = textureLod(uS, uv, 0.0).rg; float h = s.r, tf = h > 1e-3 ? clamp(s.g / h, 0.0, 1.0) : 0.0;
+  float hb = textureLod(uS, uv, 5.0).r, hc = textureLod(uS, uv, 1.5).r, hs = textureLod(uS, uv, 0.8).r;
+  float dx = textureLod(uS, uv + vec2(2.0 / uRes.x, 0), 0.8).r - textureLod(uS, uv - vec2(2.0 / uRes.x, 0), 0.8).r;
+  float dy = textureLod(uS, uv + vec2(0, 2.0 / uRes.y), 0.8).r - textureLod(uS, uv - vec2(0, 2.0 / uRes.y), 0.8).r;
+  vec2 c = (uv - 0.5) * vec2(1.0, 0.72); float v = exp(-dot(c, c) * 2.6);
+  vec3 lit = mix(vec3(0.86, 0.36, 0.06), vec3(1.0, 0.76, 0.40), v) * uLight * 1.12;
+  float g = mix(h21(floor(px * 0.5)), h21(floor(px) + 7.0), 0.5);
+  float cover = 1.0 - exp(-2.6 * mix(h, hs, 0.5) * (0.8 + 0.4 * n2(px * 0.42)));
+  float dark = smoothstep(g - 0.06, g + 0.06, cover);
+  vec3 nrm = normalize(vec3(-dx * 1.6, -dy * 1.6, 1.0)); float l = max(dot(nrm, normalize(vec3(-0.55, 0.55, 0.62))), 0.0);
+  // the tinted grains are a pale terracotta, so the lamp finds them where the near-black sand stays dark
+  float isT = step(h21(floor(px * 0.5) + 19.0), tf * 1.1);
+  vec3 base = mix(vec3(0.082, 0.040, 0.018), vec3(0.66, 0.23, 0.10), isT);
+  vec3 sand = base * (0.18 + 2.1 * l * l) * (0.7 + 0.6 * h21(floor(px * 0.5) + 3.0)) * uLight;
+  sand += lit * exp(-3.4 * hc) * 0.55;
+  vec3 col = mix(lit, sand, dark);
+  col += lit * pow(clamp(1.0 - hb * 1.05, 0.0, 1.0), 2.2) * 0.09;
+  if (uF.w > 0.5) { vec2 tip = uF.xy, ax = normalize(uPiv - tip), ay = vec2(-ax.y, ax.x); float sc = 1.0 + uF.z * 0.5;
+    vec2 q = vec2(dot(px - tip, ax), dot(px - tip, ay)) / sc; float d = hand(q) * sc, w = 2.5 + uF.z * 46.0;
+    float a = 1.0 - smoothstep(-w, w, d); float bod = smoothstep(-58.0, -4.0, d), sh = n2(q * 0.012 + 4.0);
+    vec3 sk = vec3(0.075, 0.036, 0.022) * 0.16 * (0.5 + 0.65 * sh) + lit * 0.34 * exp(-abs(d) * 0.16) * (1.0 - bod * 0.4); sk *= uLight;
+    col = mix(col, sk, a * (1.0 - 0.15 * uF.z)); }
+  col = col / (1.0 + 0.1 * col); col = pow(max(col, 0.0), vec3(0.92));
+  o = vec4(col + (h21(px + 11.0) - 0.5) / 255.0, 1.0);
+}`;
+
+      const $ = (s) => document.querySelector(s);
+      const r = (x, a, b) => Math.min(1, Math.max(0, (x - a) / (b - a))), lerp = (a, b, u) => a + (b - a) * u, eO = (u) => 1 - Math.pow(1 - u, 3);
+      const hash = (i, s) => { let x = (i * 374761393 + s * 668265263) | 0; x = Math.imul(x ^ (x >>> 13), 1274126177); x ^= x >>> 16; return (x >>> 0) / 4294967296; };
+      let gl, ovG, PR = {}, hT, hF, frame = -1, states = [], plan = [];
+
+      // ---------------- every picture, drawn once and sampled as grain positions
+      function raster(marks) {
+        const c = document.createElement("canvas"); c.width = W; c.height = H; const g = c.getContext("2d", { willReadFrequently: true });
+        g.fillStyle = "#000"; g.fillRect(0, 0, W, H); g.lineCap = "round"; g.lineJoin = "round";
+        const path = (sts) => { g.beginPath(); for (const st of sts) { g.moveTo(st[0][0], st[0][1]); for (let i = 1; i < st.length; i++) g.lineTo(st[i][0], st[i][1]); } };
+        for (const m of marks) {
+          if (m[0] === "block") { g.fillStyle = "#fff"; g.beginPath(); g.roundRect(m[1], m[2], m[3], m[4], m[5]); g.fill(); }
+          else if (m[0] === "cut") { g.strokeStyle = "#000"; g.lineWidth = m[1]; path(m[2]); g.stroke(); }
+          else { g.strokeStyle = "#fff"; g.lineWidth = m[1]; path(m[2]); g.stroke(); }
+        }
+        return g.getImageData(0, 0, W, H).data;
+      }
+      const CDF = new Float64Array(W * H);
+      function sample(marks, n, seed) {   // n grain positions, spread in proportion to how much sand the picture has at each pixel
+        const d = raster(marks); let s = 0; for (let i = 0; i < W * H; i++) { s += d[i * 4]; CDF[i] = s; }
+        const out = new Float32Array(n * 2);
+        for (let i = 0; i < n; i++) {
+          const t = (i + hash(i, seed)) / n * s; let lo = 0, hi = W * H - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (CDF[m] < t) lo = m + 1; else hi = m; }
+          out[i * 2] = (lo % W) + hash(i, seed + 1); out[i * 2 + 1] = Math.floor(lo / W) + hash(i, seed + 2);
+        }
+        return out;
+      }
+      // sliced optimal transport: move the grains along one direction at a time until, together, they make the picture
+      const KEY = new Float64Array(N), PT = new Float32Array(N);
+      function transfer(src, tgt, n) {
+        const p = src.slice(0, n * 2);
+        for (let k = 0; k < ITERS; k++) {
+          const a = (k * 0.6180339887 % 1) * Math.PI, cx = Math.cos(a), cy = Math.sin(a), step = k < ITERS - 4 ? 1.0 : 0.6;
+          const key = KEY.subarray(0, n), pt = PT.subarray(0, n);
+          for (let i = 0; i < n; i++) { const v = p[i * 2] * cx + p[i * 2 + 1] * cy; key[i] = Math.round((v + 6000) * 64) * 1048576 + i; pt[i] = tgt[i * 2] * cx + tgt[i * 2 + 1] * cy; }
+          key.sort(); pt.sort();
+          for (let j = 0; j < n; j++) { const i = key[j] % 1048576, v = p[i * 2] * cx + p[i * 2 + 1] * cy, dd = (pt[j] - v) * step; p[i * 2] += dd * cx; p[i * 2 + 1] += dd * cy; }
+        }
+        // the grains now make the picture loosely. Match each one to an exact spot of it, in the order a Hilbert curve visits them, so nearby stays nearby
+        const ka = KEY.subarray(0, n).slice(), kb = KEY.subarray(0, n);
+        for (let i = 0; i < n; i++) { ka[i] = hil(p[i * 2], p[i * 2 + 1]) * 1048576 + i; kb[i] = hil(tgt[i * 2], tgt[i * 2 + 1]) * 1048576 + i; }
+        ka.sort(); kb.sort(); const out = new Float32Array(n * 2);
+        for (let j = 0; j < n; j++) { const i = ka[j] % 1048576, t = kb[j] % 1048576; out[i * 2] = tgt[t * 2]; out[i * 2 + 1] = tgt[t * 2 + 1]; }
+        return { mid: p, out };
+      }
+      function hil(x, y) {   // the position of a point along a Hilbert curve over the table, on a 4096 grid
+        let X = Math.max(0, Math.min(4095, Math.floor(x * 2048 / W) + 1024)), Y = Math.max(0, Math.min(4095, Math.floor(y * 2048 / W) + 1024)), d = 0;
+        for (let s = 2048; s > 0; s >>= 1) { const rx = (X & s) > 0 ? 1 : 0, ry = (Y & s) > 0 ? 1 : 0; d += s * s * ((3 * rx) ^ ry);
+          if (ry === 0) { if (rx === 1) { X = 4095 - X; Y = 4095 - Y; } const t = X; X = Y; Y = t; } }
+        return d;
+      }
+      function pile(cx, cy, R, n, seed) {   // a cone: grains thickest in the middle, the later ones further out
+        const out = new Float32Array(n * 2);
+        for (let i = 0; i < n; i++) {
+          const u = (i + hash(i, seed)) / n; let lo = 0, hi = 1; for (let k = 0; k < 24; k++) { const m = (lo + hi) / 2; if (3 * m * m - 2 * m * m * m < u) lo = m; else hi = m; }
+          const rr = lo * R * (0.9 + 0.2 * hash(i, seed + 1)), a = i * 2.39996323 + hash(i, seed + 2) * 0.6; out[i * 2] = cx + Math.cos(a) * rr; out[i * 2 + 1] = cy + Math.sin(a) * rr;
+        }
+        return out;
+      }
+
+      // the whole film as states: the grains' positions after each pour and each flow
+      function bake() {
+        let cur = new Float32Array(N * 2), alive = 0; const ev = [];
+        for (const P of TB.pours) ev.push({ b: P[0], kind: "pour", P });
+        for (const M of TB.morphs) ev.push({ b: M[0], kind: "flow", M });
+        ev.sort((a, b) => a.b - b.b);
+        const push = (s) => { const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, s, gl.STATIC_DRAW); return buf; };
+        let last = push(cur);
+        for (const e of ev) {
+          if (e.kind === "pour") {
+            const P = e.P, n0 = P[4] ? ND : 0, n1 = P[4] ? N : ND, R = P[4] ? 120 : 190;
+            cur = cur.slice(); cur.set(pile(P[2], P[3], R, n1 - n0, 11 + n0), n0 * 2); alive = n1;
+            const buf = push(cur); plan.push({ b0: P[0], b1: P[1] + 0.6, src: buf, dst: buf, mid: buf, alive, pour: [n0, n1, P[2], P[3], P[0], P[1]] }); last = buf;
+          } else {
+            const M = e.M, tgt = sample(TB.pics[M[2]], alive, 101 + plan.length * 7), T = transfer(cur, tgt, alive), next = new Float32Array(N * 2), mid = new Float32Array(N * 2);
+            next.set(T.out); mid.set(T.mid); const buf = push(next); plan.push({ b0: M[0], b1: M[1], src: last, dst: buf, mid: push(mid), alive }); cur = next; last = buf;
+          }
+        }
+      }
+
+      function prog(vs, fs, names) {
+        const sh = (t, src) => { const s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+        const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
+        if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+        const U = {}; for (const n of names) U[n] = gl.getUniformLocation(p, n); return { p, U };
+      }
+      function initGL() {
+        gl = $("#stage").getContext("webgl2", { antialias: false, alpha: false, depth: false, stencil: false, preserveDrawingBuffer: true });
+        if (!gl.getExtension("EXT_color_buffer_float")) throw new Error("EXT_color_buffer_float is needed");
+        gl.getExtension("EXT_float_blend");
+        PR.g = prog(GV, GF, ["uU", "uB", "uRes", "uAlive", "uPour0", "uPour1", "uPour", "uPointSz", "uSeg", "uSegT", "uNSeg", "uPushDst", "uWt"]);
+        PR.v = prog(VS, SHADE, ["uS", "uRes", "uLight", "uF", "uPiv"]);
+        hT = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, hT); gl.texStorage2D(gl.TEXTURE_2D, 7, gl.RG16F, W, H);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        hF = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, hF); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, hT, 0);
+        gl.bindVertexArray(gl.createVertexArray());
+        bake();
+      }
+
+      // the fingertip's marks, up to now
+      const SEG = new Float32Array(32), SEGT = new Float32Array(32);
+      function grains(b) {
+        let st = null; for (const s of plan) if (s.b0 <= b) st = s;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, hF); gl.viewport(0, 0, W, H); gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+        if (!st) return;
+        gl.useProgram(PR.g.p); const U = PR.g.U;
+        gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
+        gl.bindBuffer(gl.ARRAY_BUFFER, st.src); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, st.dst); gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, st.mid); gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 2, gl.FLOAT, false, 0, 0);
+        const P = st.pour || [0, 0, 0, 0, 0, 0];
+        gl.uniform1f(U.uU, st.pour ? 1 : r(b, st.b0, st.b1)); gl.uniform1f(U.uB, b); gl.uniform2f(U.uRes, W, H); gl.uniform1i(U.uAlive, st.alive);
+        gl.uniform1i(U.uPour0, P[0]); gl.uniform1i(U.uPour1, P[1]); gl.uniform4f(U.uPour, P[2], P[3], P[4], P[5]); gl.uniform1f(U.uPointSz, 3.0); gl.uniform1f(U.uWt, 0.9);
+        // the finger's marks press into the drafts from the moment it draws them, until the next picture takes over
+        let ns = 0; const inReview = b >= TB.review[0] && st.b0 < TB.rewAt + 1e-6;
+        if (inReview) for (const s of TB.segs) { if (ns === 8) break; SEG.set([s[2], s[3], s[4], s[5]], ns * 4); SEGT.set([s[0], s[1], s[6], 0], ns * 4); ns++; }
+        gl.uniform4fv(U.uSeg, SEG); gl.uniform4fv(U.uSegT, SEGT); gl.uniform1i(U.uNSeg, ns); gl.uniform1i(U.uPushDst, inReview && st.b0 < TB.rewAt - 1e-6 ? 1 : 0);
+        gl.drawArrays(gl.POINTS, 0, N); gl.disable(gl.BLEND);
+      }
+      function finger(b) {
+        const K = TB.keys; if (b < K[0][0] || b > TB.outF) return null;
+        let lo = 0, hi = K.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (K[m][0] <= b) lo = m; else hi = m; }
+        const a = K[lo], c = K[hi], u = c[0] > a[0] ? r(b, a[0], c[0]) : 1, e = u * u * (3 - 2 * u); return [lerp(a[1], c[1], e), lerp(a[2], c[2], e), lerp(a[3], c[3], e)];
+      }
+      function shade(nf) {
+        const b = (nf / FPS) / BEAT;
+        let light = r(b, TB.clickOn, TB.clickOn + 0.04); if (b >= TB.clickOn && b < TB.clickOn + 0.3 && nf % 2 === 1) light *= 0.72; if (b >= TB.clickOff) light = 0;
+        grains(b);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, W, H); gl.useProgram(PR.v.p); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, hT); gl.generateMipmap(gl.TEXTURE_2D);
+        const U = PR.v.U, F = finger(b); gl.uniform1i(U.uS, 0); gl.uniform2f(U.uRes, W, H); gl.uniform1f(U.uLight, light);
+        gl.uniform4f(U.uF, F ? F[0] : 0, F ? H - F[1] : 0, F ? F[2] : 0, F ? 1 : 0); gl.uniform2f(U.uPiv, W + 520, -520);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+      }
+
+      // ---------------- the flat layer: the demo label, and the end card with the mark placed flat
+      const BONE = "#F3EAD6", DARK = "#0B0C12";
+      function mono(g, s, x, y, size, col, al = "left") { g.font = `500 ${size}px JBM`; g.letterSpacing = "0.08em"; g.textAlign = al; g.textBaseline = "alphabetic"; g.fillStyle = col; g.fillText(s, x, y); g.letterSpacing = "0px"; }
+      function overlay(g, nf) {
+        const b = (nf / FPS) / BEAT; g.clearRect(0, 0, W, H);
+        if (b >= TB.clickOn && b < TB.logo) { g.font = "500 18px JBM"; g.letterSpacing = "0.08em"; const s = "AI CONTENT SYSTEMS · DEMO BRIEF", w = g.measureText(s).width + 22; g.fillStyle = "rgba(11,12,18,0.86)"; g.fillRect(40, 36, w, 32); g.letterSpacing = "0px"; mono(g, s, 51, 58, 18, BONE); }
+        if (b >= TB.logo) { const u = r(b, TB.logo + 0.1, TB.logo + 0.8), lw = 926 * 0.72, lh = 193 * 0.72, a = 1 - r(b, TB.beats - 0.4, TB.beats);
+          g.fillStyle = DARK; g.fillRect(0, 0, W, H);
+          g.globalAlpha = eO(u) * a; g.drawImage($("#logo"), W / 2 - lw / 2, 300 - (1 - eO(u)) * 14, lw, lh);
+          g.font = '800 88px "Archivo"'; g.textAlign = "center"; g.textBaseline = "alphabetic"; g.fillStyle = BONE; g.globalAlpha = a * r(b, TB.logo + 0.4, TB.logo + 0.9); g.fillText("AI Content Systems", W / 2, 610);
+          g.globalAlpha = a * r(b, TB.logo + 0.8, TB.logo + 1.3); mono(g, "ai.joaoqueiros.com", W / 2, 690, 28, BONE, "center"); mono(g, "A SERVICE · THIS FILM IS CODE", W / 2, 744, 20, "#E2A23A", "center"); g.globalAlpha = 1; }
+      }
+      function paint(t) {
+        const nf = Math.min(Math.floor(t * FPS + 1e-6), Math.round(DUR * FPS) - 1); if (nf === frame) return;
+        frame = nf; shade(nf); overlay(ovG, nf);
+      }
+      const tl = gsap.timeline({ paused: true }), clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+      async function build() {
+        await Promise.all([$("#logo").decode(), document.fonts.load('800 40px "Archivo"'), document.fonts.load('500 20px "JBM"')]);
+        ovG = $("#over").getContext("2d"); initGL();
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(0);
+        window.__timelines = window.__timelines || {}; window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+      window.__hf = window.__hf || {}; window.__hf.buildReady = window.__hf.buildReady || {}; window.__hf.buildReady["same-sand"] = build();
+    </script>
+  </body>
+</html>
