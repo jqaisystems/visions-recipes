@@ -106,6 +106,14 @@ Made for: Imagined Worlds · Stills. Stack: Three.js, TSL, GSAP, Python (score).
 
 ## Products and systems
 
+### R54 · Register
+
+Every frame is four plates of ink screened into halftone dots. Out of register the sources are noise; a roller wipes it away and the briefing comes off the press one colour at a time.
+
+Made for: AI Research & Briefing Systems · JQ AI SYSTEMS. Stack: HyperFrames, WebGL2, Canvas 2D, GSAP, Python, FFmpeg.
+
+[Recipe and poster](../recipes/r54-register/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r54-register-v1)
+
 ### R53 · Channels
 
 A fingertip carves channels between five islands of sand, and 100,000 grains of work run down them, through one basin that sends each grain its way.

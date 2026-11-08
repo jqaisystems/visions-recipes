@@ -1,0 +1,415 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <title>Register</title>
+    <!-- Register: a film printed in code. Every frame is four plates of ink (cyan, magenta, yellow and black), each screened into dots at its own
+         angle and overprinted on paper. Out of register, the world is noise; the system pulls it into register. The sources, the field and the
+         briefing are a demo, and this film is code. -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/table.js"></script>
+    <style>
+      @font-face { font-family: "Archivo"; src: url("assets/fonts/Archivo.ttf") format("truetype"); font-weight: 100 900; font-stretch: 62% 125%; }
+      @font-face { font-family: "JBM"; src: url("assets/fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 100 800; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #0B0C10; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #0B0C10; }
+      #ct-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #stage, #over { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #logo { position: absolute; left: -2000px; top: 0; width: 926px; height: 193px; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="37" data-width="1920" data-height="1080">
+      <div id="ct-stage" class="clip" data-start="0" data-duration="37" data-track-index="0">
+        <canvas id="stage" width="1920" height="1080" data-layout-allow-overflow></canvas>
+        <canvas id="over" width="1920" height="1080" data-layout-allow-overflow></canvas>
+        <img id="logo" src="assets/brand/your-mark.svg" alt="Your mark" data-layout-allow-overflow>
+      </div>
+      <audio id="score" src="assets/bgm/score.wav" data-start="0" data-duration="37" data-track-index="7" data-volume="1"></audio>
+    </div>
+
+    <script>
+      // Every frame is drawn twice as ink coverage: cyan, magenta and yellow into one canvas (as red, green and blue), black into another.
+      // One shader then screens each plate into dots at its own angle, shifts each plate by how far out of register it is,
+      // and overprints the four inks on paper. Every frame is worked out from the time alone.
+      const TB = window.TABLE, W = TB.w, H = TB.h, FPS = 30, BEAT = TB.beat, DUR = TB.dur, SC = TB.sc;
+      const CELL = 9.0;   // the screen: one dot every 9 px of paper
+
+      const VS = `#version 300 es
+void main(){ vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2); gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }`;
+      const FS = `#version 300 es
+precision highp float; out vec4 o;
+uniform sampler2D uCMY, uK; uniform vec2 uRes; uniform vec4 uCam; uniform float uCell; uniform vec2 uOff[4];
+uniform float uNoise, uSweepX, uTq, uGain;
+float h21(vec2 p){ vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+float n2(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(h21(i), h21(i + vec2(1, 0)), f.x), mix(h21(i + vec2(0, 1)), h21(i + vec2(1, 1)), f.x), f.y); }
+// one plate: the coverage there, screened into round dots at this plate's angle, on a grid fixed to the paper
+float plate(vec2 px, vec2 paper, float cov, float ang, float pid){
+  float c = cos(ang), s = sin(ang); vec2 g = mat2(c, -s, s, c) * paper / uCell;
+  // the noise: dots of every size in cells they don't belong to, until the roller has passed
+  vec2 id = floor(g + 0.5);
+  if (uNoise > 0.0 && px.x > uSweepX) { float k = h21(id + pid * 17.0 + uTq * 3.1); if (k < uNoise * 0.42) cov = max(cov, h21(id * 1.7 + pid + uTq) * 0.85); }
+  if (cov < 0.004) return 0.0;
+  cov = cov * 1.1 * uGain - 0.05;   // a little dot gain: solids print solid, and the faintest tints leave no specks
+  float sp = 0.5 - 0.25 * (cos(6.28318 * g.x) + cos(6.28318 * g.y));
+  float aa = fwidth(sp) * 0.75 + 0.002;
+  return smoothstep(sp - aa, sp + aa, cov);
+}
+void main(){
+  vec2 px = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y);
+  float cr = cos(-uCam.w), sr = sin(-uCam.w);
+  vec2 paper = mat2(cr, -sr, sr, cr) * ((px - uRes * 0.5) / uCam.z) + uCam.xy;
+  vec3 cmyA = texture(uCMY, (px - uOff[0]) / uRes).rgb;
+  float cC = cmyA.r, cM = texture(uCMY, (px - uOff[1]) / uRes).g, cY = texture(uCMY, (px - uOff[2]) / uRes).b, cK = texture(uK, (px - uOff[3]) / uRes).r;
+  vec2 pc = paper * 1.0;
+  float aC = plate(px, pc + vec2(0.0, 0.0), cC, 0.2618, 0.0);
+  float aM = plate(px, pc + vec2(3.1, 1.7), cM, 1.309, 1.0);
+  float aY = plate(px, pc + vec2(1.3, 4.2), cY, 0.0, 2.0);
+  float aK = plate(px, pc + vec2(2.2, 0.6), cK, 0.7854, 3.0);
+  // ink isn't perfectly even: a little mottle in each plate
+  float mt = 0.86 + 0.14 * n2(paper * 0.35);
+  vec3 pap = vec3(0.955, 0.94, 0.905) * (0.965 + 0.035 * n2(paper * 0.9)) - 0.02 * n2(paper * 0.08);
+  vec3 col = pap;
+  col *= mix(vec3(1.0), vec3(0.0, 0.64, 0.90), aC * 0.96 * mt);
+  col *= mix(vec3(1.0), vec3(0.92, 0.10, 0.52), aM * 0.95 * mt);
+  col *= mix(vec3(1.0), vec3(1.0, 0.87, 0.02), aY * 0.95 * mt);
+  col *= mix(vec3(1.0), vec3(0.085, 0.085, 0.10), aK * 0.97);
+  vec2 cv = px / uRes - 0.5; col *= 1.0 - 0.22 * dot(cv, cv);
+  o = vec4(col + (h21(px + 9.0) - 0.5) / 255.0, 1.0);
+}`;
+
+      const $ = (s) => document.querySelector(s);
+      const r = (x, a, b) => Math.min(1, Math.max(0, (x - a) / (b - a))), lerp = (a, b, u) => a + (b - a) * u;
+      const sm = (u) => u * u * (3 - 2 * u), eO = (u) => 1 - Math.pow(1 - u, 3), eX = (u) => u >= 1 ? 1 : 1 - Math.pow(2, -10 * u);
+      const eB = (u) => { const c = 1.9; return 1 + (c + 1) * Math.pow(u - 1, 3) + c * Math.pow(u - 1, 2); };
+      const eIO = (u) => u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;
+      const hash = (i, s) => { let x = (i * 374761393 + s * 668265263) | 0; x = Math.imul(x ^ (x >>> 13), 1274126177); x ^= x >>> 16; return (x >>> 0) / 4294967296; };
+      let gl, PR, tC, tK, ovG, frame = -1;
+      const PC = document.createElement("canvas"), PK = document.createElement("canvas"); PC.width = PK.width = W; PC.height = PK.height = H;
+      const gC = PC.getContext("2d"), gK = PK.getContext("2d");
+
+      // ---------------- drawing in ink: the same path laid on whichever plates the colour needs
+      function ink(mix, fn, alpha = 1) {
+        const [c, m, y, k] = mix;
+        if (c + m + y > 0) { gC.save(); gC.globalAlpha = alpha; gC.globalCompositeOperation = "lighten"; gC.fillStyle = gC.strokeStyle = `rgb(${c * 255 | 0},${m * 255 | 0},${y * 255 | 0})`; fn(gC); gC.restore(); }
+        if (k > 0) { gK.save(); gK.globalAlpha = alpha; gK.globalCompositeOperation = "lighten"; gK.fillStyle = gK.strokeStyle = `rgb(${k * 255 | 0},${k * 255 | 0},${k * 255 | 0})`; fn(gK); gK.restore(); }
+      }
+      function knock(fn) {   // back to bare paper on every plate
+        for (const g of [gC, gK]) { g.save(); g.globalCompositeOperation = "destination-out"; g.fillStyle = g.strokeStyle = "#000"; fn(g); g.restore(); }
+      }
+      const both = (fn) => { fn(gC); fn(gK); };
+      function font(g, size, wt, st = "normal") { g.font = `${wt} ${size}px "Archivo"`; g.fontStretch = st; }
+      function txt(g, s, x, y, size, wt, st, al = "center", track = 0) { font(g, size, wt, st); g.letterSpacing = track + "px"; g.textAlign = al; g.textBaseline = "alphabetic"; g.fillText(s, x, y); g.letterSpacing = "0px"; }
+      const rect = (x, y, w, h, rr = 0) => (g) => { g.beginPath(); g.roundRect(x, y, w, h, rr); g.fill(); };
+
+      // ---------------- the icons of the sources, plain shapes, cut out of a tile
+      function icon(kind, cx, cy, s) {
+        const u = s / 100; const R = (x, y, w, h, rr = 2) => rect(cx + x * u, cy + y * u, w * u, h * u, rr * u);
+        const out = [];
+        if (kind === "page") { out.push(R(-34, -46, 68, 92, 4)); }
+        if (kind === "feed") { for (let i = 0; i < 3; i++) out.push(R(-46, -40 + i * 30, 18, 18), R(-20, -38 + i * 30, 66, 7), R(-20, -27 + i * 30, 44, 5)); }
+        if (kind === "site") { out.push(R(-52, -40, 104, 14, 3), R(-52, -20, 104, 26, 2), R(-52, 12, 31, 28), R(-16, 12, 32, 28), R(21, 12, 31, 28)); }
+        if (kind === "lens") { out.push((g) => { g.beginPath(); g.arc(cx - 8 * u, cy - 8 * u, 32 * u, 0, Math.PI * 2); g.lineWidth = 13 * u; g.stroke(); g.beginPath(); g.moveTo(cx + 15 * u, cy + 15 * u); g.lineTo(cx + 46 * u, cy + 46 * u); g.lineWidth = 17 * u; g.lineCap = "round"; g.stroke(); }); }
+        if (kind === "chart") { [0.35, 0.6, 0.45, 0.85, 1.0].forEach((k, i) => out.push(R(-50 + i * 21, 44 - 88 * k, 15, 88 * k, 1))); }
+        if (kind === "news") { out.push(R(-50, -46, 100, 18)); for (let i = 0; i < 5; i++) out.push(R(-50, -18 + i * 13, 46, 6), R(4, -18 + i * 13, 46, 6)); }
+        return out;
+      }
+      function pageLines(cx, cy, s, mix) {   // the lines inside a page icon, in ink
+        const u = s / 100; ink(mix, (g) => { for (let i = 0; i < 6; i++) rect(cx - 24 * u, cy - 34 * u + i * 13 * u, (i % 3 ? 48 : 34) * u, 6 * u)(g); });
+      }
+      const TILES = [
+        { kind: "page", mix: [1, 0, 0, 0] }, { kind: "feed", mix: [0, 1, 0, 0] }, { kind: "site", mix: [0, 0, 1, 0] },
+        { kind: "news", mix: [0, 0, 0, 0.35] }, { kind: "lens", mix: [0.85, 0, 1, 0] }, { kind: "chart", mix: [0, 1, 1, 0] },
+      ];
+      const KEEP = [0, 4, 5];   // what matters: the page, the lens and the chart
+      function tileRect(i) { const col = i % 3, row = Math.floor(i / 3); return [60 + col * 610, 70 + row * 490, 580, 450]; }
+      function tile(i, x, y, w, h, alpha = 1, s = 1, rot = 0) {
+        const T = TILES[i], cx = x + w / 2, cy = y + h / 2;
+        const tr = (g) => { g.translate(cx, cy); g.rotate(rot); g.scale(s, s); g.translate(-cx, -cy); };
+        ink(T.mix, (g) => { tr(g); rect(x, y, w, h, 6)(g); }, alpha);
+        knock((g) => { tr(g); for (const f of icon(T.kind, cx, cy, Math.min(w, h) * 0.62)) f(g); });
+        if (T.kind === "page") ink([0, 0, 0, 0.8], (g) => { tr(g); const u = Math.min(w, h) * 0.62 / 100; for (let k = 0; k < 6; k++) rect(cx - 24 * u, cy - 34 * u + k * 13 * u, (k % 3 ? 48 : 34) * u, 6 * u)(g); }, alpha);
+      }
+
+      // ---------------- the words: [in, out, text, ink, where]
+      function words(b) {
+        for (const [b0, b1, s, mix, where] of TB.words) {
+          if (b < b0 - 0.01 || b > b1 + 0.6) continue;
+          const lines = s.split("|"), u = r(b, b0, b0 + 0.35), out = r(b, b1, b1 + 0.3);
+          if (where === "dive1" || where === "dive2") {
+            const y = where === "dive1" ? 500 : 790, x = where === "dive1" ? 170 : 170;
+            ink(mix, (g) => txt(g, s, x, y, 290, 900, "condensed", "left", -4));
+          } else if (where === "slam") {
+            if (b > b1) continue;
+            const k = eB(r(b, b0, b0 + 0.3)), sc = lerp(1.7, 1, k), jit = b > 16 ? (hash(Math.floor(b * 8), 3) - 0.5) * 16 : 0;
+            const size = s.length > 8 ? 250 : 380;
+            ink(mix, (g) => { g.translate(960 + jit, 600); g.rotate(-0.06); g.scale(sc, sc); txt(g, s, 0, size * 0.36, size, 900, "condensed", "center", -6); });
+          } else if (where === "left" || where === "top" || where === "yours") {
+            const size = where === "left" ? 132 : where === "top" ? 118 : 120, x = where === "left" ? 120 : 960, al = where === "left" ? "left" : "center";
+            const y0 = where === "left" ? 430 : where === "top" ? 170 : 210;
+            lines.forEach((l, i) => {
+              const v = eO(r(b, b0 + i * 0.15, b0 + i * 0.15 + 0.4)), w = r(b, b1 + i * 0.08, b1 + i * 0.08 + 0.3), yy = y0 + i * size * 0.95;
+              // each line rises out of a slot: clipped to its own baseline, so it slides up into view and drops out of it
+              ink(mix, (g) => { g.beginPath(); g.rect(0, yy - size * 0.78, W, size * 0.82); g.clip(); txt(g, l, x, yy + (1 - v) * size * 0.85 + w * size * 0.85, size, 900, "condensed", al, -2); });
+            });
+          } else if (where === "band") {
+            const v = eO(r(b, b0, b0 + 0.3)), w = r(b, b1, b1 + 0.25);
+            if (v > 0 && w < 1) {
+              ink(mix, rect(0, 0, W, 132));
+              knock((g) => { g.beginPath(); g.rect(0, 0, W, 132); g.clip(); txt(g, s, 960, 102 + (1 - v) * 120 - w * 120, 96, 900, "condensed", "center", 2); });
+            }
+          } else if (where === "deal") {
+            const v = eB(r(b, b0, b0 + 0.3)), sc = lerp(0.6, 1, v);
+            if (b > b1) continue;
+            ink(mix, (g) => { g.translate(960, 230); g.scale(sc, sc); txt(g, s, 0, 0, 200, 900, "condensed", "center", -3); });
+          }
+        }
+      }
+
+      // ---------------- the scenes. Each draws in paper coordinates and returns the camera
+      let cam = [W / 2, H / 2, 1, 0];
+      function sDive(b) {
+        ink([0, 0, 1, 0], (g) => { g.beginPath(); g.arc(1460, 560, 360, 0, Math.PI * 2); g.fill(); });
+        // a cyan gradient inside the disc: in print a gradient is dots growing, and the film starts inside one of them
+        gC.save(); gC.globalCompositeOperation = "lighten"; const gr = gC.createRadialGradient(1380, 500, 0, 1460, 560, 360);
+        gr.addColorStop(0, "rgb(170,0,0)"); gr.addColorStop(1, "rgb(8,0,0)"); gC.fillStyle = gr; gC.beginPath(); gC.arc(1460, 560, 360, 0, Math.PI * 2); gC.fill(); gC.restore();
+        ink([0, 0.6, 0, 0], (g) => { g.beginPath(); g.arc(1460, 560, 360 * eO(r(b, 2, 4)), 0, Math.PI * 2); g.lineWidth = 34; g.stroke(); });
+        words(b);
+        const u = eIO(r(b, 0.2, 5.6));
+        return [lerp(1384, 960, u), lerp(503, 540, u), Math.exp(lerp(Math.log(34), 0, u)), lerp(0.3, 0, u)];
+      }
+      function sFlood(b) {
+        const drift = sm(r(b, 15.5, 20));
+        TILES.forEach((T, i) => {
+          const sb = TB.slams[i]; if (b < sb) return;
+          const [x, y, w, h] = tileRect(i), k = eB(r(b, sb, sb + 0.35)), sc = lerp(1.3, 1, k);
+          const dx = drift * (hash(i, 5) - 0.5) * 160 + drift * Math.sin(b * 2.1 + i) * 30, dy = drift * (hash(i, 6) - 0.5) * 120, rot = drift * (hash(i, 7) - 0.5) * 0.3;
+          // wiped in from one side as it lands
+          const wv = eO(r(b, sb, sb + 0.25)), side = i % 4;
+          for (const g of [gC, gK]) { g.save(); g.beginPath();
+            if (side === 0) g.rect(x - 200, y - 200, (w + 400) * wv, h + 400); else if (side === 1) g.rect(x - 200, y - 200, w + 400, (h + 400) * wv);
+            else if (side === 2) g.rect(x + w + 200 - (w + 400) * wv, y - 200, w + 400, h + 400); else g.rect(x - 200, y + h + 200 - (h + 400) * wv, w + 400, h + 400);
+            g.clip(); }
+          tile(i, x + dx, y + dy, w, h, 1, sc, rot);
+          for (const g of [gC, gK]) g.restore();
+        });
+        // the collapse into the key plate
+        words(b);
+        const c = eIO(r(b, 19.6, 20.0));
+        return [960, 540, lerp(1, 1.08, sm(r(b, 8, 20))) * (1 + c * 3), drift * 0.04];
+      }
+      function docPage(b, alpha, prog) {   // the knowledge document: a page, its headings and rows, drawn line by line
+        const x = 1020, y = 150, w = 760, h = 800;
+        ink([0, 0, 0, 1], (g) => { g.lineWidth = 8; g.setLineDash([2 * (w + h) * prog, 99999]); g.beginPath(); g.roundRect(x, y, w, h, 8); g.stroke(); g.setLineDash([]); }, alpha);
+        let yy = y + 70, n = 0;
+        for (let sec = 0; sec < 3; sec++) {
+          const t0 = 21.0 + sec * 1.6;
+          ink([0, 0, 0, 1], rect(x + 50, yy, (w * 0.42) * eO(r(b, t0, t0 + 0.4)), 34, 3), alpha); yy += 64;
+          for (let k = 0; k < 4; k++) { const t1 = t0 + 0.3 + k * 0.25, ww = (w - 150) * (0.92 - 0.1 * ((k * 7 + sec) % 4)) * eO(r(b, t1, t1 + 0.3));
+            ink([0, 0, 0, 0.55], rect(x + 90, yy, ww, 14, 2), alpha); yy += 34; n++; }
+          yy += 40;
+        }
+      }
+      function sKey(b) {
+        docPage(b, 1, eO(r(b, 20.4, 21.4)));
+        words(b);
+        return [960, 540, lerp(1.06, 1.0, eO(r(b, 20, 22))), 0];
+      }
+      function cardRect(j) { return [130 + j * 570, 470, 520, 440]; }
+      function sSweep(b) {
+        const sx = TB.sweep, X = lerp(-160, W + 160, eIO(r(b, sx[0], sx[1])));
+        docPage(1e3, 0.18, 1);
+        // the sources come back, faint, scattered; the roller takes away all but what matters
+        TILES.forEach((T, i) => {
+          const keep = KEEP.indexOf(i), [x, y, w, h] = tileRect(i);
+          const dx = (hash(i, 5) - 0.5) * 160, dy = (hash(i, 6) - 0.5) * 120 + 140, rot = (hash(i, 7) - 0.5) * 0.3;
+          if (keep < 0) {
+            for (const g of [gC, gK]) { g.save(); g.beginPath(); g.rect(X, -200, W + 400, H + 400); g.clip(); }
+            tile(i, x + dx, y + dy, w, h, 0.42, 0.8, rot);
+            for (const g of [gC, gK]) g.restore();
+          } else {
+            const lb = TB.locks[1 + keep], u = eB(r(b, lb - 0.5, lb)), [cx, cy, cw, ch] = cardRect(keep);
+            tile(i, lerp(x + dx, cx, u), lerp(y + dy, cy, u), lerp(w, cw, u), lerp(h, ch, u), lerp(0.42, 1, r(b, lb - 0.1, lb)), lerp(0.8, 1, u), rot * (1 - u));
+          }
+        });
+        // the roller: a black drum with a cyan sheen, crossing the sheet
+        if (b > sx[0] - 0.1 && b < sx[1] + 0.2) {
+          ink([0, 0, 0, 1], rect(X - 40, -40, 80, H + 80, 10));
+          ink([0.7, 0, 0, 0], rect(X - 18, -40, 12, H + 80, 4));
+        }
+        words(b);
+        return [960, 540, lerp(1.04, 1.0, eO(r(b, 28, 30))), 0];
+      }
+      function briefPage(b, ox, oy, s, full) {
+        // the briefing, typeset: a masthead and three items, each with its source as a small colour tile
+        const L = TB.brief.lines, X = (x) => ox + x * s, Y = (y) => oy + y * s, S = (v) => v * s;
+        const on = (i) => full ? 1 : eO(r(b, L[i], L[i] + 0.3));
+        ink([0, 0, 0, 1], rect(X(0), Y(0), S(1500), S(10)));
+        ink([0, 0, 0, 1], rect(X(0), Y(150), S(1500), S(4)));
+        if (on(0) > 0) ink([0, 0, 0, 1], (g) => { g.save(); g.beginPath(); g.rect(X(0), Y(14), S(1500) * on(0), S(132)); g.clip(); txt(g, TB.brief.head, X(0), Y(128), S(126), 900, "condensed", "left", -2); g.restore(); });
+        TB.brief.items.forEach(([hd, why], i) => {
+          const v = on(i + 1); if (v <= 0) return;
+          const yy = 200 + i * 205, tI = KEEP[i];
+          // the tile prints plate by plate: cyan, then magenta, then yellow, then black
+          const T = TILES[tI], sub = full ? 4 : Math.floor(r(b, L[i + 1], L[i + 1] + 0.4) * 4.999);
+          const mix = T.mix.map((q, p) => (p < sub ? q : 0));
+          if (mix.some((q) => q > 0)) { ink(mix, rect(X(0), Y(yy), S(170), S(170), S(6))); knock((g) => { for (const f of icon(T.kind, X(85), Y(yy + 85), S(105))) f(g); }); }
+          ink([0, 0, 0, 1], (g) => { g.save(); g.beginPath(); g.rect(X(220), Y(yy), S(1700) * v, S(180)); g.clip();
+            txt(g, hd, X(220), Y(yy + 78), S(72), 800, "semi-condensed", "left", 0); g.restore(); });
+          ink([0, 1, 0.15, 0], (g) => { g.save(); g.beginPath(); g.rect(X(220), Y(yy), S(1700) * eO(r(b, L[i + 1] + 0.2, L[i + 1] + 0.6)) * (full ? 1 : 1), S(180)); g.clip();
+            txt(g, why, X(220), Y(yy + 142), S(48), 600, "semi-condensed", "left", 1); g.restore(); });
+        });
+      }
+      function sPress(b) {
+        const P = TB.press.run, u = r(b, P[0], P[1]);
+        // the web: pages run up the press, slowing to a stop on the briefing
+        const dist = 1220 * TB.press.pages, pos = dist * (1 - eO(u)) ;
+        const top = 210 - pos;
+        for (let k = TB.press.pages; k >= 0; k--) {
+          const py = top + k * 1220 - (TB.press.pages) * 0; if (py > H + 40 || py < -1300) continue;
+          if (k === 0) continue;
+          // the pages before: a masthead rule and columns of grey type
+          ink([0, 0, 0, 0.8], rect(210, py, 1500, 10)); ink([0, 0, 0, 0.6], rect(210, py + 40, 900, 90));
+          for (let c = 0; c < 3; c++) for (let l = 0; l < 22; l++) ink([0, 0, 0, 0.35], rect(210 + c * 510, py + 180 + l * 34, 470 * (0.7 + 0.3 * hash(k * 99 + c * 31 + l, 3)), 12));
+          ink(TILES[(k * 2) % 6].mix, rect(210 + ((k % 3)) * 510, py + 180, 470, 300, 4));
+        }
+        briefPage(b, 210, top, 1, false);
+        words(b);
+        const push = sm(r(b, 46.5, 53));
+        return [960, 540 + push * 40, 1 + push * 0.1, 0];
+      }
+      function slotRect(row, d) { return [140 + d * 240, 400 + row * 330, 200, 270]; }
+      function sheet(x, y, w, h, i, rot, s) {
+        const cx = x + w / 2, cy = y + h / 2, tr = (g) => { g.translate(cx, cy); g.rotate(rot); g.scale(s, s); g.translate(-cx, -cy); };
+        knock((g) => { tr(g); rect(x, y, w, h)(g); });
+        ink([0, 0, 0, 1], (g) => { tr(g); g.lineWidth = 3; g.strokeRect(x, y, w, h); rect(x + 14, y + 16, w - 28, 16)(g); });
+        ink(TILES[KEEP[i % 3]].mix, (g) => { tr(g); for (let k = 0; k < 3; k++) rect(x + 14, y + 52 + k * 64, 40, 40, 2)(g); });
+        ink([0, 0, 0, 0.6], (g) => { tr(g); for (let k = 0; k < 3; k++) { rect(x + 64, y + 56 + k * 64, w - 82, 10)(g); rect(x + 64, y + 76 + k * 64, (w - 82) * 0.6, 8)(g); } });
+      }
+      function sDeal(b) {
+        // the briefing flies down to its first day
+        const f = eIO(r(b, 53, 53.9));
+        if (f < 1) { const s = lerp(1, 0.13, f); briefPage(b, lerp(210, 140, f), lerp(210, 400, f), s, true); }
+        for (let row = 0; row < 2; row++) for (let d = 0; d < 7; d++) { const [x, y, w, h] = slotRect(row, d), v = eO(r(b, 53.4 + d * 0.06 + row * 0.2, 53.8 + d * 0.06 + row * 0.2));
+          ink([0, 0, 0, 0.45], (g) => { g.lineWidth = 4; g.setLineDash([2 * (w + h) * v, 9999]); g.strokeRect(x, y, w, h); g.setLineDash([]); }); }
+        TB.deals.forEach((db, d) => {
+          if (b < db - 0.35) return;
+          const [x, y, w, h] = slotRect(0, d), u = eB(r(b, db - 0.35, db));
+          sheet(lerp(860, x, u), lerp(1200, y, u), w, h, d, (1 - u) * (hash(d, 4) - 0.5) * 1.2, 1);
+        });
+        if (b >= TB.weekly - 0.35) { const [x, y, w, h] = slotRect(1, 0), u = eB(r(b, TB.weekly - 0.35, TB.weekly)); sheet(lerp(860, x, u), lerp(1300, y, u), w, h, 0, (1 - u) * 0.5, lerp(1.5, 1, u)); }
+        words(b);
+        const shake = b > TB.weekly && b < TB.weekly + 0.4 ? Math.sin((b - TB.weekly) * 60) * 10 * (1 - r(b, TB.weekly, TB.weekly + 0.4)) : 0;
+        return [960 + shake, 540, 1, 0];
+      }
+      function sYours(b) {
+        const v = eB(r(b, 63.1, 63.6)), s = lerp(0.3, 1, v);
+        const cx = 960, cy = 690, w = 520 * s, h = 360 * s, x = cx - w / 2, y = cy - h / 2;
+        ink([0, 0.25, 1, 0], (g) => { rect(x, y - 52 * s, w * 0.4, 70 * s, 12 * s)(g); rect(x, y, w, h, 18 * s)(g); });
+        ink([0, 0, 0, 1], (g) => { g.lineWidth = 8; g.beginPath(); g.roundRect(x, y, w, h, 18 * s); g.stroke(); });
+        words(b);
+        // the ink flood: black spreads from the middle until the sheet is solid
+        const fl = eIO(r(b, TB.flood[0], TB.flood[1]));
+        if (fl > 0) ink([0, 0, 0, 1], (g) => { g.beginPath(); g.arc(960, 540, 1200 * fl, 0, Math.PI * 2); g.fill(); });
+        return [960, 540, lerp(1, 1.06, sm(r(b, 63, 68))), 0];
+      }
+
+      // ---------------- registration: how far each plate is out, and which way
+      const DIRS = [[0.95, 0.3], [-0.55, 0.85], [0.2, -0.98], [-0.8, -0.6]];
+      function offsets(b) {
+        let m = 0, jit = 0;
+        if (b < 8) { m = 46 * (1 - eB(r(b, TB.locks[0] - 0.5, TB.locks[0]))); jit = 0.3; }
+        else if (b < 20) { m = 30 * sm(r(b, 15.5, 19.8)); jit = 1; }
+        else if (b < 28) m = 0;
+        else if (b < 38) { m = 26 * (1 - r(b, 28, 28.4) * 0) ; const L = TB.locks; m = b < L[1] ? 26 : b < L[2] ? 16 : b < L[3] ? 8 : 0; const k = [L[1], L[2], L[3]].find((q) => b >= q && b < q + 0.25); if (k) m *= 1 - eB(r(b, k, k + 0.25)) * 0; jit = b < L[3] ? 0.5 : 0; }
+        else if (b < 53) { m = 18 * (1 - eB(r(b, TB.locks[4] - 0.4, TB.locks[4]))); jit = 0.6; }
+        else if (b < 66) m = 0;
+        else { m = 300 * eIO(r(b, TB.fan[0], TB.fan[1])) * (1 - eIO(r(b, TB.flood[0] + 0.3, TB.flood[1]))); }
+        const fb = Math.floor(b * 8);
+        return DIRS.map(([dx, dy], i) => [dx * m + (hash(fb, i * 3 + 1) - 0.5) * m * jit, dy * m + (hash(fb, i * 3 + 2) - 0.5) * m * jit]);
+      }
+      function noise(b) {
+        if (b >= 15.5 && b < 20) return sm(r(b, 15.5, 19.4));
+        if (b >= 28 && b < 33) return 0.85;
+        return 0;
+      }
+
+      function scene(b) {
+        for (const g of [gC, gK]) { g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.globalCompositeOperation = "source-over"; g.clearRect(0, 0, W, H); }
+        // the camera is set before drawing, from the scene that's on: draw once to learn it, then for real
+        const S = b < 8 ? sDive : b < 20 ? sFlood : b < 28 ? sKey : b < 38 ? sSweep : b < 53 ? sPress : b < 63 ? sDeal : sYours;
+        const camOf = (bb) => { const save = [gC, gK].map((g) => g.getTransform()); for (const g of [gC, gK]) g.save(); const c = S(bb); for (const g of [gC, gK]) { g.restore(); } return c; };
+        let c = cam;
+        c = camOf(b);
+        for (const g of [gC, gK]) { g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, W, H); }
+        // the whip between the sweep and the press: the old scene leaves upwards as the new one comes up from below
+        const whip = b >= 38 && b < 38.5 ? eIO(r(b, 38, 38.5)) : -1;
+        const setT = (cc, dy) => { for (const g of [gC, gK]) { g.setTransform(1, 0, 0, 1, 0, 0); g.translate(W / 2, H / 2 + dy); g.rotate(cc[3]); g.scale(cc[2], cc[2]); g.translate(-cc[0], -cc[1]); } };
+        if (whip >= 0) {
+          const c0 = [960, 540, 1, 0]; setT(c0, -whip * H * 1.1); sSweep(37.99);
+          setT(c, (1 - whip) * H * 1.1); for (const g of [gC, gK]) g.save(); S(b); for (const g of [gC, gK]) g.restore();
+          return [c, whip];
+        }
+        setT(c, 0); for (const g of [gC, gK]) g.save(); S(b); for (const g of [gC, gK]) g.restore();
+        return [c, -1];
+      }
+
+      function prog(vs, fs, names) {
+        const sh = (t, src) => { const s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+        const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
+        if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+        const U = {}; for (const n of names) U[n] = gl.getUniformLocation(p, n); return { p, U };
+      }
+      function texOf() { const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t); for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v); return t; }
+      function initGL() {
+        gl = $("#stage").getContext("webgl2", { antialias: false, alpha: false, depth: false, stencil: false, preserveDrawingBuffer: true });
+        PR = prog(VS, FS, ["uCMY", "uK", "uRes", "uCam", "uCell", "uOff", "uNoise", "uSweepX", "uTq", "uGain"]);
+        tC = texOf(); tK = texOf(); gl.bindVertexArray(gl.createVertexArray());
+        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+      }
+      function draw(nf) {
+        const b = (nf / FPS) / BEAT, [c] = scene(b), off = offsets(b);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tC); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, PC);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, tK); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, PK);
+        gl.viewport(0, 0, W, H); gl.useProgram(PR.p); const U = PR.U;
+        gl.uniform1i(U.uCMY, 0); gl.uniform1i(U.uK, 1); gl.uniform2f(U.uRes, W, H);
+        gl.uniform4f(U.uCam, c[0], c[1], c[2], c[3]); gl.uniform1f(U.uCell, CELL);
+        gl.uniform2fv(U.uOff, off.flat());
+        const sw = TB.sweep; gl.uniform1f(U.uNoise, noise(b)); gl.uniform1f(U.uSweepX, b >= sw[0] && b < 38 ? lerp(-160, W + 160, eIO(r(b, sw[0], sw[1]))) : -1e4);
+        gl.uniform1f(U.uTq, Math.floor(b * 4)); gl.uniform1f(U.uGain, 1.0);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+      }
+
+      // ---------------- the flat layer: the demo label, and the end card with the mark placed flat
+      const BONE = "#F3EAD6", DARK = "#0B0C10";
+      function mono(g, s, x, y, size, col, al = "left") { g.font = `500 ${size}px JBM`; g.letterSpacing = "0.08em"; g.textAlign = al; g.textBaseline = "alphabetic"; g.fillStyle = col; g.fillText(s, x, y); g.letterSpacing = "0px"; }
+      function overlay(g, nf) {
+        const b = (nf / FPS) / BEAT; g.clearRect(0, 0, W, H);
+        if (b < 0.6) { g.fillStyle = `rgba(11,12,16,${1 - r(b, 0, 0.6)})`; g.fillRect(0, 0, W, H); }
+        if (b >= 1 && b < TB.logo) { g.font = "500 18px JBM"; g.letterSpacing = "0.08em"; const s = TB.label, w = g.measureText(s).width + 22; g.fillStyle = "rgba(11,12,16,0.88)"; g.fillRect(40, H - 68, w, 32); g.letterSpacing = "0px"; mono(g, s, 51, H - 46, 18, BONE); }
+        if (b >= TB.logo) { const u = r(b, TB.logo + 0.1, TB.logo + 0.8), lw = 926 * 0.72, lh = 193 * 0.72, a = 1 - r(b, TB.beats - 0.4, TB.beats), e = eO(u);
+          g.fillStyle = DARK; g.fillRect(0, 0, W, H);
+          g.globalAlpha = e * a; g.drawImage($("#logo"), W / 2 - lw / 2, 300 - (1 - e) * 14, lw, lh);
+          g.font = '800 84px "Archivo"'; g.fontStretch = "normal"; g.textAlign = "center"; g.textBaseline = "alphabetic"; g.fillStyle = BONE; g.globalAlpha = a * r(b, TB.logo + 0.4, TB.logo + 0.9); g.fillText("AI Research & Briefing Systems", W / 2, 610);
+          g.globalAlpha = a * r(b, TB.logo + 0.8, TB.logo + 1.3); mono(g, "ai.joaoqueiros.com", W / 2, 690, 28, BONE, "center"); mono(g, "A SERVICE · THIS FILM IS CODE", W / 2, 744, 20, "#E2A23A", "center"); g.globalAlpha = 1; }
+      }
+      function paint(t) {
+        const nf = Math.min(Math.floor(t * FPS + 1e-6), Math.round(DUR * FPS) - 1); if (nf === frame) return;
+        frame = nf; draw(nf); overlay(ovG, nf);
+      }
+      const tl = gsap.timeline({ paused: true }), clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+      async function build() {
+        await Promise.all([$("#logo").decode(), document.fonts.load('900 40px "Archivo"'), document.fonts.load('600 40px "Archivo"'), document.fonts.load('500 20px "JBM"')]);
+        ovG = $("#over").getContext("2d"); initGL();
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(0);
+        window.__timelines = window.__timelines || {}; window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+      window.__hf = window.__hf || {}; window.__hf.buildReady = window.__hf.buildReady || {}; window.__hf.buildReady["register"] = build();
+    </script>
+  </body>
+</html>
