@@ -106,6 +106,14 @@ Made for: Imagined Worlds · Stills. Stack: Three.js, TSL, GSAP, Python (score).
 
 ## Products and systems
 
+### R53 · Channels
+
+A fingertip carves channels between five islands of sand, and 100,000 grains of work run down them, through one basin that sends each grain its way.
+
+Made for: AI Workflow Integration · JQ AI SYSTEMS. Stack: HyperFrames, WebGL2, Canvas 2D, GSAP, Python, FFmpeg.
+
+[Recipe and poster](../recipes/r53-channels/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r53-channels-v1)
+
 ### R52 · Same Sand
 
 One pile of sand flows into a brief, a post, an email, a caption, a carousel and four languages, and once the voice is poured in, not a grain is added or taken away.
