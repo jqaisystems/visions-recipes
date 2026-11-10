@@ -1,0 +1,253 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <title>Pressed</title>
+    <!-- Pressed: a pin screen made entirely in code. A wall of 36,864 steel pins under one low raking light, and every picture, every word and the
+         briefing is a relief pushed into it from behind. The sources, the field and the briefing are a demo, and this film is code. -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/table.js"></script>
+    <style>
+      @font-face { font-family: "Archivo"; src: url("assets/fonts/Archivo.ttf") format("truetype"); font-weight: 100 900; font-stretch: 62% 125%; }
+      @font-face { font-family: "JBM"; src: url("assets/fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 100 800; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #08090C; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #08090C; }
+      #ct-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #stage, #over { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #logo { position: absolute; left: -2000px; top: 0; width: 926px; height: 193px; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="38.4" data-width="1920" data-height="1080">
+      <div id="ct-stage" class="clip" data-start="0" data-duration="38.4" data-track-index="0">
+        <canvas id="stage" width="1920" height="1080" data-layout-allow-overflow></canvas>
+        <canvas id="over" width="1920" height="1080" data-layout-allow-overflow></canvas>
+        <img id="logo" src="assets/brand/your-mark.svg" alt="Your mark" data-layout-allow-overflow>
+      </div>
+      <audio id="score" src="assets/bgm/score.wav" data-start="0" data-duration="38.4" data-track-index="7" data-volume="1"></audio>
+    </div>
+
+    <script>
+      // The wall: NX by NY pins. Each frame, every pin's height is worked out from the time alone (the reliefs pressed in so far, the noise,
+      // the filter wave), uploaded as one small texture, and the shader draws each pixel as the frontmost pin there, shaft and domed head,
+      // in a slight perspective, with its shadow traced back towards the lamp through the heights of the pins in between.
+      const TB = window.TABLE, W = TB.w, H = TB.h, FPS = 30, BEAT = TB.beat, DUR = TB.dur, NX = TB.nx, NY = TB.ny, P = TB.pitch, OX = TB.ox, OY = TB.oy, EXT = TB.ext;
+      const CAMD = 7000;
+
+      const VS = `#version 300 es
+void main(){ vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2); gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }`;
+      // ---------------- the picture: pins of steel under one raking lamp
+      const FS = `#version 300 es
+precision highp float; out vec4 o;
+uniform highp sampler2D uH; uniform vec2 uRes; uniform float uP; uniform vec2 uO; uniform float uE; uniform vec2 uVP; uniform float uD;
+uniform vec3 uL; uniform float uLi; uniform vec2 uSpot; uniform ivec2 uN;
+float h21(vec2 p){ vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+float hAt(ivec2 c){ if (c.x < 0 || c.y < 0 || c.x >= uN.x || c.y >= uN.y) return -1.0; return texelFetch(uH, c, 0).r; }
+vec2 base(ivec2 c){ return uO + (vec2(c) + 0.5) * uP; }
+vec2 proj(vec2 b, float z){ return uVP + (b - uVP) * uD / (uD - z); }
+void main(){
+  vec2 x = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y);
+  float RH = uP * 0.47, RS = uP * 0.17, BZ = -RH * 0.55;
+  // the pins that could cover this pixel lean away from the vanishing point, so look back along that lean
+  vec2 sm = (x - uVP) * (uE + RH) / uD;
+  vec2 a = (min(x, x - sm) - uO) / uP - 1.0, b = (max(x, x - sm) - uO) / uP + 1.0;
+  ivec2 c0 = ivec2(floor(a)), c1 = ivec2(floor(b));
+  float bestZ = -1e9; vec3 n = vec3(0.0, 0.0, 1.0); vec3 Pw = vec3(x, BZ); float hh = 0.0, isPin = 0.0, cid = 0.0;
+  for (int j = c0.y; j <= c1.y; j++) for (int i = c0.x; i <= c1.x; i++) {
+    ivec2 c = ivec2(i, j); float h = hAt(c); if (h < 0.0) continue;
+    vec2 bs = base(c); float zt = h * uE; vec2 tp = proj(bs, zt);
+    vec2 d = x - tp; float dd = dot(d, d);
+    if (dd < RH * RH) { float zz = sqrt(RH * RH - dd), z = zt + zz;
+      if (z > bestZ) { bestZ = z; n = vec3(d / RH, zz / RH); Pw = vec3(bs + d, z); hh = h; isPin = 1.0; cid = float(i * 977 + j); } }
+    vec2 bb = proj(bs, BZ), ax = tp - bb; float al = dot(ax, ax);
+    if (al > 0.5) { float t = clamp(dot(x - bb, ax) / al, 0.0, 1.0); vec2 q = x - (bb + ax * t); float qd = dot(q, q);
+      if (qd < RS * RS) { float z = mix(BZ, zt, t) + sqrt(RS * RS - qd) * 0.3;
+        if (z > bestZ) { bestZ = z; vec2 pn = q / RS; n = normalize(vec3(pn, 0.25 * sqrt(max(1.0 - dot(pn, pn), 0.0)))); Pw = vec3(bs + q, z); hh = h * t; isPin = 0.7; cid = float(i * 977 + j); } } }
+  }
+  bool inWall = x.x > uO.x - 2.0 && x.y > uO.y - 2.0 && x.x < uO.x + float(uN.x) * uP + 2.0 && x.y < uO.y + float(uN.y) * uP + 2.0;
+  // the shadow: from the point we see, back towards the lamp, through the heads of the pins in between
+  vec2 l2 = normalize(uL.xy); float slope = uL.z / length(uL.xy), sh = 1.0, stp = uP * 0.5;
+  for (int k = 1; k <= 30; k++) {
+    float s = float(k) * stp; vec2 q = Pw.xy + l2 * s; float rz = Pw.z + slope * s; if (rz > uE + RH) break;
+    ivec2 c = ivec2(floor((q - uO) / uP)); float h = hAt(c); if (h < 0.0) continue;
+    float top = h * uE + RH * 0.7, dc = length(q - base(c));
+    if (top > rz) sh = min(sh, 1.0 - smoothstep(RH * 1.2, RH * 0.5, dc) * smoothstep(0.0, 6.0, top - rz) * (1.0 - float(k) / 40.0));
+  }
+  // the lamp: warm, low, a soft pool that moves; a faint cool fill from above
+  float pool = exp(-dot(x - uSpot, x - uSpot) / (2.0 * 900.0 * 900.0));
+  float key = uLi * (0.22 + 2.6 * pool * pool);
+  vec3 V = normalize(vec3((uVP - x) / uD * 0.3, 1.0)), Hh = normalize(uL + V);
+  float dif = max(dot(n, uL), 0.0), spe = pow(max(dot(n, Hh), 0.0), 48.0), rim = pow(max(dot(n, Hh), 0.0), 7.0);
+  vec3 R = reflect(-V, n); float sheen = pow(max(dot(R, normalize(vec3(uL.xy * 0.6, 0.8))), 0.0), 5.0);
+  vec3 warm = vec3(1.0, 0.86, 0.70), cool = vec3(0.42, 0.52, 0.66);
+  float fill = max(dot(n, normalize(vec3(0.15, -0.7, 0.7))), 0.0) * 0.07 * uLi;
+  vec3 col;
+  if (isPin > 0.0 && inWall) {
+    float var = 0.88 + 0.24 * h21(vec2(cid, 3.1)), depth = mix(0.34, 1.4, clamp(hh, 0.0, 1.0)), shd = 0.3 + 0.7 * sh;
+    vec3 steel = vec3(0.42, 0.43, 0.46) * var;
+    col = steel * (0.10 + 0.9 * dif * shd) * key * warm * depth + warm * (spe * 1.4 + rim * 0.14 + sheen * 0.22) * sh * key * depth + cool * fill * depth;
+  } else if (inWall) {
+    float hole = 0.6 + 0.4 * h21(floor(x * 0.5));
+    col = vec3(0.03, 0.03, 0.034) * (0.35 + 0.65 * sh) * key * hole * warm;
+  } else {
+    vec2 e = max(uO - x, x - (uO + vec2(uN) * uP)); float bev = clamp(1.0 - max(e.x, e.y) / 22.0, 0.0, 1.0);
+    col = vec3(0.022, 0.022, 0.026) * key * (0.4 + 0.8 * bev);
+  }
+  vec2 cv = (x / uRes - 0.5) * vec2(1.0, 0.8); col *= 1.0 - 0.42 * dot(cv, cv) * 1.6;
+  col = col / (1.0 + col * 0.55); col = pow(max(col, 0.0), vec3(0.86));
+  o = vec4(col + (h21(x + 11.0) - 0.5) / 255.0, 1.0);
+}`;
+
+      const $ = (s) => document.querySelector(s);
+      const r = (x, a, b) => Math.min(1, Math.max(0, (x - a) / (b - a))), lerp = (a, b, u) => a + (b - a) * u, sm = (u) => u * u * (3 - 2 * u);
+      const hash = (i, s) => { let x = (i * 374761393 + s * 668265263) | 0; x = Math.imul(x ^ (x >>> 13), 1274126177); x ^= x >>> 16; return (x >>> 0) / 4294967296; };
+      let gl, ovG, PR, hTex, frame = -1, LAY = [];
+      const N = NX * NY, HGT = new Float32Array(N), PX = new Float32Array(N), PY = new Float32Array(N), HN = new Float32Array(N);
+      for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) { const k = j * NX + i; PX[k] = OX + (i + 0.5) * P; PY[k] = OY + (j + 0.5) * P; HN[k] = hash(k, 17); }
+
+      // ---------------- every relief, drawn once at four samples per pin and averaged down to one height per pin
+      const SS = 4, RC = document.createElement("canvas"); RC.width = NX * SS; RC.height = NY * SS;
+      const RG = RC.getContext("2d", { willReadFrequently: true });
+      function raster(marks) {
+        const g = RG; g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.fillStyle = "#000"; g.fillRect(0, 0, RC.width, RC.height);
+        g.setTransform(SS / P, 0, 0, SS / P, -OX * SS / P, -OY * SS / P); g.lineCap = "round";
+        for (const m of marks) {
+          const t = m[0]; g.fillStyle = g.strokeStyle = "#fff";
+          if (t === "rect") { g.globalAlpha = m[5]; g.beginPath(); g.roundRect(m[1], m[2], m[3], m[4], m[6]); g.fill(); }
+          else if (t === "frame") { g.globalAlpha = m[6]; g.lineWidth = m[5]; g.beginPath(); g.roundRect(m[1] + m[5] / 2, m[2] + m[5] / 2, m[3] - m[5], m[4] - m[5], m[7]); g.stroke(); }
+          else if (t === "circ") { g.globalAlpha = m[5]; g.beginPath(); g.arc(m[1], m[2], m[3], 0, Math.PI * 2); if (m[4] > 0) { g.lineWidth = m[4]; g.stroke(); } else g.fill(); }
+          else if (t === "line") { g.globalAlpha = m[6]; g.lineWidth = m[5]; g.beginPath(); g.moveTo(m[1], m[2]); g.lineTo(m[3], m[4]); g.stroke(); }
+          else if (t === "text") { const [, s, x, y, size, wt, v, al, fit] = m; g.globalAlpha = v; let sz = size; g.font = `${wt} ${sz}px "Archivo"`;
+            if (fit > 0) { const w = g.measureText(s).width; if (w > fit) { sz = size * fit / w; g.font = `${wt} ${sz}px "Archivo"`; } }
+            g.textAlign = al === "c" ? "center" : "left"; g.textBaseline = "alphabetic"; g.fillText(s, x, y); }
+        }
+        const d = g.getImageData(0, 0, RC.width, RC.height).data, out = new Float32Array(N), RW = RC.width;
+        let sx = 0, sy = 0, cnt = 0;
+        for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) {
+          let s = 0; for (let v = 0; v < SS; v++) for (let u = 0; u < SS; u++) s += d[((j * SS + v) * RW + i * SS + u) * 4];
+          const val = Math.pow(s / (SS * SS * 255), 0.8); out[j * NX + i] = val; if (val > 0.05) { sx += PX[j * NX + i]; sy += PY[j * NX + i]; cnt++; }
+        }
+        return { h: out, cx: cnt ? sx / cnt : W / 2, cy: cnt ? sy / cnt : H / 2 };
+      }
+      function wkey(K, b) {
+        if (b <= K[0][0]) return K[0][1]; if (b >= K[K.length - 1][0]) return K[K.length - 1][1];
+        let i = 0; while (K[i + 1][0] < b) i++; const a = K[i], c = K[i + 1]; return lerp(a[1], c[1], sm(r(b, a[0], c[0])));
+      }
+      function mkey(M, b) {   // a move: [beat, dx, dy, scale], eased between keys
+        if (!M) return null; if (b <= M[0][0]) return [0, 0, 1];
+        let i = 0; while (i < M.length - 1 && M[i + 1][0] < b) i++;
+        const a = M[i], c = M[Math.min(i + 1, M.length - 1)], u = c[0] > a[0] ? sm(r(b, a[0], c[0])) : 1;
+        return [lerp(a[1], c[1], u), lerp(a[2], c[2], u), lerp(a[3], c[3], u)];
+      }
+      function build_layers() {
+        LAY = TB.layers.map((l) => {
+          const R = raster(l.marks), dl = new Float32Array(N), mx = Math.hypot(W, H) / 2;
+          for (let k = 0; k < N; k++) {
+            let v = l.delay === "x" ? (PX[k] - OX) / (NX * P) : l.delay === "y" ? (PY[k] - OY) / (NY * P) : l.delay === "r" ? Math.hypot(PX[k] - R.cx, PY[k] - R.cy) / 600 : HN[k];
+            dl[k] = (Math.min(1, v) * 0.85 + hash(k, 29) * 0.15) * l.spread;
+          }
+          const ks = l.keys.map((q) => q[0]);
+          return { ...l, h: R.h, dl, t0: Math.min(...ks), t1: Math.max(...ks) + l.spread, end: l.keys[l.keys.length - 1][1] };
+        });
+      }
+      // ---------------- every pin's height at beat b
+      function heights(b) {
+        HGT.fill(0);
+        const front = TB.wave[0][0] <= b ? lerp(TB.wave[0][1], TB.wave[1][1], r(b, TB.wave[0][0], TB.wave[1][0])) : -1e4;
+        const waving = b >= TB.wave[0][0] - 0.2 && b <= TB.wave[1][0] + 0.4;
+        const filt = (k) => b < TB.wave[0][0] ? 1 : sm(r(PX[k], front - 70, front + 10));
+        for (const l of LAY) {
+          if (b < l.t0 || (b > l.t1 && l.end === 0)) continue;
+          const mv = mkey(l.move, b), A = l.anchor;
+          for (let k = 0; k < N; k++) {
+            const w = wkey(l.keys, b - l.dl[k]); if (w <= 0) continue;
+            let v;
+            if (mv && (mv[0] !== 0 || mv[1] !== 0 || mv[2] !== 1)) {   // the relief slides and shrinks: sample it where this pin came from
+              const qx = A[0] + (PX[k] - A[0] - mv[0]) / mv[2], qy = A[1] + (PY[k] - A[1] - mv[1]) / mv[2];
+              const fi = (qx - OX) / P - 0.5, fj = (qy - OY) / P - 0.5, i0 = Math.floor(fi), j0 = Math.floor(fj), u = fi - i0, t = fj - j0;
+              const g = (i, j) => (i < 0 || j < 0 || i >= NX || j >= NY) ? 0 : l.h[j * NX + i];
+              v = lerp(lerp(g(i0, j0), g(i0 + 1, j0), u), lerp(g(i0, j0 + 1), g(i0 + 1, j0 + 1), u), t);
+            } else v = l.h[k];
+            if (v <= 0) continue;
+            HGT[k] += w * v * (l.filt ? filt(k) : 1);
+          }
+        }
+        // the noise: every pin pushed to a height of its own, changing on the sixteenths
+        const na = wkey(TB.noise, b);
+        if (na > 0) {
+          const s = b * 4;
+          for (let k = 0; k < N; k++) { const ph = s + HN[k], f = Math.floor(ph), u = sm(ph - f), v = lerp(hash(k, f), hash(k, f + 1), u);
+            HGT[k] += na * Math.pow(v, 1.6) * 0.9 * filt(k) * (PY[k] < 250 ? 0.25 : 1); }
+        }
+        // the wave itself: a ridge that rolls across and leaves the wall flat behind it
+        if (waving) for (let k = 0; k < N; k++) { const d = (PX[k] - front) / 46; HGT[k] += 0.62 * Math.exp(-d * d) * (0.85 + 0.3 * HN[k]); }
+        // a breath when the light comes on
+        if (b > 1.0 && b < 7.0) { const rr = (b - 1.2) * 520, a = 0.16 * (1 - r(b, 4.0, 7.0));
+          for (let k = 0; k < N; k++) { const d = (Math.hypot(PX[k] - W / 2, PY[k] - H / 2) - rr) / 70; HGT[k] += a * Math.exp(-d * d); } }
+        for (let k = 0; k < N; k++) HGT[k] = Math.min(1, HGT[k]);
+        return HGT;
+      }
+
+      function prog(vs, fs, names) {
+        const sh = (t, src) => { const s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+        const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
+        if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+        const U = {}; for (const n of names) U[n] = gl.getUniformLocation(p, n); return { p, U };
+      }
+      function initGL() {
+        gl = $("#stage").getContext("webgl2", { antialias: false, alpha: false, depth: false, stencil: false, preserveDrawingBuffer: true });
+        PR = prog(VS, FS, ["uH", "uRes", "uP", "uO", "uE", "uVP", "uD", "uL", "uLi", "uSpot", "uN"]);
+        hTex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, hTex); gl.texStorage2D(gl.TEXTURE_2D, 1, gl.R32F, NX, NY);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.bindVertexArray(gl.createVertexArray());
+      }
+      function lk(K, b, n) {   // a light or camera key, [beat, ...values], eased
+        if (b <= K[0][0]) return K[0].slice(1); if (b >= K[K.length - 1][0]) return K[K.length - 1].slice(1);
+        let i = 0; while (K[i + 1][0] < b) i++; const a = K[i], c = K[i + 1], u = sm(r(b, a[0], c[0])); return a.slice(1).map((v, q) => lerp(v, c[q + 1], u));
+      }
+      function draw(nf) {
+        const b = (nf / FPS) / BEAT, LT = TB.light;
+        gl.bindTexture(gl.TEXTURE_2D, hTex); gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, NX, NY, gl.RED, gl.FLOAT, heights(b));
+        let li = r(b, LT.on, LT.on + 0.25); if (b >= LT.on && b < LT.on + 0.4 && nf % 2 === 1) li *= 0.8; li *= 1 - r(b, LT.off[0] + 0.6, LT.off[1]);
+        const [az] = lk(LT.az, b), [el] = lk(LT.el, b), sp = lk(LT.spot, b), cam = lk(TB.cam, b);
+        const A = az * Math.PI / 180, E = el * Math.PI / 180;
+        gl.viewport(0, 0, W, H); gl.useProgram(PR.p); const U = PR.U;
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, hTex); gl.uniform1i(U.uH, 0);
+        gl.uniform2f(U.uRes, W, H); gl.uniform1f(U.uP, P); gl.uniform2f(U.uO, OX, OY); gl.uniform1f(U.uE, EXT);
+        gl.uniform2f(U.uVP, cam[0], cam[1]); gl.uniform1f(U.uD, CAMD);
+        gl.uniform3f(U.uL, Math.cos(A) * Math.cos(E), Math.sin(A) * Math.cos(E), Math.sin(E)); gl.uniform1f(U.uLi, li); gl.uniform2f(U.uSpot, sp[0], sp[1]);
+        gl.uniform2i(U.uN, NX, NY); gl.drawArrays(gl.TRIANGLES, 0, 3);
+      }
+
+      // ---------------- the flat layer: the demo label, and the end card with the mark placed flat
+      const BONE = "#F3EAD6", DARK = "#08090C";
+      function mono(g, s, x, y, size, col, al = "left") { g.font = `500 ${size}px JBM`; g.letterSpacing = "0.08em"; g.textAlign = al; g.textBaseline = "alphabetic"; g.fillStyle = col; g.fillText(s, x, y); g.letterSpacing = "0px"; }
+      function overlay(g, nf) {
+        const b = (nf / FPS) / BEAT; g.clearRect(0, 0, W, H);
+        if (b >= TB.light.on && b < TB.logo) { g.font = "500 18px JBM"; g.letterSpacing = "0.08em"; const s = TB.label, w = g.measureText(s).width + 22; g.fillStyle = "rgba(8,9,12,0.86)"; g.fillRect(40, H - 68, w, 32); g.letterSpacing = "0px"; mono(g, s, 51, H - 46, 18, BONE); }
+        if (b >= TB.logo) { const u = r(b, TB.logo + 0.1, TB.logo + 0.8), lw = 926 * 0.72, lh = 193 * 0.72, a = 1 - r(b, TB.beats - 0.4, TB.beats), eO = 1 - Math.pow(1 - u, 3);
+          g.fillStyle = DARK; g.fillRect(0, 0, W, H);
+          g.globalAlpha = eO * a; g.drawImage($("#logo"), W / 2 - lw / 2, 300 - (1 - eO) * 14, lw, lh);
+          g.font = '800 84px "Archivo"'; g.textAlign = "center"; g.textBaseline = "alphabetic"; g.fillStyle = BONE; g.globalAlpha = a * r(b, TB.logo + 0.4, TB.logo + 0.9); g.fillText("AI Research & Briefing Systems", W / 2, 610);
+          g.globalAlpha = a * r(b, TB.logo + 0.8, TB.logo + 1.3); mono(g, "ai.joaoqueiros.com", W / 2, 690, 28, BONE, "center"); mono(g, "A SERVICE · THIS FILM IS CODE", W / 2, 744, 20, "#E2A23A", "center"); g.globalAlpha = 1; }
+      }
+      function paint(t) {
+        const nf = Math.min(Math.floor(t * FPS + 1e-6), Math.round(DUR * FPS) - 1); if (nf === frame) return;
+        frame = nf; draw(nf); overlay(ovG, nf);
+      }
+      const tl = gsap.timeline({ paused: true }), clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+      async function build() {
+        await Promise.all([$("#logo").decode(), document.fonts.load('800 40px "Archivo"'), document.fonts.load('600 40px "Archivo"'), document.fonts.load('500 20px "JBM"')]);
+        ovG = $("#over").getContext("2d"); initGL(); build_layers();
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(0);
+        window.__timelines = window.__timelines || {}; window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+      window.__hf = window.__hf || {}; window.__hf.buildReady = window.__hf.buildReady || {}; window.__hf.buildReady["pressed"] = build();
+    </script>
+  </body>
+</html>

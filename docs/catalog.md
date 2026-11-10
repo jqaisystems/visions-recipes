@@ -106,6 +106,14 @@ Made for: Imagined Worlds · Stills. Stack: Three.js, TSL, GSAP, Python (score).
 
 ## Products and systems
 
+### R56 · Pressed
+
+A pin screen in code: 36,864 steel pins under one low lamp. Every source is pressed into the wall from behind until it's noise; one wave flattens what doesn't matter, and the briefing presses up out of the metal.
+
+Made for: AI Research & Briefing Systems · JQ AI SYSTEMS. Stack: HyperFrames, WebGL2, Canvas 2D, GSAP, Python, FFmpeg.
+
+[Recipe and poster](../recipes/r56-pressed/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r56-pressed-v1)
+
 ### R55 · Overview
 
 61,440 steel pins, traced in one shader, with a camera in flight. From the ground the sources are noise; from above, the noise settles, what matters turns brass and the briefing rises out of the field.
