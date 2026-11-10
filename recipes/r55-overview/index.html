@@ -1,0 +1,342 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <title>Overview</title>
+    <!-- Overview: a field of 61,440 steel pins made entirely in code, and a camera that flies over it. From the ground the sources are noise;
+         from above, they're a briefing. Every picture and every word is pins rising out of the field. The sources, the field and the briefing
+         are a demo, and this film is code. -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/table.js"></script>
+    <style>
+      @font-face { font-family: "Archivo"; src: url("assets/fonts/Archivo.ttf") format("truetype"); font-weight: 100 900; font-stretch: 62% 125%; }
+      @font-face { font-family: "JBM"; src: url("assets/fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 100 800; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #07080A; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #07080A; }
+      #ct-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #stage, #over { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #logo { position: absolute; left: -2000px; top: 0; width: 926px; height: 193px; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="36.4286" data-width="1920" data-height="1080">
+      <div id="ct-stage" class="clip" data-start="0" data-duration="36.4286" data-track-index="0">
+        <canvas id="stage" width="1920" height="1080" data-layout-allow-overflow></canvas>
+        <canvas id="over" width="1920" height="1080" data-layout-allow-overflow></canvas>
+        <img id="logo" src="assets/brand/your-mark.svg" alt="Your mark" data-layout-allow-overflow>
+      </div>
+      <audio id="score" src="assets/bgm/score.wav" data-start="0" data-duration="36.4286" data-track-index="7" data-volume="1"></audio>
+    </div>
+
+    <script>
+      // The field: NX by NZ pins, one unit apart. Each frame every pin's height (and how much of it is brass) is worked out from the time
+      // alone and uploaded as one small texture. A WebGL2 shader then traces a ray per pixel from the camera through the grid of pins, cell
+      // by cell, hits the first domed head or shaft, traces a second ray back towards the lamp for its shadow, and shades it as steel or brass.
+      // A second pass adds the depth of field. The camera is baked per frame in the table.
+      const TB = window.TABLE, W = TB.w, H = TB.h, FPS = TB.fps, BEAT = TB.beat, DUR = TB.dur, NX = TB.nx, NZ = TB.nz, EXT = TB.ext;
+
+      const VS = `#version 300 es
+void main(){ vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2); gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }`;
+      // ---------------- pass 1: the pins, traced
+      const FS = `#version 300 es
+precision highp float; precision highp int; out vec4 o;
+uniform highp sampler2D uH; uniform ivec2 uN; uniform float uE; uniform vec2 uRes;
+uniform vec3 uCP, uCF, uCR, uCU; uniform float uTH, uFoc;
+uniform vec3 uL; uniform float uLi; uniform vec4 uPool;
+const float RH = 0.46, RS = 0.14;
+float h21(vec2 p){ vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+vec2 cellAt(ivec2 c){ if (c.x < 0 || c.y < 0 || c.x >= uN.x || c.y >= uN.y) return vec2(-1.0, 0.0); return texelFetch(uH, c, 0).rg; }
+// the first thing in cell c the ray (ro, rd) hits: t, and which (1 head, 2 shaft)
+vec2 hitCell(vec3 ro, vec3 rd, ivec2 c, float h){
+  vec3 ce = vec3(float(c.x) + 0.5, h * uE, float(c.y) + 0.5); float best = 1e9, what = 0.0;
+  vec3 oc = ro - ce; float bq = dot(oc, rd), cq = dot(oc, oc) - RH * RH, dq = bq * bq - cq;
+  if (dq > 0.0) { float t = -bq - sqrt(dq); if (t > 1e-3 && ro.y + rd.y * t > -0.02) { best = t; what = 1.0; } }
+  vec2 o2 = ro.xz - ce.xz, d2 = rd.xz; float a = dot(d2, d2);
+  if (a > 1e-8 && ce.y > 0.0) { float b2 = dot(o2, d2), c2 = dot(o2, o2) - RS * RS, D = b2 * b2 - a * c2;
+    if (D > 0.0) { float t = (-b2 - sqrt(D)) / a; float y = ro.y + rd.y * t; if (t > 1e-3 && t < best && y > 0.0 && y < ce.y) { best = t; what = 2.0; } } }
+  return vec2(best, what);
+}
+// soft shadow towards the lamp: through the heads in between
+float shadow(vec3 p){
+  vec3 rd = uL; float YM = uE + RH, s = 1.0;
+  if (rd.y <= 0.0) return 0.0;
+  vec2 cell = floor(p.xz); vec2 st = sign(rd.xz), inv = 1.0 / max(abs(rd.xz), vec2(1e-6));
+  vec2 tm = ((cell + max(st, 0.0)) - p.xz) * st * inv;
+  for (int k = 0; k < 90; k++) {
+    ivec2 c = ivec2(cell); vec2 hb = cellAt(c);
+    if (hb.x >= 0.0) {
+      vec3 ce = vec3(cell.x + 0.5, hb.x * uE, cell.y + 0.5); vec3 oc = ce - p; float t = max(dot(oc, rd), 0.0);
+      vec3 q = p + rd * t - ce; float d = length(q) - RH;
+      if (t > 0.05) s = min(s, smoothstep(-0.06, 0.0, d) * clamp(0.25 + 6.0 * d / t, 0.0, 1.0) + smoothstep(0.0, 0.15, d) * 0.0);
+      // the shaft below the head
+      vec2 qx = p.xz + rd.xz * t - ce.xz; float yy = p.y + rd.y * t;
+      if (yy < ce.y && length(qx) < RS && t > 0.05) s = 0.0;
+      if (s < 0.01) return 0.0;
+    }
+    float tn = min(tm.x, tm.y); if (p.y + rd.y * tn > YM) break;
+    if (tm.x < tm.y) { tm.x += inv.x; cell.x += st.x; } else { tm.y += inv.y; cell.y += st.y; }
+  }
+  return s;
+}
+vec3 env(vec3 R, vec3 warm){   // the room the steel reflects: dark, a warm glow towards the lamp, a faint cool ceiling
+  float g = max(dot(R, uL), 0.0);
+  return warm * (pow(g, 4.0) * 1.3 + pow(g, 40.0) * 5.0) + vec3(0.30, 0.38, 0.50) * smoothstep(-0.1, 1.0, R.y) * 0.16 + vec3(0.02);
+}
+void main(){
+  vec2 uv = gl_FragCoord.xy / uRes * 2.0 - 1.0;
+  vec3 ro = uCP, rd = normalize(uCF + uCR * uv.x * uTH * uRes.x / uRes.y + uCU * uv.y * uTH);
+  float YM = uE + RH; vec3 warm = vec3(1.0, 0.80, 0.58);
+  float t0 = 0.0, tP = 1e9;
+  if (rd.y < 0.0) tP = -ro.y / rd.y;
+  if (ro.y > YM) { if (rd.y >= 0.0) { o = vec4(vec3(0.004), 0.0); return; } t0 = (ro.y - YM) / -rd.y; }
+  vec3 p = ro + rd * t0; vec2 cell = floor(p.xz); vec2 st = sign(rd.xz), inv = 1.0 / max(abs(rd.xz), vec2(1e-6));
+  vec2 tm = t0 + ((cell + max(st, 0.0)) - p.xz) * st * inv;
+  float tHit = -1.0, what = 0.0; ivec2 hc = ivec2(0); float hh = 0.0, br = 0.0;
+  for (int k = 0; k < 420; k++) {
+    ivec2 c = ivec2(cell); vec2 hb = cellAt(c);
+    float tn = min(tm.x, tm.y);
+    if (hb.x >= 0.0) {
+      float yin = ro.y + rd.y * max(t0, 0.0), top = hb.x * uE + RH;
+      if (min(yin, ro.y + rd.y * tn) <= top) { vec2 r = hitCell(ro, rd, c, hb.x); if (r.y > 0.0 && r.x < tn + 0.02) { tHit = r.x; what = r.y; hc = c; hh = hb.x; br = hb.y; break; } }
+    }
+    if (tn > tP) break;
+    t0 = tn;
+    if (tm.x < tm.y) { tm.x += inv.x; cell.x += st.x; } else { tm.y += inv.y; cell.y += st.y; }
+  }
+  vec3 col; float tt;
+  vec2 pc = (vec2(hc) + 0.5);
+  float pool = exp(-dot((ro + rd * (tHit > 0.0 ? tHit : tP)).xz - uPool.xy, (ro + rd * (tHit > 0.0 ? tHit : tP)).xz - uPool.xy) / (2.0 * uPool.z * uPool.z));
+  float key = uLi * (0.62 + 1.7 * pool);
+  if (tHit > 0.0) {
+    tt = tHit; vec3 P = ro + rd * tHit; vec3 ce = vec3(pc.x, hh * uE, pc.y);
+    vec3 n = what == 1.0 ? normalize(P - ce) : normalize(vec3(P.x - ce.x, 0.0, P.z - ce.z));
+    // how buried it is among its neighbours
+    float occ = 0.0;
+    for (int j = 0; j < 4; j++) { ivec2 d = j == 0 ? ivec2(1, 0) : j == 1 ? ivec2(-1, 0) : j == 2 ? ivec2(0, 1) : ivec2(0, -1);
+      vec2 nb = cellAt(hc + d); if (nb.x >= 0.0) occ += clamp((nb.x * uE + RH - P.y) / 3.0, 0.0, 1.0); }
+    float ao = 1.0 - 0.17 * occ; if (what == 2.0) ao *= 0.12 + 0.3 * pow(clamp(P.y / max(ce.y, 0.01), 0.0, 1.0), 2.0);
+    float sh = shadow(P + n * 0.03);
+    float var = 0.9 + 0.2 * h21(pc * 1.7);
+    vec3 base = mix(vec3(0.56, 0.58, 0.62) * var, vec3(1.0, 0.72, 0.34) * (0.95 + 0.1 * var), br);
+    vec3 V = -rd, R = reflect(rd, n); float ndl = max(dot(n, uL), 0.0);
+    float fr = 0.04 + 0.96 * pow(1.0 - max(dot(n, V), 0.0), 5.0);
+    vec3 Hh = normalize(uL + V); float spe = pow(max(dot(n, Hh), 0.0), mix(90.0, 60.0, br));
+    col = base * (0.42 * ndl * sh + 0.06) * key * warm
+        + base * env(R, warm) * key * (0.35 + 0.65 * sh) * mix(0.8, 1.0, fr)
+        + warm * mix(vec3(1.0), base, 0.5) * spe * 7.0 * sh * key;
+    col *= ao * mix(0.32, 1.3, clamp(hh * 1.5 + 0.08, 0.0, 1.0));
+  } else if (tP < 1e8) {
+    tt = tP; vec3 P = ro + rd * tP; vec2 q = P.xz;
+    bool inF = q.x > 0.0 && q.y > 0.0 && q.x < float(uN.x) && q.y < float(uN.y);
+    float sh = shadow(P + vec3(0.0, 0.02, 0.0));
+    if (inF) { float hole = 0.5 + 0.5 * smoothstep(0.42, 0.5, length(fract(q) - 0.5)); col = vec3(0.020, 0.020, 0.023) * key * (0.3 + 0.7 * sh) * hole * warm; }
+    else { vec2 e = max(-q, q - vec2(uN)); float m = max(e.x, e.y);
+      float bev = smoothstep(4.0, 0.0, m); col = vec3(0.016, 0.016, 0.019) * key * (0.4 + 0.6 * sh) * (0.5 + 1.2 * bev) * warm; }
+  } else { tt = 2000.0; col = vec3(0.004); }
+  col = mix(col, vec3(0.004), 1.0 - exp(-max(tt - 260.0, 0.0) / 380.0));
+  col *= 1.3; col = col / (1.0 + col * 0.7); col = pow(max(col, 0.0), vec3(0.86));
+  float coc = clamp(abs(tt - uFoc) / max(uFoc, 1.0) * 1.6, 0.0, 1.0);
+  o = vec4(col, coc);
+}`;
+      // ---------------- pass 2: depth of field, a little glow on the glints, grain and the edges
+      const FS2 = `#version 300 es
+precision highp float; out vec4 o; uniform sampler2D uC; uniform vec2 uRes; uniform float uB, uSeed;
+float h21(vec2 p){ vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+void main(){
+  vec2 px = 1.0 / uRes, uv = gl_FragCoord.xy * px; vec4 c0 = texture(uC, uv); float rad = c0.a * uB;
+  vec3 acc = c0.rgb; float wsum = 1.0; vec3 glow = vec3(0.0);
+  for (int i = 1; i < 28; i++) {
+    float fi = float(i), r = sqrt(fi / 27.0), a = fi * 2.39996;
+    vec2 d = vec2(cos(a), sin(a)) * r;
+    vec4 s = texture(uC, uv + d * rad * px);
+    float w = smoothstep(r - 0.15, r, s.a * uB / max(rad, 0.001)) * step(0.5, rad) + (rad < 0.5 ? 0.0 : 0.0);
+    acc += s.rgb * w; wsum += w;
+    vec3 g = texture(uC, uv + d * 14.0 * px).rgb; glow += max(g - 0.72, 0.0);
+  }
+  vec3 col = acc / wsum + glow / 27.0 * 0.9;
+  vec2 cv = uv - 0.5; col *= 1.0 - 0.55 * dot(cv * vec2(1.0, 0.8), cv * vec2(1.0, 0.8)) * 1.5;
+  col += (h21(gl_FragCoord.xy + uSeed) - 0.5) * 0.018;
+  o = vec4(col, 1.0);
+}`;
+
+      const $ = (s) => document.querySelector(s);
+      const r = (x, a, b) => Math.min(1, Math.max(0, (x - a) / (b - a))), lerp = (a, b, u) => a + (b - a) * u, sm = (u) => u * u * (3 - 2 * u);
+      const hash = (i, s) => { let x = (i * 374761393 + s * 668265263) | 0; x = Math.imul(x ^ (x >>> 13), 1274126177); x ^= x >>> 16; return (x >>> 0) / 4294967296; };
+      let gl, ovG, P1, P2, hTex, cTex, fb, frame = -1, LAY = [];
+      const N = NX * NZ, HGT = new Float32Array(N), BRS = new Float32Array(N), QM = new Float32Array(N), BUF = new Float32Array(N * 2);
+      const PX = new Float32Array(N), PZ = new Float32Array(N), HN = new Float32Array(N);
+      for (let j = 0; j < NZ; j++) for (let i = 0; i < NX; i++) { const k = j * NX + i; PX[k] = i + 0.5; PZ[k] = j + 0.5; HN[k] = hash(k, 17); }
+
+      // ---------------- every relief, drawn once at four samples per pin and averaged down to one height per pin
+      const SS = 4, RC = document.createElement("canvas"); RC.width = NX * SS; RC.height = NZ * SS;
+      const RG = RC.getContext("2d", { willReadFrequently: true });
+      function raster(marks) {
+        const g = RG; g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.fillStyle = "#000"; g.fillRect(0, 0, RC.width, RC.height);
+        g.setTransform(SS, 0, 0, SS, 0, 0); g.lineCap = "round";
+        for (const m of marks) {
+          const t = m[0]; g.fillStyle = g.strokeStyle = "#fff";
+          if (t === "rect") { g.globalAlpha = m[5]; g.beginPath(); g.roundRect(m[1], m[2], m[3], m[4], m[6]); g.fill(); }
+          else if (t === "frame") { g.globalAlpha = m[6]; g.lineWidth = m[5]; g.beginPath(); g.roundRect(m[1] + m[5] / 2, m[2] + m[5] / 2, m[3] - m[5], m[4] - m[5], m[7]); g.stroke(); }
+          else if (t === "circ") { g.globalAlpha = m[5]; g.beginPath(); g.arc(m[1], m[2], m[3], 0, Math.PI * 2); if (m[4] > 0) { g.lineWidth = m[4]; g.stroke(); } else g.fill(); }
+          else if (t === "line") { g.globalAlpha = m[6]; g.lineWidth = m[5]; g.beginPath(); g.moveTo(m[1], m[2]); g.lineTo(m[3], m[4]); g.stroke(); }
+          else if (t === "text") { const [, s, x, z, size, wt, v, al, fit] = m; g.globalAlpha = v; let sz = size; g.font = `${wt} ${sz}px "Archivo"`;
+            if (fit > 0) { const w = g.measureText(s).width; if (w > fit) { sz = size * fit / w; g.font = `${wt} ${sz}px "Archivo"`; } }
+            g.textAlign = al === "c" ? "center" : "left"; g.textBaseline = "alphabetic"; g.fillText(s, x, z); }
+        }
+        const d = g.getImageData(0, 0, RC.width, RC.height).data, out = new Float32Array(N), RW = RC.width;
+        let sx = 0, sz = 0, cnt = 0;
+        for (let j = 0; j < NZ; j++) for (let i = 0; i < NX; i++) {
+          let s = 0; for (let v = 0; v < SS; v++) for (let u = 0; u < SS; u++) s += d[((j * SS + v) * RW + i * SS + u) * 4];
+          const val = Math.pow(s / (SS * SS * 255), 0.8); out[j * NX + i] = val; if (val > 0.05) { sx += PX[j * NX + i]; sz += PZ[j * NX + i]; cnt++; }
+        }
+        return { h: out, cx: cnt ? sx / cnt : NX / 2, cz: cnt ? sz / cnt : NZ / 2 };
+      }
+      function wkey(K, b) {
+        if (b <= K[0][0]) return K[0][1]; if (b >= K[K.length - 1][0]) return K[K.length - 1][1];
+        let i = 0; while (K[i + 1][0] < b) i++; const a = K[i], c = K[i + 1]; return lerp(a[1], c[1], sm(r(b, a[0], c[0])));
+      }
+      function mkey(M, b) {   // a move: [beat, dx, dz, scale], eased between keys
+        if (!M) return null; if (b <= M[0][0]) return [0, 0, 1];
+        let i = 0; while (i < M.length - 1 && M[i + 1][0] < b) i++;
+        const a = M[i], c = M[Math.min(i + 1, M.length - 1)], u = c[0] > a[0] ? sm(r(b, a[0], c[0])) : 1;
+        return [lerp(a[1], c[1], u), lerp(a[2], c[2], u), lerp(a[3], c[3], u)];
+      }
+      function build_layers() {
+        LAY = TB.layers.map((l) => {
+          const R = raster(l.marks), dl = new Float32Array(N);
+          let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
+          for (let k = 0; k < N; k++) if (R.h[k] > 0.01) { x0 = Math.min(x0, PX[k]); x1 = Math.max(x1, PX[k]); z0 = Math.min(z0, PZ[k]); z1 = Math.max(z1, PZ[k]); }
+          for (let k = 0; k < N; k++) {
+            let v = l.delay === "x" ? (PX[k] - x0) / Math.max(x1 - x0, 1) : l.delay === "z" ? (z1 - PZ[k]) / Math.max(z1 - z0, 1)
+              : l.delay === "r" ? Math.hypot(PX[k] - R.cx, PZ[k] - R.cz) / Math.max(Math.hypot(x1 - x0, z1 - z0) / 2, 1) : HN[k];
+            dl[k] = (Math.min(1, Math.max(0, v)) * 0.85 + hash(k, 29) * 0.15) * l.spread;
+          }
+          let hush = null;
+          if (l.quiet) { hush = new Float32Array(N); const D = 4;
+            for (let j = 0; j < NZ; j++) for (let i = 0; i < NX; i++) { let m = 0;
+              for (let v = Math.max(0, j - D); v <= Math.min(NZ - 1, j + D) && m < 1; v++) for (let u = Math.max(0, i - D); u <= Math.min(NX - 1, i + D); u++) { const q = R.h[v * NX + u]; if (q > m) m = q; }
+              hush[j * NX + i] = Math.min(1, m * 1.5); } }
+          const ks = l.keys.map((q) => q[0]);
+          return { ...l, h: R.h, hush, dl, t0: Math.min(...ks), t1: Math.max(...ks) + l.spread, end: l.keys[l.keys.length - 1][1] };
+        });
+      }
+      // ---------------- every pin's height and brass at beat b
+      function heights(b) {
+        HGT.fill(0); BRS.fill(0); QM.fill(0);
+        for (const l of LAY) {
+          if (b < l.t0 || (b > l.t1 && l.end === 0)) continue;
+          const mv = mkey(l.move, b), A = l.anchor, bz = l.brass ? wkey(l.brass, b) : 0;
+          for (let k = 0; k < N; k++) {
+            const w = wkey(l.keys, b - l.dl[k]); if (w <= 0) continue;
+            if (l.hush) { const q = w * l.hush[k]; if (q > QM[k]) QM[k] = q; }
+            let v;
+            if (mv && (mv[0] !== 0 || mv[1] !== 0 || mv[2] !== 1)) {   // the relief slides and shrinks: sample it where this pin came from
+              const qx = A[0] + (PX[k] - A[0] - mv[0]) / mv[2], qz = A[1] + (PZ[k] - A[1] - mv[1]) / mv[2];
+              const fi = qx - 0.5, fj = qz - 0.5, i0 = Math.floor(fi), j0 = Math.floor(fj), u = fi - i0, t = fj - j0;
+              const g = (i, j) => (i < 0 || j < 0 || i >= NX || j >= NZ) ? 0 : l.h[j * NX + i];
+              v = lerp(lerp(g(i0, j0), g(i0 + 1, j0), u), lerp(g(i0, j0 + 1), g(i0 + 1, j0 + 1), u), t);
+            } else v = l.h[k];
+            if (v <= 0) continue;
+            const c = w * v; HGT[k] += c;
+            if (bz > 0) BRS[k] = Math.max(BRS[k], bz * Math.min(1, c * 4));
+          }
+        }
+        // the noise: every pin at a height of its own, changing on the sixteenths, with long swells rolling through
+        const na = wkey(TB.noise, b), F = TB.flat;
+        if (na > 0) {
+          const s = b * 4, front = b < F.b[0] ? -1 : lerp(0, F.r, sm(r(b, F.b[0], F.b[1])));
+          for (let k = 0; k < N; k++) {
+            let m = 1 - QM[k] * 1.4; if (m <= 0) continue;
+            if (front >= 0) m *= sm(r(Math.hypot(PX[k] - F.x, PZ[k] - F.z), front - 14, front));
+            if (m <= 0) continue;
+            const ph = s + HN[k], f = Math.floor(ph), u = sm(ph - f), j = lerp(hash(k, f), hash(k, f + 1), u);
+            const sw = 0.5 + 0.5 * Math.sin(PX[k] * 0.16 + PZ[k] * 0.09 - b * 2.6) * Math.sin(PX[k] * 0.05 - PZ[k] * 0.12 + b * 1.7);
+            HGT[k] += na * m * (0.55 * Math.pow(j, 1.7) + 0.4 * sw * sw);
+          }
+        }
+        // ripples: a ring running out through the field from where something rose
+        for (const g of TB.rings) {
+          const age = b - g[0]; if (age < 0 || age > 3) continue;
+          const rad = age * 30, a = g[3] * Math.pow(1 - age / 3, 2);
+          const x0 = Math.max(0, Math.floor(g[1] - rad - 8)), x1 = Math.min(NX, Math.ceil(g[1] + rad + 8)), z0 = Math.max(0, Math.floor(g[2] - rad - 8)), z1 = Math.min(NZ, Math.ceil(g[2] + rad + 8));
+          for (let j = z0; j < z1; j++) for (let i = x0; i < x1; i++) { const k = j * NX + i, d = (Math.hypot(PX[k] - g[1], PZ[k] - g[2]) - rad) / 3.2; if (d > -3 && d < 3) HGT[k] += a * Math.exp(-d * d) * (1 - QM[k]); }
+        }
+        for (let k = 0; k < N; k++) { BUF[k * 2] = Math.min(1, HGT[k]); BUF[k * 2 + 1] = BRS[k]; }
+        return BUF;
+      }
+
+      function prog(fs, names) {
+        const sh = (t, src) => { const s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+        const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
+        if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+        const U = {}; for (const n of names) U[n] = gl.getUniformLocation(p, n); return { p, U };
+      }
+      function initGL() {
+        gl = $("#stage").getContext("webgl2", { antialias: false, alpha: false, depth: false, stencil: false, preserveDrawingBuffer: true });
+        P1 = prog(FS, ["uH", "uN", "uE", "uRes", "uCP", "uCF", "uCR", "uCU", "uTH", "uFoc", "uL", "uLi", "uPool"]);
+        P2 = prog(FS2, ["uC", "uRes", "uB", "uSeed"]);
+        hTex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, hTex); gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RG32F, NX, NZ);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        cTex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, cTex); gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, W, H);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        fb = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fb); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, cTex, 0);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.bindVertexArray(gl.createVertexArray());
+      }
+      function lk(K, b) {   // a light key, [beat, ...values], eased
+        if (b <= K[0][0]) return K[0].slice(1); if (b >= K[K.length - 1][0]) return K[K.length - 1].slice(1);
+        let i = 0; while (K[i + 1][0] < b) i++; const a = K[i], c = K[i + 1], u = sm(r(b, a[0], c[0])); return a.slice(1).map((v, q) => lerp(v, c[q + 1], u));
+      }
+      function draw(nf) {
+        const b = (nf / FPS) / BEAT, LT = TB.light, C = TB.cam[nf];
+        gl.bindTexture(gl.TEXTURE_2D, hTex); gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, NX, NZ, gl.RG, gl.FLOAT, heights(b));
+        let li = sm(r(b, LT.on, LT.on + 1.2)); li *= 1 - sm(r(b, LT.off[0], LT.off[1]));
+        const [az] = lk(LT.az, b), [el] = lk(LT.el, b), pool = lk(LT.pool, b);
+        const A = az * Math.PI / 180, E = el * Math.PI / 180;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fb); gl.viewport(0, 0, W, H); gl.useProgram(P1.p); let U = P1.U;
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, hTex); gl.uniform1i(U.uH, 0);
+        gl.uniform2i(U.uN, NX, NZ); gl.uniform1f(U.uE, EXT); gl.uniform2f(U.uRes, W, H);
+        gl.uniform3f(U.uCP, C[0], C[1], C[2]); gl.uniform3f(U.uCF, C[3], C[4], C[5]); gl.uniform3f(U.uCR, C[6], C[7], C[8]); gl.uniform3f(U.uCU, C[9], C[10], C[11]);
+        gl.uniform1f(U.uTH, C[12]); gl.uniform1f(U.uFoc, C[13]);
+        gl.uniform3f(U.uL, Math.cos(A) * Math.cos(E), Math.sin(E), Math.sin(A) * Math.cos(E)); gl.uniform1f(U.uLi, li);
+        gl.uniform4f(U.uPool, pool[0], pool[1], pool[2], 0);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.useProgram(P2.p); U = P2.U;
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, cTex); gl.uniform1i(U.uC, 0);
+        gl.uniform2f(U.uRes, W, H); gl.uniform1f(U.uB, 9.0); gl.uniform1f(U.uSeed, (nf % 97) * 13.7);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+      }
+
+      // ---------------- the flat layer: the demo label, and the end card with the mark placed flat
+      const BONE = "#F3EAD6", DARK = "#07080A";
+      function mono(g, s, x, y, size, col, al = "left") { g.font = `500 ${size}px JBM`; g.letterSpacing = "0.08em"; g.textAlign = al; g.textBaseline = "alphabetic"; g.fillStyle = col; g.fillText(s, x, y); g.letterSpacing = "0px"; }
+      function overlay(g, nf) {
+        const b = (nf / FPS) / BEAT; g.clearRect(0, 0, W, H);
+        if (b >= TB.light.on && b < TB.logo) { g.font = "500 18px JBM"; g.letterSpacing = "0.08em"; const s = TB.label, w = g.measureText(s).width + 22; g.fillStyle = "rgba(7,8,10,0.86)"; g.fillRect(40, H - 68, w, 32); g.letterSpacing = "0px"; mono(g, s, 51, H - 46, 18, BONE); }
+        if (b >= TB.logo) { const u = r(b, TB.logo + 0.1, TB.logo + 0.8), lw = 926 * 0.72, lh = 193 * 0.72, a = 1 - r(b, TB.beats - 0.4, TB.beats), eO = 1 - Math.pow(1 - u, 3);
+          g.fillStyle = DARK; g.fillRect(0, 0, W, H);
+          g.globalAlpha = eO * a; g.drawImage($("#logo"), W / 2 - lw / 2, 300 - (1 - eO) * 14, lw, lh);
+          g.font = '800 84px "Archivo"'; g.textAlign = "center"; g.textBaseline = "alphabetic"; g.fillStyle = BONE; g.globalAlpha = a * r(b, TB.logo + 0.4, TB.logo + 0.9); g.fillText("AI Research & Briefing Systems", W / 2, 610);
+          g.globalAlpha = a * r(b, TB.logo + 0.8, TB.logo + 1.3); mono(g, "ai.joaoqueiros.com", W / 2, 690, 28, BONE, "center"); mono(g, "A SERVICE · THIS FILM IS CODE", W / 2, 744, 20, "#E2A23A", "center"); g.globalAlpha = 1; }
+      }
+      function paint(t) {
+        const nf = Math.min(Math.floor(t * FPS + 1e-6), TB.cam.length - 1); if (nf === frame) return;
+        frame = nf; draw(nf); overlay(ovG, nf);
+      }
+      const tl = gsap.timeline({ paused: true }), clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+      async function build() {
+        await Promise.all([$("#logo").decode(), document.fonts.load('800 40px "Archivo"'), document.fonts.load('600 40px "Archivo"'), document.fonts.load('500 20px "JBM"')]);
+        ovG = $("#over").getContext("2d"); initGL(); build_layers();
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(0);
+        window.__timelines = window.__timelines || {}; window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+      window.__hf = window.__hf || {}; window.__hf.buildReady = window.__hf.buildReady || {}; window.__hf.buildReady["overview"] = build();
+    </script>
+  </body>
+</html>

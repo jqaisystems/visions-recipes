@@ -106,6 +106,14 @@ Made for: Imagined Worlds · Stills. Stack: Three.js, TSL, GSAP, Python (score).
 
 ## Products and systems
 
+### R55 · Overview
+
+61,440 steel pins, traced in one shader, with a camera in flight. From the ground the sources are noise; from above, the noise settles, what matters turns brass and the briefing rises out of the field.
+
+Made for: AI Research & Briefing Systems · JQ AI SYSTEMS. Stack: HyperFrames, WebGL2, Canvas 2D, GSAP, Python, FFmpeg.
+
+[Recipe and poster](../recipes/r55-overview/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r55-overview-v1)
+
 ### R54 · Register
 
 Every frame is four plates of ink screened into halftone dots. Out of register the sources are noise; a roller wipes it away and the briefing comes off the press one colour at a time.
