@@ -106,6 +106,14 @@ Made for: Imagined Worlds · Stills. Stack: Three.js, TSL, GSAP, Python (score).
 
 ## Products and systems
 
+### R57 · Impression
+
+A pin screen that remembers: 11,520 steel pins as real geometry behind acrylic. The problem is pressed in and the pins keep its shape; each path is pressed into that impression, and the pins that don't fit glow amber. One fits flush, and the frame tilts every pin home.
+
+Made for: AI Problem-to-Solution Assessment · JQ AI SYSTEMS. Stack: HyperFrames, WebGL2, Canvas 2D, GSAP, Python, FFmpeg.
+
+[Recipe and poster](../recipes/r57-impression/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r57-impression-v1)
+
 ### R56 · Pressed
 
 A pin screen in code: 36,864 steel pins under one low lamp. Every source is pressed into the wall from behind until it's noise; one wave flattens what doesn't matter, and the briefing presses up out of the metal.

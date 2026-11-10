@@ -1,0 +1,367 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <title>Impression</title>
+    <!-- Impression: a pin screen made entirely in code, seen side on. 11,520 steel pins in a frame behind clear acrylic. The pins remember:
+         a workflow pressed in from behind leaves its shape, each path is a mould pressed onto the front, and the pins that don't fit move
+         and glow amber. The workflow and the paths are a demo, and this film is code. -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/table.js"></script>
+    <style>
+      @font-face { font-family: "Archivo"; src: url("assets/fonts/Archivo.ttf") format("truetype"); font-weight: 100 900; font-stretch: 62% 125%; }
+      @font-face { font-family: "JBM"; src: url("assets/fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 100 800; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #07080A; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #07080A; }
+      #ct-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #stage, #over { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #logo { position: absolute; left: -2000px; top: 0; width: 926px; height: 193px; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="40" data-width="1920" data-height="1080">
+      <div id="ct-stage" class="clip" data-start="0" data-duration="40" data-track-index="0">
+        <canvas id="stage" width="1920" height="1080" data-layout-allow-overflow></canvas>
+        <canvas id="over" width="1920" height="1080" data-layout-allow-overflow></canvas>
+        <img id="logo" src="assets/brand/your-mark.svg" alt="Your mark" data-layout-allow-overflow>
+      </div>
+      <audio id="score" src="assets/bgm/score.wav" data-start="0" data-duration="40" data-track-index="7" data-volume="1"></audio>
+    </div>
+
+    <script>
+      // Every pin is real geometry: a steel shaft and a domed head, drawn instanced, lit by one warm key with a shadow map and a cool rim.
+      // Where each pin sits is worked out from the time alone: the events in the table run in order on every pin (push out from behind,
+      // press a mould on the front, slide home), each with a weight that rises once and then stays, so the pins remember.
+      const TB = window.TABLE, W = TB.w, H = TB.h, FPS = 30, BEAT = TB.beat, DUR = TB.dur, NX = TB.nx, NY = TB.ny, P = TB.pitch;
+      const FW = TB.fw, FH = TB.fh, EXT = TB.ext, LEN = TB.len, N = NX * NY, HR = 3.9, RS = 1.45, BORD = 46;
+      const $ = (s) => document.querySelector(s);
+      const r = (x, a, b) => Math.min(1, Math.max(0, (x - a) / (b - a))), lerp = (a, b, u) => a + (b - a) * u, sm = (u) => u * u * (3 - 2 * u);
+      const hash = (i, s) => { let x = (i * 374761393 + s * 668265263) | 0; x = Math.imul(x ^ (x >>> 13), 1274126177); x ^= x >>> 16; return (x >>> 0) / 4294967296; };
+
+      // ---------------- small matrix kit, column major
+      const M4 = {
+        mul(a, b) { const o = new Float32Array(16); for (let c = 0; c < 4; c++) for (let rr = 0; rr < 4; rr++) { let s = 0; for (let k = 0; k < 4; k++) s += a[k * 4 + rr] * b[c * 4 + k]; o[c * 4 + rr] = s; } return o; },
+        persp(fov, asp, n, f) { const t = 1 / Math.tan(fov * Math.PI / 360), o = new Float32Array(16); o[0] = t / asp; o[5] = t; o[10] = (f + n) / (n - f); o[11] = -1; o[14] = 2 * f * n / (n - f); return o; },
+        ortho(l, rt, b, t, n, f) { const o = new Float32Array(16); o[0] = 2 / (rt - l); o[5] = 2 / (t - b); o[10] = -2 / (f - n); o[12] = -(rt + l) / (rt - l); o[13] = -(t + b) / (t - b); o[14] = -(f + n) / (f - n); o[15] = 1; return o; },
+        look(e, c, u) {
+          const nz = (v) => { const l = Math.hypot(...v); return v.map((q) => q / l); }, cr = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+          const z = nz([e[0] - c[0], e[1] - c[1], e[2] - c[2]]), x = nz(cr(u, z)), y = cr(z, x), o = new Float32Array(16);
+          o[0] = x[0]; o[4] = x[1]; o[8] = x[2]; o[1] = y[0]; o[5] = y[1]; o[9] = y[2]; o[2] = z[0]; o[6] = z[1]; o[10] = z[2];
+          o[12] = -(x[0] * e[0] + x[1] * e[1] + x[2] * e[2]); o[13] = -(y[0] * e[0] + y[1] * e[1] + y[2] * e[2]); o[14] = -(z[0] * e[0] + z[1] * e[1] + z[2] * e[2]); o[15] = 1; return o;
+        },
+        rotX(a, py, pz) { const c = Math.cos(a), s = Math.sin(a), o = new Float32Array([1, 0, 0, 0, 0, c, s, 0, 0, -s, c, 0, 0, 0, 0, 1]);
+          o[13] = py - (c * py - s * pz); o[14] = pz - (s * py + c * pz); return o; },
+        box(cx, cy, cz, sx, sy, sz) { return new Float32Array([sx, 0, 0, 0, 0, sy, 0, 0, 0, 0, sz, 0, cx, cy, cz, 1]); },
+        ap(m, p) { const x = p[0], y = p[1], z = p[2]; const o = [0, 1, 2, 3].map((i) => m[i] * x + m[4 + i] * y + m[8 + i] * z + m[12 + i]); return o; },
+      };
+
+      // ---------------- the shapes, drawn once at four samples per pin; later marks paint over earlier ones
+      const SS = 4, RC = document.createElement("canvas"); RC.width = NX * SS; RC.height = NY * SS;
+      const RG = RC.getContext("2d", { willReadFrequently: true });
+      function raster(marks) {
+        const g = RG; g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = "#000"; g.fillRect(0, 0, RC.width, RC.height);
+        g.setTransform(SS / P, 0, 0, SS / P, 0, 0); g.lineCap = "round";
+        for (const m of marks) {
+          const t = m[0], v = t === "rect" ? m[5] : t === "frame" ? m[6] : t === "circ" ? m[5] : t === "line" ? m[6] : t === "arc" ? m[8] : m[6];
+          const gr = Math.round(v * 255); g.fillStyle = g.strokeStyle = `rgb(${gr},${gr},${gr})`;
+          if (t === "rect") { g.beginPath(); g.roundRect(m[1], m[2], m[3], m[4], m[6]); g.fill(); }
+          else if (t === "frame") { g.lineWidth = m[5]; g.beginPath(); g.roundRect(m[1] + m[5] / 2, m[2] + m[5] / 2, m[3] - m[5], m[4] - m[5], m[7]); g.stroke(); }
+          else if (t === "circ") { g.beginPath(); g.arc(m[1], m[2], m[3], 0, Math.PI * 2); if (m[4] > 0) { g.lineWidth = m[4]; g.stroke(); } else g.fill(); }
+          else if (t === "line") { g.lineWidth = m[5]; g.beginPath(); g.moveTo(m[1], m[2]); g.lineTo(m[3], m[4]); g.stroke(); }
+          else if (t === "arc") { g.beginPath(); g.ellipse(m[1], m[2], m[3], m[4], 0, m[5] * Math.PI / 180, m[6] * Math.PI / 180); if (m[7] > 0) { g.lineWidth = m[7]; g.stroke(); } else g.fill(); }
+          else if (t === "text") { g.font = `${m[5]} ${m[4]}px "Archivo"`; g.textAlign = m[7] === "c" ? "center" : "left"; g.textBaseline = "middle"; g.fillText(m[1], m[2], m[3]); }
+        }
+        const d = g.getImageData(0, 0, RC.width, RC.height).data, out = new Float32Array(N), RW = RC.width;
+        for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) {
+          let s = 0; for (let v = 0; v < SS; v++) for (let u = 0; u < SS; u++) s += d[((j * SS + v) * RW + i * SS + u) * 4];
+          out[j * NX + i] = s / (SS * SS * 255);
+        }
+        return out;
+      }
+
+      // ---------------- the events, prepared: each gets its shape and every pin's own delay
+      const PI_ = new Float32Array(N), PJ = new Float32Array(N), HN = new Float32Array(N);
+      for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) { const k = j * NX + i; PI_[k] = i; PJ[k] = j; HN[k] = hash(k, 17); }
+      let EVS = [];
+      function prepare() {
+        const S = {}; for (const nm in TB.shapes) S[nm] = raster(TB.shapes[nm]);
+        EVS = TB.ev.map((e) => {
+          const dl = new Float32Array(N);
+          for (let k = 0; k < N; k++) {
+            const v = e.delay === "x" ? PI_[k] / NX : e.delay === "y" ? PJ[k] / NY : e.delay === "r" ? Math.min(1, Math.hypot(PI_[k] - NX / 2, PJ[k] - NY / 2) / 70) : HN[k];
+            dl[k] = (v * 0.85 + hash(k, 29) * 0.15) * e.spread;
+          }
+          const o = { ...e, dl, sh: e.shape ? S[e.shape] : null };
+          if (e.kind === "front") { const C = o.sh, D = new Float32Array(N); for (let k = 0; k < N; k++) D[k] = e.fit ? Math.min(S.problem[k] + 0.012, 1 - C[k]) : 1 - C[k]; o.D = D; }
+          return o;
+        });
+      }
+      // ---------------- every pin at beat b: its push d, its amber, and the mould over it
+      const CT = new Float32Array(N), DD = new Float32Array(N), AMB = new Float32Array(N), MZ = new Float32Array(N), MA = new Float32Array(N), INST = new Float32Array(N * 4);
+      let MOVED = 0, PATHI = -1;
+      function state(b) {
+        DD.fill(0); AMB.fill(0); MA.fill(0); CT.fill(0); MOVED = 0; PATHI = -1;
+        for (const e of EVS) {
+          if (b < e.t0) continue;
+          const { dl, t0, t1 } = e;
+          if (e.kind === "back") { const S = e.sh; for (let k = 0; k < N; k++) { const v = S[k]; if (v <= 0) continue; const w = sm(r(b - dl[k], t0, t1)); if (w > 0) DD[k] = Math.max(DD[k], v * w); } }
+          else if (e.kind === "tilt" || e.kind === "flat") { for (let k = 0; k < N; k++) { const u = r(b - dl[k], t0, t1); DD[k] *= 1 - u * u; } }
+          else if (e.kind === "front") {
+            const D = e.D, aenv = e.restore != null ? 1 - sm(r(b, e.restore, e.restore + 0.7)) : 1;
+            const vis = sm(r(b, t0 - 0.7, t0 + 0.1)) * (1 - sm(r(b, e.lift, e.lift + 0.6))), lift = sm(r(b, e.lift, e.lift + 0.6));
+            let mv = 0;
+            for (let k = 0; k < N; k++) {
+              const w = sm(r(b - dl[k], t0, t1)), al = lerp(1.6, D[k], w), nd = Math.min(DD[k], al), dm = DD[k] - nd;
+              if (dm > 0.004) { mv++; AMB[k] = Math.max(AMB[k], Math.min(1, dm * 5 + 0.25) * aenv); }
+              DD[k] = nd;
+              if (vis > 0.002) { MZ[k] = lerp(al, 1.6, lift); MA[k] = vis; if (w > 0.9 && nd > 0.05 && al - nd < 0.03) CT[k] = Math.max(CT[k], vis * (w - 0.9) * 10); }
+            }
+            if (b < (e.restore != null ? e.restore + 0.7 : 1e9)) { MOVED = mv; PATHI = e.path; }
+          }
+        }
+        for (let k = 0; k < N; k++) { const q = k * 4; INST[q] = DD[k]; INST[q + 1] = AMB[k] > 0.01 ? AMB[k] : -CT[k]; INST[q + 2] = MZ[k] * EXT + HR * 1.6 + 0.6; INST[q + 3] = MA[k]; }
+      }
+
+      // ---------------- geometry
+      function pinMesh() {   // a shaft (part 0) from z 0 to 1, and a head (part 1), a unit sphere
+        const P3 = [], NN = [], PT = [], I = []; const SIDES = 10;
+        for (let s = 0; s <= SIDES; s++) { const a = s / SIDES * Math.PI * 2, c = Math.cos(a), si = Math.sin(a);
+          for (const z of [0, 1]) { P3.push(c, si, z); NN.push(c, si, 0); PT.push(0); } }
+        for (let s = 0; s < SIDES; s++) { const a = s * 2; I.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
+        const base = P3.length / 3, LA = 8, LO = 14;
+        for (let la = 0; la <= LA; la++) { const th = la / LA * Math.PI; for (let lo = 0; lo <= LO; lo++) { const ph = lo / LO * Math.PI * 2;
+          const x = Math.sin(th) * Math.cos(ph), y = Math.sin(th) * Math.sin(ph), z = Math.cos(th); P3.push(x, y, z); NN.push(x, y, z); PT.push(1); } }
+        for (let la = 0; la < LA; la++) for (let lo = 0; lo < LO; lo++) { const a = base + la * (LO + 1) + lo, b2 = a + LO + 1; I.push(a, b2, a + 1, a + 1, b2, b2 + 1); }
+        return { P3, NN, PT, I };
+      }
+      function boxMesh() {
+        const P3 = [], NN = [], I = [];
+        const F = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+        for (const n of F) { const u = n[0] ? [0, 1, 0] : [1, 0, 0], v = [n[1] * u[2] - n[2] * u[1], n[2] * u[0] - n[0] * u[2], n[0] * u[1] - n[1] * u[0]], b0 = P3.length / 3;
+          for (const [a, c] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { P3.push((n[0] + a * u[0] + c * v[0]) / 2, (n[1] + a * u[1] + c * v[1]) / 2, (n[2] + a * u[2] + c * v[2]) / 2); NN.push(...n); }
+          I.push(b0, b0 + 1, b0 + 2, b0, b0 + 2, b0 + 3); }
+        return { P3, NN, I };
+      }
+
+      const PIN_VS = `#version 300 es
+layout(location=0) in vec3 aP; layout(location=1) in vec3 aN; layout(location=2) in float aPart; layout(location=3) in vec4 aI;
+uniform mat4 uVP, uM; uniform vec2 uF; uniform float uP, uExt, uLen, uRS, uHR; uniform int uNX;
+out vec3 vW, vN; out float vA, vD, vPart, vVar;
+float h21(vec2 p){ vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+void main(){
+  int i = gl_InstanceID % uNX, j = gl_InstanceID / uNX;
+  vec2 c = vec2((float(i) + 0.5) * uP - uF.x * 0.5, uF.y * 0.5 - (float(j) + 0.5) * uP);
+  float hz = uHR * 0.55, dz = aI.x * uExt;
+  vec3 p = aPart < 0.5 ? vec3(aP.xy * uRS, -uLen + aP.z * (uLen + hz)) : aP * uHR + vec3(0.0, 0.0, hz);
+  vec4 w = uM * vec4(p + vec3(c, dz), 1.0);
+  vW = w.xyz; vN = mat3(uM) * aN; vA = aI.y; vD = aI.x; vPart = aPart; vVar = h21(vec2(float(i), float(j)));
+  gl_Position = uVP * w;
+}`;
+      const SOLID_VS = `#version 300 es
+layout(location=0) in vec3 aP; layout(location=1) in vec3 aN;
+uniform mat4 uVP, uM, uB; out vec3 vW, vN;
+void main(){ vec4 w = uM * uB * vec4(aP, 1.0); vW = w.xyz; vN = normalize(mat3(uM) * (aN / vec3(uB[0][0], uB[1][1], uB[2][2]))); gl_Position = uVP * w; }`;
+      const DEPTH_FS = `#version 300 es
+precision highp float; void main(){}`;
+      const LIT = `
+uniform highp sampler2DShadow uSh; uniform mat4 uLVP; uniform vec3 uKey, uRim, uEye; uniform float uLi;
+float shadow(vec3 w, vec3 n){
+  vec4 lp = uLVP * vec4(w + n * 1.2, 1.0); vec3 s = lp.xyz / lp.w * 0.5 + 0.5; float sum = 0.0, px = 1.0 / 3072.0;
+  for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) sum += texture(uSh, vec3(s.xy + vec2(x, y) * px, s.z - 0.0009));
+  return sum / 9.0;
+}
+vec3 env(vec3 R){ float sky = smoothstep(-0.3, 0.8, R.y); float box = pow(max(dot(R, normalize(vec3(-0.45, 0.55, 0.7))), 0.0), 18.0);
+  return vec3(0.05, 0.055, 0.065) * (0.4 + sky) + vec3(1.0, 0.86, 0.7) * box * 1.3; }
+vec3 tone(vec3 c){ c = c / (1.0 + c * 0.6); return pow(max(c, 0.0), vec3(0.88)); }
+`;
+      const PIN_FS = `#version 300 es
+precision highp float; out vec4 o;
+in vec3 vW, vN; in float vA, vD, vPart, vVar;` + LIT + `
+void main(){
+  vec3 n = normalize(vN), V = normalize(uEye - vW), K = normalize(uKey), Rm = normalize(uRim);
+  float sh = shadow(vW, n), dif = max(dot(n, K), 0.0), hv = max(dot(n, normalize(K + V)), 0.0);
+  float spe = pow(hv, vPart > 0.5 ? 90.0 : 40.0) * (vPart > 0.5 ? 1.6 : 0.7);
+  float rim = pow(1.0 - max(dot(n, V), 0.0), 3.0) * max(dot(n, Rm) * 0.5 + 0.5, 0.0);
+  vec3 steel = vec3(0.50, 0.51, 0.54) * (0.85 + 0.3 * vVar) * (vPart > 0.5 ? 1.0 : 0.8);
+  vec3 warm = vec3(1.0, 0.87, 0.72), cool = vec3(0.45, 0.6, 0.8);
+  vec3 col = steel * (0.05 + 0.95 * dif * sh) * warm * 1.25 + warm * spe * sh + cool * rim * 0.55 + steel * env(reflect(-V, n)) * 0.9;
+  col *= mix(0.5, 1.3, clamp(vD, 0.0, 1.0));
+  vec3 amber = vec3(1.0, 0.56, 0.16), fit = vec3(0.62, 0.82, 1.0); float aA = max(vA, 0.0), cA = max(-vA, 0.0);
+  col = mix(col, amber * (0.35 + 0.9 * dif * sh + spe), aA * 0.8) + amber * aA * 0.18;
+  col = mix(col, fit * (0.3 + 0.8 * dif * sh + spe), cA * 0.45) + fit * cA * 0.12;
+  o = vec4(tone(col * uLi * 1.25), 1.0);
+}`;
+      const SOLID_FS = `#version 300 es
+precision highp float; out vec4 o; in vec3 vW, vN; uniform vec3 uAlb; uniform float uSpec, uFloor;` + LIT + `
+void main(){
+  vec3 n = normalize(vN), V = normalize(uEye - vW), K = normalize(uKey);
+  float sh = shadow(vW, n), dif = max(dot(n, K), 0.0), spe = pow(max(dot(n, normalize(K + V)), 0.0), 50.0) * uSpec;
+  vec3 col = uAlb * (0.08 + 0.92 * dif * sh) * vec3(1.0, 0.88, 0.75) + vec3(1.0, 0.88, 0.75) * spe * sh + uAlb * env(reflect(-V, n)) * 0.6;
+  if (uFloor > 0.5) col *= exp(-dot(vW.xz - vec2(-80.0, 60.0), vW.xz - vec2(-80.0, 60.0)) / (2.0 * 900.0 * 900.0));
+  o = vec4(tone(col * uLi), 1.0);
+}`;
+      const PLATE_FS = `#version 300 es
+precision highp float; out vec4 o; in vec3 vW, vN;` + LIT + `
+void main(){
+  vec3 n = normalize(vN), V = normalize(uEye - vW), K = normalize(uKey);
+  float fr = 0.04 + 0.5 * pow(1.0 - abs(dot(n, V)), 4.0), spe = pow(max(dot(n, normalize(K + V)), 0.0), 260.0);
+  vec3 R = reflect(-V, n); vec3 c = env(R) * 1.2 + vec3(1.0, 0.9, 0.8) * spe * 2.5;
+  o = vec4(tone(c * uLi), clamp((fr + spe) * uLi, 0.0, 0.85));
+}`;
+      const DISC_VS = `#version 300 es
+layout(location=0) in vec2 aQ; layout(location=3) in vec4 aI;
+uniform mat4 uVP, uM; uniform vec2 uF; uniform float uP, uR; uniform int uNX; out vec2 vQ; out float vA;
+void main(){ int i = gl_InstanceID % uNX, j = gl_InstanceID / uNX;
+  vec2 c = vec2((float(i) + 0.5) * uP - uF.x * 0.5, uF.y * 0.5 - (float(j) + 0.5) * uP);
+  vQ = aQ; vA = aI.w; vec4 w = uM * vec4(c + aQ * uR, aI.z, 1.0); gl_Position = aI.w > 0.0 ? uVP * w : vec4(2.0, 2.0, 2.0, 1.0); }`;
+      const DISC_FS = `#version 300 es
+precision highp float; out vec4 o; in vec2 vQ; in float vA; uniform float uLi;
+void main(){ float d = length(vQ); if (d > 1.0) discard; float e = smoothstep(1.0, 0.7, d);
+  o = vec4(vec3(0.82, 0.9, 1.0) * uLi, (0.24 + 0.62 * smoothstep(0.45, 1.0, d)) * e * vA); }`;
+
+      let gl, ovG, PRG = {}, VAO = {}, instBuf, shadowFB, shadowTex, msFB, frame = -1, BOX;
+      function prog(vs, fs) {
+        const mk = (t, src) => { const s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+        const p = gl.createProgram(); gl.attachShader(p, mk(gl.VERTEX_SHADER, vs)); gl.attachShader(p, mk(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
+        if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+        const U = {}, n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS); for (let i = 0; i < n; i++) { const a = gl.getActiveUniform(p, i); U[a.name] = gl.getUniformLocation(p, a.name); }
+        return { p, U };
+      }
+      function buf(target, data) { const b = gl.createBuffer(); gl.bindBuffer(target, b); gl.bufferData(target, data, gl.STATIC_DRAW); return b; }
+      function attr(loc, data, size) { buf(gl.ARRAY_BUFFER, new Float32Array(data)); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, size, gl.FLOAT, false, 0, 0); }
+      function initGL() {
+        gl = $("#stage").getContext("webgl2", { antialias: false, alpha: true, premultipliedAlpha: false, depth: true, stencil: false, preserveDrawingBuffer: true });
+        PRG.pin = prog(PIN_VS, PIN_FS); PRG.pinD = prog(PIN_VS, DEPTH_FS); PRG.solid = prog(SOLID_VS, SOLID_FS); PRG.solidD = prog(SOLID_VS, DEPTH_FS);
+        PRG.plate = prog(SOLID_VS, PLATE_FS); PRG.disc = prog(DISC_VS, DISC_FS);
+        instBuf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, instBuf); gl.bufferData(gl.ARRAY_BUFFER, INST.byteLength, gl.DYNAMIC_DRAW);
+        const pm = pinMesh();
+        VAO.pin = gl.createVertexArray(); gl.bindVertexArray(VAO.pin); attr(0, pm.P3, 3); attr(1, pm.NN, 3); attr(2, pm.PT, 1);
+        gl.bindBuffer(gl.ARRAY_BUFFER, instBuf); gl.enableVertexAttribArray(3); gl.vertexAttribPointer(3, 4, gl.FLOAT, false, 0, 0); gl.vertexAttribDivisor(3, 1);
+        buf(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(pm.I)); VAO.pinN = pm.I.length;
+        const bm = boxMesh();
+        VAO.box = gl.createVertexArray(); gl.bindVertexArray(VAO.box); attr(0, bm.P3, 3); attr(1, bm.NN, 3); buf(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(bm.I)); VAO.boxN = bm.I.length;
+        VAO.disc = gl.createVertexArray(); gl.bindVertexArray(VAO.disc); attr(0, [-1, -1, 1, -1, 1, 1, -1, -1, 1, 1, -1, 1], 2);
+        gl.bindBuffer(gl.ARRAY_BUFFER, instBuf); gl.enableVertexAttribArray(3); gl.vertexAttribPointer(3, 4, gl.FLOAT, false, 0, 0); gl.vertexAttribDivisor(3, 1);
+        gl.bindVertexArray(null);
+        shadowTex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, shadowTex); gl.texStorage2D(gl.TEXTURE_2D, 1, gl.DEPTH_COMPONENT24, 3072, 3072);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        shadowFB = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, shadowFB); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, shadowTex, 0);
+        gl.drawBuffers([gl.NONE]); gl.readBuffer(gl.NONE);
+        const ms = Math.min(4, gl.getParameter(gl.MAX_SAMPLES));
+        msFB = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, msFB);
+        const rc = gl.createRenderbuffer(); gl.bindRenderbuffer(gl.RENDERBUFFER, rc); gl.renderbufferStorageMultisample(gl.RENDERBUFFER, ms, gl.RGBA8, W, H); gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, rc);
+        const rd = gl.createRenderbuffer(); gl.bindRenderbuffer(gl.RENDERBUFFER, rd); gl.renderbufferStorageMultisample(gl.RENDERBUFFER, ms, gl.DEPTH_COMPONENT24, W, H); gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, rd);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        // the frame around the plate, the stand it sits in and the desk under it: [cx, cy, cz, sx, sy, sz, tilts with the frame]
+        const hx = FW / 2, hy = FH / 2, B = BORD;
+        BOX = [[0, hy + B / 2, -2, FW + 2 * B, B, 22, 1], [0, -hy - B / 2, -2, FW + 2 * B, B, 22, 1], [-hx - B / 2, 0, -2, B, FH, 22, 1], [hx + B / 2, 0, -2, B, FH, 22, 1],
+               [0, -hy - B - 16, -10, FW + 2 * B + 70, 32, 190, 0]];
+      }
+      function key(K, b) {
+        if (b <= K[0][0]) return K[0].slice(1); if (b >= K[K.length - 1][0]) return K[K.length - 1].slice(1);
+        let i = 0; while (K[i + 1][0] < b) i++; const a = K[i], c = K[i + 1], u = sm(r(b, a[0], c[0])); return a.slice(1).map((v, q) => lerp(v, c[q + 1], u));
+      }
+      const FLOORY = -FH / 2 - BORD - 32;
+      function tiltM(b) { const T = TB.tilt, a = -0.27 * (sm(r(b, T[0], T[0] + 0.7)) - sm(r(b, T[1] - 1.0, T[1]))); return M4.rotX(a, -FH / 2 - BORD, 0); }
+      function camVP(b) { const c = key(TB.cam, b); return { VP: M4.mul(M4.persp(c[6], W / H, 40, 9000), M4.look([c[0], c[1], c[2]], [c[3], c[4], c[5]], [0, 1, 0])), eye: [c[0], c[1], c[2]] }; }
+      function draw(nf) {
+        const b = (nf / FPS) / BEAT, LT = TB.light;
+        state(b);
+        gl.bindBuffer(gl.ARRAY_BUFFER, instBuf); gl.bufferSubData(gl.ARRAY_BUFFER, 0, INST);
+        let li = r(b, LT.on, LT.on + 0.3); if (b >= LT.on && b < LT.on + 0.5 && nf % 2 === 1) li *= 0.75; li *= 1 - r(b, LT.off[0], LT.off[1]);
+        const kd = LT.key, kl = Math.hypot(...kd), KD = kd.map((v) => v / kl);
+        const LVP = M4.mul(M4.ortho(-1250, 1250, -1250, 1250, 500, 6000), M4.look([KD[0] * 3000, KD[1] * 3000, KD[2] * 3000], [0, -100, 0], [0, 1, 0]));
+        const TM = tiltM(b), ID = M4.box(0, 0, 0, 1, 1, 1), cam = camVP(b);
+        const pinU = (p, VP) => { const U = p.U; gl.uniformMatrix4fv(U.uVP, false, VP); gl.uniformMatrix4fv(U.uM, false, TM); gl.uniform2f(U.uF, FW, FH); gl.uniform1f(U.uP, P);
+          gl.uniform1f(U.uExt, EXT); gl.uniform1f(U.uLen, LEN); gl.uniform1f(U.uRS, RS); gl.uniform1f(U.uHR, HR); gl.uniform1i(U.uNX, NX); };
+        const boxes = (p, VP, lit) => { gl.bindVertexArray(VAO.box); const U = p.U; gl.uniformMatrix4fv(U.uVP, false, VP);
+          for (const bx of BOX) { gl.uniformMatrix4fv(U.uM, false, bx[6] ? TM : ID); gl.uniformMatrix4fv(U.uB, false, M4.box(...bx.slice(0, 6)));
+            if (lit) { gl.uniform3f(U.uAlb, 0.055, 0.058, 0.064); gl.uniform1f(U.uSpec, 0.5); gl.uniform1f(U.uFloor, 0); } gl.drawElements(gl.TRIANGLES, VAO.boxN, gl.UNSIGNED_SHORT, 0); }
+          if (lit) { gl.uniformMatrix4fv(U.uM, false, ID); gl.uniformMatrix4fv(U.uB, false, M4.box(0, FLOORY - 5, 200, 9000, 10, 6000)); gl.uniform3f(U.uAlb, 0.11, 0.105, 0.1); gl.uniform1f(U.uSpec, 0.15); gl.uniform1f(U.uFloor, 1);
+            gl.drawElements(gl.TRIANGLES, VAO.boxN, gl.UNSIGNED_SHORT, 0); } };
+        // the shadow map, from the key light
+        gl.bindFramebuffer(gl.FRAMEBUFFER, shadowFB); gl.viewport(0, 0, 3072, 3072); gl.enable(gl.DEPTH_TEST); gl.depthMask(true); gl.disable(gl.BLEND);
+        gl.clear(gl.DEPTH_BUFFER_BIT); gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(2, 4);
+        gl.useProgram(PRG.pinD.p); pinU(PRG.pinD, LVP); gl.bindVertexArray(VAO.pin); gl.drawElementsInstanced(gl.TRIANGLES, VAO.pinN, gl.UNSIGNED_SHORT, 0, N);
+        gl.useProgram(PRG.solidD.p); boxes(PRG.solidD, LVP, false);
+        gl.disable(gl.POLYGON_OFFSET_FILL);
+        // the picture
+        gl.bindFramebuffer(gl.FRAMEBUFFER, msFB); gl.viewport(0, 0, W, H); gl.clearColor(0.027, 0.031, 0.039, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        const lit = (p) => { const U = p.U; gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, shadowTex); gl.uniform1i(U.uSh, 0); gl.uniformMatrix4fv(U.uLVP, false, LVP);
+          gl.uniform3f(U.uKey, ...KD); gl.uniform3f(U.uRim, ...LT.rim); gl.uniform3f(U.uEye, ...cam.eye); gl.uniform1f(U.uLi, li); };
+        gl.useProgram(PRG.pin.p); pinU(PRG.pin, cam.VP); lit(PRG.pin); gl.bindVertexArray(VAO.pin); gl.drawElementsInstanced(gl.TRIANGLES, VAO.pinN, gl.UNSIGNED_SHORT, 0, N);
+        gl.useProgram(PRG.solid.p); lit(PRG.solid); boxes(PRG.solid, cam.VP, true);
+        // the acrylic: a back face and a front face, then the moulds
+        gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE); gl.depthMask(false);
+        gl.useProgram(PRG.plate.p); lit(PRG.plate); gl.bindVertexArray(VAO.box); gl.uniformMatrix4fv(PRG.plate.U.uVP, false, cam.VP); gl.uniformMatrix4fv(PRG.plate.U.uM, false, TM);
+        for (const z of [-11, 0.4]) { gl.uniformMatrix4fv(PRG.plate.U.uB, false, M4.box(0, 0, z, FW, FH, 0.2)); gl.drawElements(gl.TRIANGLES, VAO.boxN, gl.UNSIGNED_SHORT, 0); }
+        if (PATHI >= 0 || MA.some((v) => v > 0)) { gl.useProgram(PRG.disc.p); const U = PRG.disc.U; gl.uniformMatrix4fv(U.uVP, false, cam.VP); gl.uniformMatrix4fv(U.uM, false, TM);
+          gl.uniform2f(U.uF, FW, FH); gl.uniform1f(U.uP, P); gl.uniform1f(U.uR, HR * 1.12); gl.uniform1i(U.uNX, NX); gl.uniform1f(U.uLi, li);
+          gl.bindVertexArray(VAO.disc); gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, N); }
+        gl.depthMask(true); gl.disable(gl.BLEND);
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, msFB); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null); gl.blitFramebuffer(0, 0, W, H, 0, 0, W, H, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        return { cam, TM, b, li };
+      }
+
+      // ---------------- the flat layer: the words, the map's labels, the checks, the demo label and the end card
+      const BONE = "#F3EAD6", DARK = "#07080A", AMBER = "#E2A23A";
+      function mono(g, s, x, y, size, col, al = "left", wt = 500) { g.font = `${wt} ${size}px JBM`; g.letterSpacing = "0.08em"; g.textAlign = al; g.textBaseline = "alphabetic"; g.fillStyle = col; g.fillText(s, x, y); g.letterSpacing = "0px"; }
+      function toScreen(VP, TM, fx, fy, v) { const w = M4.ap(TM, [fx - FW / 2, FH / 2 - fy, v * EXT + HR * 1.6]), c = M4.ap(VP, w); return [(c[0] / c[3] * 0.5 + 0.5) * W, (0.5 - c[1] / c[3] * 0.5) * H]; }
+      function overlay(g, nf, D) {
+        const b = D.b; g.clearRect(0, 0, W, H);
+        const vg = g.createRadialGradient(W / 2, H * 0.52, H * 0.35, W / 2, H * 0.52, H * 1.05); vg.addColorStop(0, "rgba(7,8,10,0)"); vg.addColorStop(1, "rgba(7,8,10,0.72)"); g.fillStyle = vg; g.fillRect(0, 0, W, H);
+        // the words
+        for (const [s, b0, b1] of TB.caps) { if (b < b0 || b > b1 + 0.1) continue;
+          const a = sm(r(b, b0, b0 + 0.35)) * (1 - sm(r(b, b1 - 0.3, b1))); g.globalAlpha = a; g.font = '800 70px "Archivo"'; g.textAlign = "center"; g.textBaseline = "alphabetic";
+          g.fillStyle = "rgba(7,8,10,0.55)"; g.fillText(s, W / 2 + 3, 128 + 4 + (1 - a) * 10); g.fillStyle = BONE; g.fillText(s, W / 2, 128 + (1 - a) * 10); g.globalAlpha = 1; }
+        const K = TB.kinds; if (b >= K[0] && b < K[2]) { g.globalAlpha = sm(r(b, K[0], K[0] + 0.4)) * (1 - sm(r(b, K[2] - 0.3, K[2]))); mono(g, K[1], W / 2, 184, 22, AMBER, "center"); g.globalAlpha = 1; }
+        // the map, named
+        for (const [b0, b1, s, fx, fy, v, side] of TB.labels) { if (b < b0 || b > b1) continue;
+          const a = sm(r(b, b0, b0 + 0.4)) * (1 - sm(r(b, b1 - 0.4, b1))), [x, y] = toScreen(D.cam.VP, D.TM, fx, fy, v), ly = y + side * 96;
+          g.globalAlpha = a; g.strokeStyle = BONE; g.lineWidth = 2; g.beginPath(); g.moveTo(x, y); g.lineTo(x, ly - side * 8); g.stroke();
+          g.fillStyle = BONE; g.beginPath(); g.arc(x, y, 5, 0, Math.PI * 2); g.fill();
+          g.font = "500 22px JBM"; g.letterSpacing = "0.08em"; const tw = g.measureText(s).width; g.letterSpacing = "0px";
+          g.fillStyle = "rgba(7,8,10,0.82)"; g.fillRect(x - tw / 2 - 12, ly - (side < 0 ? 30 : 0) - 4, tw + 24, 36); mono(g, s, x, ly + (side < 0 ? -2 : 24), 22, BONE, "center"); g.globalAlpha = 1; }
+        // the checks: one panel per path
+        const fr = TB.ev.filter((e) => e.kind === "front");
+        for (const e of fr) { const end = e.restore != null ? e.restore + 0.5 : 40.8; if (b < e.t0 - 0.3 || b > end) continue;
+          const a = sm(r(b, e.t0 - 0.3, e.t0 + 0.2)) * (1 - sm(r(b, end - 0.4, end))), x = 1530, y = 300; g.globalAlpha = a;
+          g.fillStyle = "rgba(7,8,10,0.86)"; g.fillRect(x, y, 350, 470); g.strokeStyle = "rgba(243,234,214,0.25)"; g.lineWidth = 1.5; g.strokeRect(x + 0.5, y + 0.5, 349, 469);
+          mono(g, TB.paths[e.path].name, x + 28, y + 50, 30, BONE, "left", 700);
+          TB.checks.forEach((c, k) => { const tb = e.t0 + 1.1 + k * 0.32, u = r(b, tb, tb + 0.15), yy = y + 110 + k * 46; mono(g, c, x + 28, yy, 20, "rgba(243,234,214,0.8)");
+            g.strokeStyle = BONE; g.lineWidth = 3; g.beginPath(); g.rect(x + 298, yy - 20, 24, 24); g.globalAlpha = a * 0.4; g.stroke(); g.globalAlpha = a;
+            if (u > 0) { g.beginPath(); g.moveTo(x + 302, yy - 8); g.lineTo(x + 302 + 6 * Math.min(1, u * 2), yy - 8 + 6 * Math.min(1, u * 2)); if (u > 0.5) g.lineTo(x + 308 + 12 * (u - 0.5) * 2, yy - 2 - 16 * (u - 0.5) * 2); g.stroke(); } });
+          const mv = (PATHI === e.path) ? MOVED : 0, mu = r(b, e.t0, e.t0 + 1.0);
+          mono(g, "PINS MOVED", x + 28, y + 418, 20, "rgba(243,234,214,0.8)"); mono(g, Math.round(mv).toLocaleString("en-GB"), x + 322, y + 420, 30, mv > 0 ? AMBER : BONE, "right", 700);
+          mono(g, "CHECKED AGAINST OFFICIAL SOURCES", x + 28, y + 450, 12, "rgba(243,234,214,0.5)"); g.globalAlpha = 1; void mu; }
+        if (b >= TB.light.on && b < TB.logo) { g.font = "500 18px JBM"; g.letterSpacing = "0.08em"; const s = TB.label, w = g.measureText(s).width + 22; g.letterSpacing = "0px";
+          g.fillStyle = "rgba(7,8,10,0.86)"; g.fillRect(40, H - 68, w, 32); mono(g, s, 51, H - 46, 18, BONE); }
+        if (b >= TB.logo) { const u = r(b, TB.logo + 0.1, TB.logo + 0.8), lw = 926 * 0.72, lh = 193 * 0.72, a = 1 - r(b, TB.beats - 0.4, TB.beats), eO = 1 - Math.pow(1 - u, 3);
+          g.fillStyle = DARK; g.fillRect(0, 0, W, H);
+          g.globalAlpha = eO * a; g.drawImage($("#logo"), W / 2 - lw / 2, 300 - (1 - eO) * 14, lw, lh);
+          g.font = '800 80px "Archivo"'; g.textAlign = "center"; g.textBaseline = "alphabetic"; g.fillStyle = BONE; g.globalAlpha = a * r(b, TB.logo + 0.4, TB.logo + 0.9); g.fillText("AI Problem-to-Solution Assessment", W / 2, 610);
+          g.globalAlpha = a * r(b, TB.logo + 0.8, TB.logo + 1.3); mono(g, "ai.joaoqueiros.com", W / 2, 690, 28, BONE, "center"); mono(g, "A SERVICE · THIS FILM IS CODE", W / 2, 744, 20, AMBER, "center"); g.globalAlpha = 1; }
+      }
+      function paint(t) {
+        const nf = Math.min(Math.floor(t * FPS + 1e-6), Math.round(DUR * FPS) - 1); if (nf === frame) return;
+        frame = nf; const D = draw(nf); overlay(ovG, nf, D);
+      }
+      const tl = gsap.timeline({ paused: true }), clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+      async function build() {
+        await Promise.all([$("#logo").decode(), document.fonts.load('800 40px "Archivo"'), document.fonts.load('500 20px "JBM"'), document.fonts.load('700 20px "JBM"')]);
+        ovG = $("#over").getContext("2d"); prepare(); initGL();
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(0);
+        window.__timelines = window.__timelines || {}; window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+      window.__hf = window.__hf || {}; window.__hf.buildReady = window.__hf.buildReady || {}; window.__hf.buildReady["impression"] = build();
+    </script>
+  </body>
+</html>
