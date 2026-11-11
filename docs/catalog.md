@@ -106,6 +106,14 @@ Made for: Imagined Worlds · Stills. Stack: Three.js, TSL, GSAP, Python (score).
 
 ## Products and systems
 
+### R59 · Counter
+
+One unbroken zoom: every scene lives inside a hole in the scene before (the O of a word, a dial's knob, a full stop, a node, the 0 of 20), and the camera spirals down through six of them without a cut, from one prompt into the library inside it.
+
+Made for: Prompt Engineering · JQ AI SYSTEMS. Stack: HyperFrames, Canvas 2D, GSAP, Python, FFmpeg.
+
+[Recipe and poster](../recipes/r59-counter/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r59-counter-v1)
+
 ### R58 · Casting
 
 A shadow sculpture: one lattice of blocks that looks like a tangle from every side, carved so each level lamp throws a different exact word. RESEARCH, DRAFT and REVIEW from the same blocks; a fourth lamp swings in and the lattice rebuilds itself until PUBLISH lands too.

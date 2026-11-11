@@ -1,0 +1,275 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <title>Counter</title>
+    <!-- Counter: one unbroken zoom, made entirely in code. Every scene lives inside the counter of a letter in the scene before (the
+         hole in an O, a dial's knob, a full stop, the hole in a 0), and the camera spirals down through it: a prompt, a voice spec,
+         an anti-pattern library, domain knowledge, a prompt library and a chain, then the mark. The library is a demo. -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/table.js"></script>
+    <style>
+      @font-face { font-family: "Archivo"; src: url("assets/fonts/Archivo.ttf") format("truetype"); font-weight: 100 900; font-stretch: 62% 125%; }
+      @font-face { font-family: "JBM"; src: url("assets/fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 100 800; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #07080A; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #07080A; }
+      #ct-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #stage { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #logo { position: absolute; left: -2000px; top: 0; width: 926px; height: 193px; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="42" data-width="1920" data-height="1080">
+      <div id="ct-stage" class="clip" data-start="0" data-duration="42" data-track-index="0">
+        <canvas id="stage" width="1920" height="1080" data-layout-allow-overflow></canvas>
+        <img id="logo" src="assets/brand/your-mark.svg" alt="Your mark" data-layout-allow-overflow>
+      </div>
+      <audio id="score" src="assets/bgm/score.wav" data-start="0" data-duration="42" data-track-index="7" data-volume="1"></audio>
+    </div>
+
+    <script>
+      // The whole film is one camera move. Scene k+1 is drawn inside a counter of scene k, shrunk to fit and turned; the camera is a
+      // spiral zoom about the one point that the shrinking leaves where it is, so landing in the counter is exactly the next scene at
+      // full frame. Everything is worked out from the time alone, so any frame renders on its own.
+      const TB = window.TABLE, W = TB.w, H = TB.h, FPS = 30, BEAT = TB.beat, DUR = TB.dur;
+      const $ = (s) => document.querySelector(s);
+      const r = (x, a, b) => Math.min(1, Math.max(0, (x - a) / (b - a))), lerp = (a, b, u) => a + (b - a) * u, sm = (u) => u * u * (3 - 2 * u);
+      const hash = (i, s) => { let x = (i * 374761393 + s * 668265263) | 0; x = Math.imul(x ^ (x >>> 13), 1274126177); x ^= x >>> 16; return (x >>> 0) / 4294967296; };
+      const oBack = (t, s = 1.7) => { t = Math.min(1, Math.max(0, t)); const u = t - 1; return 1 + (s + 1) * u * u * u + s * u * u; };
+      const oExpo = (t) => t >= 1 ? 1 : t <= 0 ? 0 : 1 - Math.pow(2, -10 * t);
+      const ioQuint = (t) => t < 0.5 ? 16 * t ** 5 : 1 - Math.pow(-2 * t + 2, 5) / 2;
+      const INK = "#07080A", BONE = "#F3EAD6", TEAL = "#00A89D", AQUA = "#2FD6C3", RED = "#E8341C", CARD = "#15171C", DTEAL = "#00796F";
+      const BG = [INK, BONE, INK, TEAL, INK, BONE, INK];
+      const CX = W / 2, CY = H / 2, HALF_DIAG = Math.hypot(CX, CY);
+
+      // ---------------- text helpers
+      let g;
+      const F = (wt, px, fam = "Archivo") => `${wt} ${px}px ${fam === "Archivo" ? '"Archivo"' : "JBM"}`;
+      function text(s, x, y, wt, px, col, al = "left", fam = "Archivo", ls = 0) {
+        g.font = F(wt, px, fam); g.letterSpacing = ls + "px"; g.textAlign = al; g.textBaseline = "alphabetic"; g.fillStyle = col; g.fillText(s, x, y); g.letterSpacing = "0px"; }
+      function mono(s, x, y, px, col, al = "left") { text(s, x, y, 500, px, col, al, "JBM", px * 0.09); }
+      function measure(s, wt, px, fam = "Archivo") { g.font = F(wt, px, fam); g.letterSpacing = "0px"; return g.measureText(s).width; }
+      // the hole in a glyph, found by drawing it big and looking outward from its middle until the ink starts
+      function counterOf(ch, wt, px) {
+        const c = document.createElement("canvas"); c.width = 700; c.height = 700; const q = c.getContext("2d");
+        q.font = F(wt, 400); q.textBaseline = "alphabetic"; q.fillStyle = "#000"; q.fillText(ch, 100, 520);
+        const d = q.getImageData(0, 0, 700, 700).data, ink = (x, y) => d[(y * 700 + x) * 4 + 3] > 128;
+        let x0 = 700, x1 = 0, y0 = 700, y1 = 0;
+        for (let y = 0; y < 700; y++) for (let x = 0; x < 700; x++) if (ink(x, y)) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+        const mx = Math.round((x0 + x1) / 2), my = Math.round((y0 + y1) / 2);
+        let L = mx, R = mx, U = my, Dn = my; while (L > 0 && !ink(L, my)) L--; while (R < 699 && !ink(R, my)) R++; while (U > 0 && !ink(mx, U)) U--; while (Dn < 699 && !ink(mx, Dn)) Dn++;
+        const k = px / 400; return { dx: ((L + R) / 2 - 100) * k, dy: ((U + Dn) / 2 - 520) * k, rx: (R - L) / 2 * k, ry: (Dn - U) / 2 * k };
+      }
+
+      // ---------------- the scenes. Each draws itself in its own 1920 by 1080 frame from its own time lt, in beats
+      const S = [];
+      // 0 · the prompt, typed
+      const P0 = { x: 160, y: 600, px: 124 };
+      S[0] = (lt) => {
+        const s = TB.prompt, n = Math.max(0, Math.min(s.length, Math.floor((lt - TB.type0) / TB.typeStep) + 1));
+        const a = oExpo(r(lt, 0.2, 1.0)); g.globalAlpha = a; mono("PROMPT 01", P0.x + (1 - a) * -30, 420, 26, AQUA); g.globalAlpha = 1;
+        let x = P0.x;
+        for (let i = 0; i < n; i++) { const ch = s[i], t0 = TB.type0 + i * TB.typeStep, u = r(lt, t0, t0 + 0.4), w = measure(ch, 800, P0.px);
+          g.globalAlpha = Math.min(1, u * 3); text(ch, x, P0.y - (1 - oBack(u, 2.6)) * 40, 800, P0.px, BONE); g.globalAlpha = 1; x += w; }
+        const done = TB.type0 + s.length * TB.typeStep;
+        if (lt < TB.open[0] + 0.5 && (lt < done || (lt % 1) < 0.55)) { g.fillStyle = AQUA; g.fillRect(x + 8, P0.y - P0.px * 0.74, P0.px * 0.42, P0.px * 0.86); }
+        const ul = oExpo(r(lt, done + 0.5, done + 1.3)); if (ul > 0) { const xa = P0.x + measure("WRITE IT IN ", 800, P0.px), xb = P0.x + measure("WRITE IT IN OUR VOICE", 800, P0.px);
+          g.fillStyle = AQUA; g.fillRect(xa, P0.y + 26, (xb - xa) * ul, 10); }
+      };
+      // 1 · the voice spec: three dials, and a sample that answers them
+      const DIALS = [["TONE", "PLAIN", "STIFF"], ["RHYTHM", "SHORT", "WINDING"], ["VOCABULARY", "OURS", "JARGON"]], TR0 = 520, TR1 = 1080, DY = [430, 590, 750];
+      const knob = (i, lt) => { const K = TB.knobs[i]; if (lt <= K[0][0]) return K[0][1]; for (let j = 0; j < K.length - 1; j++) { const a = K[j], c = K[j + 1]; if (lt <= c[0]) return lerp(a[1], c[1], oBack(r(lt, a[0], c[0]), 1.4)); } return K[K.length - 1][1]; };
+      function words(s, x, y, wt, px, col, lt, t0, step = 0.12) {   // words rising into place from under a line
+        let xx = x; s.split(" ").forEach((w, i) => { const u = oExpo(r(lt, t0 + i * step, t0 + i * step + 0.7)); g.save(); g.beginPath(); g.rect(xx - 10, y - px * 1.1, 4000, px * 1.32); g.clip();
+          text(w, xx, y + (1 - u) * px * 1.15, wt, px, col); g.restore(); xx += measure(w + " ", wt, px); });
+      }
+      S[1] = (lt) => {
+        words("A VOICE SPEC.", 160, 230, 800, 96, INK, lt, 0.2);
+        DIALS.forEach(([lab, a, c], i) => {
+          const t0 = 0.8 + i * 0.3, u = oExpo(r(lt, t0, t0 + 0.9)), y = DY[i], v = knob(i, lt), kx = TR0 + (TR1 - TR0) * v;
+          g.globalAlpha = u; mono(lab, 160, y + 9, 26, INK); g.globalAlpha = 1;
+          g.fillStyle = "rgba(7,8,10,0.18)"; g.fillRect(TR0, y - 2, (TR1 - TR0) * u, 4);
+          g.fillStyle = DTEAL; g.fillRect(TR0, y - 3, (kx - TR0) * u, 6);
+          g.globalAlpha = u; mono(a, TR0, y + 52, 18, INK); mono(c, TR1, y + 52, 18, INK, "right");
+          for (let k = 0; k <= 10; k++) { g.fillStyle = "rgba(7,8,10,0.3)"; g.fillRect(TR0 + (TR1 - TR0) * k / 10 - 1, y + 14, 2, k % 5 ? 8 : 14); }
+          const kr = 30 * oBack(r(lt, t0 + 0.2, t0 + 0.8), 2);
+          g.globalAlpha = 1; g.fillStyle = INK; g.beginPath(); g.arc(kx, y, kr, 0, Math.PI * 2); g.fill();
+          g.fillStyle = i === 2 ? BONE : BONE; g.beginPath(); g.arc(kx, y, Math.max(0, kr - 8), 0, Math.PI * 2); g.fill();
+        });
+        // the sample answers the dials: heavier as the tone stiffens, looser as the rhythm winds, and the words change with the vocabulary
+        const tone = knob(0, lt), rh = knob(1, lt), vo = knob(2, lt), u = oExpo(r(lt, 1.6, 2.4)); if (u <= 0) return;
+        g.globalAlpha = u; mono("SAMPLE OUTPUT", 1220, 380, 20, DTEAL);
+        const A = ["We leverage", "seamless", "synergies."], B = ["We fix it.", "Then we", "tell you."], sw = r(lt, 5.0, 6.2);
+        const wt = Math.round(lerp(380, 900, tone)), ls = lerp(-4, 14, rh);
+        A.forEach((la, j) => { const lb = B[j], n = Math.max(la.length, lb.length); let s = "";
+          for (let q = 0; q < n; q++) { const done = q < sw * n - 0.5; const mid = !done && sw > 0 && q < sw * n + 4;
+            s += done ? (lb[q] || "") : mid ? "#%&*+=?ABCDEFGHJKLMNPRSTUVWXYZ"[Math.floor(hash(q + j * 31, Math.floor(lt * 20)) * 30)] : (la[q] || ""); }
+          text(s.trimEnd(), 1220, 500 + j * 128, wt, 112, INK, "left", "Archivo", ls); });
+        g.globalAlpha = 1;
+      };
+      // 2 · the anti-pattern library: clichés fly in, and are struck out one a half beat
+      S[2] = (lt) => {
+        words("AN ANTI-PATTERN LIBRARY.", 160, 200, 800, 84, BONE, lt, 0.1, 0.1);
+        TB.cliches.forEach((c, i) => {
+          const col = i % 2, row = i >> 1, x = col ? 1010 : 160, y = 350 + row * 118, t0 = TB.clIn + i * 0.12, u = oExpo(r(lt, t0, t0 + 0.9));
+          const ts = TB.strike0 + i * 0.5, st = r(lt, ts, ts + 0.18), after = oExpo(r(lt, ts + 0.1, ts + 0.6));
+          const shake = st > 0 && st < 1 ? (hash(i, Math.floor(lt * 30)) - 0.5) * 10 : 0, w = measure(c, 600, 46);
+          g.save(); g.translate(x + (1 - u) * 260 + shake, y); g.scale(1, 1 - 0.32 * after);
+          g.globalAlpha = u * (1 - 0.62 * after); text(c, 0, 0, 600, 46, BONE); g.restore(); g.globalAlpha = 1;
+          if (st > 0) { g.fillStyle = RED; g.fillRect(x - 8, y - 22 + 4 * after, (w + 16) * st, 11); }
+          if (after > 0) { g.globalAlpha = after; mono("CAUGHT", x + w + 26, y - 6, 16, RED); g.globalAlpha = 1; }
+        });
+        const t1 = TB.strike0 + 8 * 0.5 + 0.4; words("CAUGHT AT PROMPT LEVEL", 160, 905, 800, 66, BONE, lt, t1, 0.12);
+        const dr = 17 * oBack(r(lt, t1 + 0.8, t1 + 1.3), 3); if (dr > 0) { g.fillStyle = RED; g.beginPath(); g.arc(DOT2.x, DOT2.y, dr, 0, Math.PI * 2); g.fill(); }
+      };
+      let DOT2 = { x: 0, y: 0 };
+      // 3 · domain knowledge: a network that grows round one node
+      const NC = { x: 1180, y: 610 }, PRIM = [[-470, -170], [290, -250], [300, 240]];
+      const SMALL = []; for (let i = 0; i < 54; i++) { const a = hash(i, 1) * Math.PI * 2, d = 170 + hash(i, 2) * 420; SMALL.push([a, d, hash(i, 3), Math.floor(hash(i, 4) * 3)]); }
+      S[3] = (lt) => {
+        words("DOMAIN KNOWLEDGE.", 160, 200, 800, 84, INK, lt, 0.1);
+        const rot = lt * 0.035, pts = PRIM.map(([dx, dy]) => [NC.x + dx, NC.y + dy]);
+        SMALL.forEach(([a, d, h, p], i) => { const t0 = TB.node0 + 1 + h * 5, u = oBack(r(lt, t0, t0 + 0.5), 2.2); if (u <= 0) return;
+          const x = NC.x + Math.cos(a + rot) * d * 1.25, y = NC.y + Math.sin(a + rot) * d * 0.62; if (y < 250) return;
+          const q = pts[p], lu = r(lt, t0, t0 + 0.6);
+          g.strokeStyle = "rgba(7,8,10,0.32)"; g.lineWidth = 1.5; g.beginPath(); g.moveTo(q[0], q[1]); g.lineTo(lerp(q[0], x, lu), lerp(q[1], y, lu)); g.stroke();
+          g.fillStyle = INK; g.beginPath(); g.arc(x, y, 5 * u + 2 * hash(i, 5), 0, Math.PI * 2); g.fill();
+          const ph = (lt * 0.7 + h) % 1; if (lu >= 1) { g.fillStyle = BONE; g.beginPath(); g.arc(lerp(q[0], x, ph), lerp(q[1], y, ph), 3, 0, Math.PI * 2); g.fill(); } });
+        pts.forEach((q, i) => { const t0 = TB.node0 + i * 0.75, lu = oExpo(r(lt, t0, t0 + 0.8)); if (lu <= 0) return;
+          g.strokeStyle = INK; g.lineWidth = 5; g.beginPath(); g.moveTo(NC.x, NC.y); g.lineTo(lerp(NC.x, q[0], lu), lerp(NC.y, q[1], lu)); g.stroke();
+          const u = oBack(r(lt, t0 + 0.5, t0 + 1.0), 2.4); g.fillStyle = INK; g.beginPath(); g.arc(q[0], q[1], 18 * u, 0, Math.PI * 2); g.fill();
+          g.globalAlpha = r(lt, t0 + 0.7, t0 + 1.1); mono(TB.nodes[i], q[0] + (q[0] > NC.x ? 34 : -34), q[1] + 8, 24, INK, q[0] > NC.x ? "left" : "right"); g.globalAlpha = 1; });
+        const cu = oBack(r(lt, 0.6, 1.2), 2); g.fillStyle = INK; g.beginPath(); g.arc(NC.x, NC.y, 50 * cu, 0, Math.PI * 2); g.fill();
+        g.fillStyle = TEAL; g.beginPath(); g.arc(NC.x, NC.y, Math.max(0, 50 * cu - 12), 0, Math.PI * 2); g.fill();
+      };
+      // 4 · the prompt library: twenty cards dealt, a count from 5 to 20, and the cards flip to tested
+      const CW = 200, CH = 128, GAP = 22, G0 = { x: 160, y: 300 }, BIG = { x: 1400, y: 770, px: 300 };
+      S[4] = (lt) => {
+        words("A PROMPT LIBRARY.", 160, 200, 800, 84, BONE, lt, 0.1);
+        let dealt = 0;
+        for (let i = 0; i < 20; i++) {
+          const col = i % 5, row = Math.floor(i / 5), t0 = TB.deal0 + i * TB.dealStep, u = oBack(r(lt, t0, t0 + 0.7), 1.3); if (lt >= t0 + 0.3) dealt = i + 1; if (u <= 0) continue;
+          const tx = G0.x + col * (CW + GAP), ty = G0.y + row * (CH + GAP), sx = 700, sy = 1350, x = lerp(sx, tx, u), y = lerp(sy, ty, u), rot = (1 - u) * (hash(i, 6) - 0.5) * 1.6;
+          const tf = TB.flip0 + col * 0.15 + row * 0.12, fl = r(lt, tf, tf + 0.5), sc = Math.abs(Math.cos(fl * Math.PI)), back = fl > 0.5;
+          g.save(); g.translate(x + CW / 2, y + CH / 2); g.rotate(rot); g.scale(sc, 1);
+          g.fillStyle = back ? AQUA : CARD; g.beginPath(); g.roundRect(-CW / 2, -CH / 2, CW, CH, 10); g.fill();
+          if (!back) { g.strokeStyle = "rgba(47,214,195,0.45)"; g.lineWidth = 1.5; g.stroke(); mono(String(i + 1).padStart(2, "0"), -CW / 2 + 16, -CH / 2 + 30, 16, AQUA); text(TB.kinds[i % 5], -CW / 2 + 16, 12, 700, 26, BONE); mono("v1", -CW / 2 + 16, CH / 2 - 16, 14, "rgba(243,234,214,0.5)"); }
+          else { mono(String(i + 1).padStart(2, "0"), -CW / 2 + 16, -CH / 2 + 30, 16, INK); text(TB.kinds[i % 5], -CW / 2 + 16, 12, 700, 26, INK); mono("v3 · TESTED", -CW / 2 + 16, CH / 2 - 16, 14, INK); }
+          g.restore();
+        }
+        const a = oExpo(r(lt, 0.4, 1.2)); g.globalAlpha = a; mono("5 TO 20 PROMPTS", BIG.x + 6, 430, 24, AQUA);
+        const n = Math.max(5, dealt), s = String(n).padStart(2, "0"); text(s, BIG.x, BIG.y, 800, BIG.px, BONE); g.globalAlpha = 1;
+      };
+      // 5 · a chain: draft, critique, rewrite
+      const COLX = [160, 720, 1280], DRAFT = ["In today's world, we", "leverage seamless", "solutions."], REW = ["We fix it.", "Then we tell you"];
+      let DOT5 = { x: 0, y: 0 };
+      S[5] = (lt) => {
+        words("MULTI-STEP CHAINS.", 160, 200, 800, 84, INK, lt, 0.1);
+        ["01 · DRAFT", "02 · CRITIQUE", "03 · REWRITE"].forEach((lab, i) => { const t0 = TB.chain[i] - 0.6, u = oExpo(r(lt, t0, t0 + 0.8)); if (u <= 0) return;
+          g.globalAlpha = u; mono(lab, COLX[i], 330, 24, DTEAL); g.globalAlpha = 1;
+          g.strokeStyle = INK; g.lineWidth = 2.5; g.beginPath(); g.roundRect(COLX[i], 370, 480 * u, 300, 14); g.stroke();
+          if (i > 0) { const au = oExpo(r(lt, t0 - 0.2, t0 + 0.5)), xa = COLX[i] - 70, xb = COLX[i] - 18; g.fillStyle = INK; g.fillRect(xa, 517, (xb - xa) * au, 6);
+            if (au > 0.9) { g.beginPath(); g.moveTo(xb + 4, 520); g.lineTo(xb - 14, 508); g.lineTo(xb - 14, 532); g.fill(); } } });
+        const typed = (lines, t0, rate) => { let left = Math.max(0, Math.floor((lt - t0) * rate)); return lines.map((l) => { const s = l.slice(0, left); left = Math.max(0, left - l.length); return s; }); };
+        typed(DRAFT, TB.chain[0], 40).forEach((l, j) => text(l, COLX[0] + 28, 440 + j * 52, 600, 38, INK));
+        if (lt >= TB.chain[1]) { DRAFT.forEach((l, j) => text(l, COLX[1] + 28, 440 + j * 52, 600, 38, "rgba(7,8,10,0.55)"));
+          const marks = [[0, "In today's world,", "CLICHÉ"], [1, "leverage seamless", "JARGON"], [2, "solutions", "FILLER"]];
+          marks.forEach(([j, seg, note], q) => { const t0 = TB.chain[1] + 0.3 + q * 0.4, u = oExpo(r(lt, t0, t0 + 0.3)); if (u <= 0) return;
+            const w = measure(seg, 600, 38); g.fillStyle = RED; g.fillRect(COLX[1] + 24, 440 + j * 52 - 14, (w + 8) * u, 5);
+            g.globalAlpha = u; mono(note, COLX[1] + 460, 440 + j * 52 - 4, 15, RED, "right"); g.globalAlpha = 1; }); }
+        typed(REW, TB.chain[2], 28).forEach((l, j) => text(l, COLX[2] + 28, 470 + j * 70, 800, 52, INK));
+        const dr = 14 * oBack(r(lt, TB.chain[2] + 1.0, TB.chain[2] + 1.4), 3); if (dr > 0) { g.fillStyle = TEAL; g.beginPath(); g.arc(DOT5.x, DOT5.y, dr, 0, Math.PI * 2); g.fill(); }
+      };
+      // 6 · the close
+      S[6] = (lt) => {
+        const b = lt - TB.lead + TB.arrive[6];
+        const dr = 70 * (1 - oExpo(r(lt, TB.lead, TB.lead + 1.2))); if (dr > 0.5) { g.fillStyle = TEAL; g.beginPath(); g.arc(CX, CY, dr, 0, Math.PI * 2); g.fill(); }
+        TB.close.forEach(([b0, s], i) => { const b1 = i + 1 < TB.close.length ? TB.close[i + 1][0] : TB.logo; if (b < b0 || b >= b1) return;
+          const out = r(b, b1 - 0.35, b1); let x = CX - measure(s, 800, 116) / 2;
+          for (let q = 0; q < s.length; q++) { const ch = s[q], u = oBack(r(b, b0 + q * 0.04, b0 + q * 0.04 + 0.5), 2.2), w = measure(ch, 800, 116);
+            g.save(); g.translate(x + w / 2, 590); g.scale(u * (1 - out), u * (1 - out)); g.globalAlpha = Math.min(1, u); text(ch, -w / 2, 0, 800, 116, BONE); g.restore(); x += w; }
+          if (i === 1) { g.globalAlpha = r(b, b0 + 1.0, b0 + 1.6) * (1 - out); mono("DOCUMENTED · EDITABLE · YOURS", CX, 670, 26, AQUA, "center"); g.globalAlpha = 1; } });
+        if (b >= TB.logo) { const u = r(b, TB.logo + 0.1, TB.logo + 0.9), lw = 926 * 0.72, lh = 193 * 0.72, a = 1 - r(b, TB.beats - 0.5, TB.beats), eO = 1 - Math.pow(1 - u, 3);
+          g.globalAlpha = eO * a; g.drawImage($("#logo"), CX - lw / 2, 300 - (1 - eO) * 14, lw, lh);
+          g.globalAlpha = a * r(b, TB.logo + 0.4, TB.logo + 0.9); text("Prompt Engineering", CX, 610, 800, 80, BONE, "center");
+          g.globalAlpha = a * r(b, TB.logo + 0.8, TB.logo + 1.3); mono("ai.joaoqueiros.com", CX, 690, 28, BONE, "center"); mono("A SERVICE · THIS FILM IS CODE", CX, 744, 20, AQUA, "center"); g.globalAlpha = 1; }
+      };
+
+      // ---------------- the counters: where each scene's door is, in its own frame
+      let PORT = [];
+      function initPorts() {
+        const c0 = counterOf("O", 800, P0.px), x0 = P0.x + measure("WRITE IT IN OUR V", 800, P0.px);
+        PORT[0] = { x: x0 + c0.dx, y: P0.y + c0.dy, rx: c0.rx, ry: c0.ry };
+        PORT[1] = { x: TR0 + (TR1 - TR0) * TB.knobs[2][TB.knobs[2].length - 1][1], y: DY[2], rx: 22, ry: 22 };
+        DOT2 = { x: 160 + measure("CAUGHT AT PROMPT LEVEL", 800, 66) + 30, y: 905 - 9 }; PORT[2] = { x: DOT2.x, y: DOT2.y, rx: 17, ry: 17 };
+        PORT[3] = { x: NC.x, y: NC.y, rx: 38, ry: 38 };
+        const c4 = counterOf("0", 800, BIG.px); PORT[4] = { x: BIG.x + measure("2", 800, BIG.px) + c4.dx, y: BIG.y + c4.dy, rx: c4.rx, ry: c4.ry };
+        DOT5 = { x: COLX[2] + 28 + measure(REW[1], 800, 52) + 22, y: 470 + 70 - 7 }; PORT[5] = { x: DOT5.x, y: DOT5.y, rx: 14, ry: 14 };
+        // the map from a child's frame into its counter, and the one point that map leaves in place
+        PORT.forEach((p, k) => { const f = Math.min(p.rx, p.ry) / HALF_DIAG, th = TB.turn[k], c = Math.cos(th) * f, s = Math.sin(th) * f;
+          const ox = p.x - (c * CX - s * CY), oy = p.y - (s * CX + c * CY);           // T(x) = o + fR x
+          const a = 1 - c, bb = s, cc = -s, d = 1 - c, det = a * d - bb * cc;          // p* = (I - fR)^-1 o
+          p.f = f; p.th = th; p.ox = ox; p.oy = oy; p.fx = (d * ox - bb * oy) / det; p.fy = (-cc * ox + a * oy) / det; });
+      }
+      const openAmt = (k, b) => k >= PORT.length ? 0 : Math.min(1, oBack(r(b, TB.open[k], TB.open[k] + 0.7), 2.0));
+      function intoChild(k) { const p = PORT[k]; g.translate(p.x, p.y); g.rotate(p.th); g.scale(p.f, p.f); g.translate(-CX, -CY); }
+      function scene(k, b) {
+        g.fillStyle = BG[k]; g.fillRect(-40000, -40000, 80000, 80000);
+        S[k](b - TB.arrive[k] + (k ? TB.lead : 0));
+        const o = openAmt(k, b); if (o <= 0 || k + 1 >= S.length) return;
+        const p = PORT[k]; g.save(); g.beginPath(); g.ellipse(p.x, p.y, Math.max(0.01, p.rx * o), Math.max(0.01, p.ry * o), 0, 0, Math.PI * 2); g.clip();
+        intoChild(k); g.fillStyle = BG[k + 1]; g.fillRect(-40000, -40000, 80000, 80000); S[k + 1](b - TB.arrive[k + 1] + TB.lead); g.restore();
+      }
+      // where the camera is: in scene k, a fraction u of the way down into its counter
+      function where(b) {
+        for (let k = 0; k < TB.dives.length; k++) { const [d0, d1] = TB.dives[k];
+          if (b < d0) return [k, -0.012 * sm(r(b, d0 - 1.0, d0))];
+          if (b < d1) { const t = (b - d0) / (d1 - d0); return [k, -0.012 + 1.012 * ioQuint(t)]; } }
+        return [TB.dives.length, 0];
+      }
+      function frameAt(b) {
+        const [k, u] = where(b); g.setTransform(1, 0, 0, 1, 0, 0);
+        // a landing lands: the frame punches in a little and settles
+        const la = k > 0 ? b - TB.arrive[k] : 9, punch = la >= 0 && la < 2 ? 0.03 * Math.exp(-la * 4) * Math.cos(la * 9) : 0;
+        g.translate(CX, CY); g.scale(1 + punch, 1 + punch); g.translate(-CX, -CY);
+        if (k < PORT.length && u !== 0) { const p = PORT[k], s = Math.pow(p.f, -u); g.translate(p.fx, p.fy); g.rotate(-p.th * u); g.scale(s, s); g.translate(-p.fx, -p.fy); }
+        scene(k, b);
+      }
+      // the running average is done by drawing every sample into a buffer at weight 1/(i+1)
+      let buf, bg2;
+      function paintBlur(b) {
+        const sh = 0.5 / FPS / BEAT, N = 12;
+        for (let i = 0; i < N; i++) { const gg = g; g = bg2; g.save(); frameAt(b + (i / (N - 1) - 0.5) * sh); g.restore(); g = gg;
+          g.globalAlpha = 1 / (i + 1); g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(buf, 0, 0); g.globalAlpha = 1; }
+      }
+      function hud(b) {
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        if (b >= 0.4 && b < TB.logo) { g.font = "500 18px JBM"; g.letterSpacing = "1.4px"; const t = TB.label, w = g.measureText(t).width + 22; g.letterSpacing = "0px";
+          g.fillStyle = "rgba(7,8,10,0.86)"; g.fillRect(40, H - 68, w, 32); mono(t, 51, H - 46, 18, BONE); }
+      }
+      let frame = -1, main;
+      function render(t) {
+        const nf = Math.min(Math.floor(t * FPS + 1e-6), Math.round(DUR * FPS) - 1); if (nf === frame) return; frame = nf;
+        const b = nf / FPS / BEAT, [k] = where(b), diving = k < PORT.length && b >= TB.dives[k][0] && b < TB.dives[k][1];
+        g = main; g.setTransform(1, 0, 0, 1, 0, 0);
+        if (diving) paintBlur(b); else { g.save(); frameAt(b); g.restore(); }
+        g = main; hud(b);
+      }
+      const tl = gsap.timeline({ paused: true }), clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => render(clock.t) }, 0);
+      async function build() {
+        await Promise.all([$("#logo").decode(), document.fonts.load('800 40px "Archivo"'), document.fonts.load('600 40px "Archivo"'), document.fonts.load('400 40px "Archivo"'), document.fonts.load('500 20px "JBM"')]);
+        main = $("#stage").getContext("2d"); g = main;
+        buf = document.createElement("canvas"); buf.width = W; buf.height = H; bg2 = buf.getContext("2d");
+        initPorts();
+        window.addEventListener("hf-seek", (ev) => render(ev.detail.time));
+        render(0);
+        window.__timelines = window.__timelines || {}; window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+      window.__hf = window.__hf || {}; window.__hf.buildReady = window.__hf.buildReady || {}; window.__hf.buildReady["counter"] = build();
+    </script>
+  </body>
+</html>
