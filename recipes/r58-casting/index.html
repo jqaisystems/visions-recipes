@@ -1,0 +1,302 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <title>Casting</title>
+    <!-- Casting: a shadow sculpture made entirely in code. One lattice of blocks, carved so that each level lamp throws a different
+         exact word onto its own wall: RESEARCH, DRAFT, REVIEW and then PUBLISH. One system, one shared memory, each agent casting its
+         own output. The system is a demo, and this film is code. -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/table.js"></script>
+    <script src="assets/blocks.js"></script>
+    <style>
+      @font-face { font-family: "Archivo"; src: url("assets/fonts/Archivo.ttf") format("truetype"); font-weight: 100 900; font-stretch: 62% 125%; }
+      @font-face { font-family: "JBM"; src: url("assets/fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 100 800; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #07080A; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #07080A; }
+      #ct-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #stage, #over { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #logo { position: absolute; left: -2000px; top: 0; width: 926px; height: 193px; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="40" data-width="1920" data-height="1080">
+      <div id="ct-stage" class="clip" data-start="0" data-duration="40" data-track-index="0">
+        <canvas id="stage" width="1920" height="1080" data-layout-allow-overflow></canvas>
+        <canvas id="over" width="1920" height="1080" data-layout-allow-overflow></canvas>
+        <img id="logo" src="assets/brand/your-mark.svg" alt="Your mark" data-layout-allow-overflow>
+      </div>
+      <audio id="score" src="assets/bgm/score.wav" data-start="0" data-duration="40" data-track-index="7" data-volume="1"></audio>
+    </div>
+
+    <script>
+      // Every block is real geometry and every shadow is a real shadow map, one per lamp. The lamps are level and far off, so their light
+      // is parallel, and the lattice was carved (bake/carve.py) so that each lamp's shadow is a word. Where each block is, and how bright
+      // each lamp is, is worked out from the time alone, so any frame renders on its own.
+      const TB = window.TABLE, BK = window.BLOCKS, W = TB.w, H = TB.h, FPS = 30, BEAT = TB.beat, DUR = TB.dur, S = TB.s, RW = TB.rw;
+      const $ = (s) => document.querySelector(s);
+      const r = (x, a, b) => Math.min(1, Math.max(0, (x - a) / (b - a))), lerp = (a, b, u) => a + (b - a) * u, sm = (u) => u * u * (3 - 2 * u);
+      const hash = (i, s) => { let x = (i * 374761393 + s * 668265263) | 0; x = Math.imul(x ^ (x >>> 13), 1274126177); x ^= x >>> 16; return (x >>> 0) / 4294967296; };
+      const DEG = Math.PI / 180, ANG = [0, 45, 90, 135];
+
+      // ---------------- small matrix kit, column major
+      const M4 = {
+        mul(a, b) { const o = new Float32Array(16); for (let c = 0; c < 4; c++) for (let rr = 0; rr < 4; rr++) { let s = 0; for (let k = 0; k < 4; k++) s += a[k * 4 + rr] * b[c * 4 + k]; o[c * 4 + rr] = s; } return o; },
+        persp(fov, asp, n, f) { const t = 1 / Math.tan(fov * Math.PI / 360), o = new Float32Array(16); o[0] = t / asp; o[5] = t; o[10] = (f + n) / (n - f); o[11] = -1; o[14] = 2 * f * n / (n - f); return o; },
+        ortho(l, rt, b, t, n, f) { const o = new Float32Array(16); o[0] = 2 / (rt - l); o[5] = 2 / (t - b); o[10] = -2 / (f - n); o[12] = -(rt + l) / (rt - l); o[13] = -(t + b) / (t - b); o[14] = -(f + n) / (f - n); o[15] = 1; return o; },
+        look(e, c, u) {
+          const nz = (v) => { const l = Math.hypot(...v); return v.map((q) => q / l); }, cr = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+          const z = nz([e[0] - c[0], e[1] - c[1], e[2] - c[2]]), x = nz(cr(u, z)), y = cr(z, x), o = new Float32Array(16);
+          o[0] = x[0]; o[4] = x[1]; o[8] = x[2]; o[1] = y[0]; o[5] = y[1]; o[9] = y[2]; o[2] = z[0]; o[6] = z[1]; o[10] = z[2];
+          o[12] = -(x[0] * e[0] + x[1] * e[1] + x[2] * e[2]); o[13] = -(y[0] * e[0] + y[1] * e[1] + y[2] * e[2]); o[14] = -(z[0] * e[0] + z[1] * e[1] + z[2] * e[2]); o[15] = 1; return o;
+        },
+        // a box: centre, size, and a turn about the vertical
+        box(cx, cy, cz, sx, sy, sz, ry = 0) { const c = Math.cos(ry), s = Math.sin(ry);
+          return new Float32Array([c * sx, 0, -s * sx, 0, 0, sy, 0, 0, s * sz, 0, c * sz, 0, cx, cy, cz, 1]); },
+        ap(m, p) { const x = p[0], y = p[1], z = p[2]; return [0, 1, 2, 3].map((i) => m[i] * x + m[4 + i] * y + m[8 + i] * z + m[12 + i]); },
+      };
+
+      // ---------------- the blocks: every block either lattice has, with where it sits in each and where it goes when it collapses
+      const NN = BK.n, HH = BK.h, C0 = (NN - 1) / 2, CY = (HH - 1) / 2;
+      const key3 = new Map(); BK.three.forEach((p, i) => key3.set(p[0] + "," + p[1] + "," + p[2], p[3]));
+      const key4 = new Map(); BK.four.forEach((p) => key4.set(p[0] + "," + p[1] + "," + p[2], p[3]));
+      const ALL = [...new Set([...key3.keys(), ...key4.keys()])].map((k) => k.split(",").map(Number));
+      const NB = ALL.length, BX = new Float32Array(NB), BY = new Float32Array(NB), BZ = new Float32Array(NB), IN3 = new Uint8Array(NB), IN4 = new Uint8Array(NB), NEED = new Uint8Array(NB);
+      ALL.forEach(([x, y, z], i) => { const k = x + "," + y + "," + z; BX[i] = (x - C0) * S; BY[i] = (CY - y) * S; BZ[i] = (z - C0) * S;
+        IN3[i] = key3.has(k) ? 1 : 0; IN4[i] = key4.has(k) ? 1 : 0; NEED[i] = key3.has(k) ? key3.get(k) : 0; });
+      // the plain cube they all slide into: slots handed out in the same order as the blocks, so nothing crosses far
+      const SIDE = Math.ceil(Math.cbrt(BK.four.length)), CX = new Float32Array(NB), CYs = new Float32Array(NB), CZ = new Float32Array(NB);
+      { const ids = [...Array(NB).keys()].filter((i) => IN4[i]).sort((a, b) => BX[a] - BX[b] || BZ[a] - BZ[b] || BY[b] - BY[a]);
+        const half = (SIDE - 1) / 2; let k = 0;
+        const slots = []; for (let x = 0; x < SIDE; x++) for (let z = 0; z < SIDE; z++) for (let y = 0; y < SIDE; y++) slots.push([(x - half) * S, (half - y) * S, (z - half) * S]);
+        ids.forEach((i) => { const s = slots[k++]; CX[i] = s[0]; CYs[i] = s[1]; CZ[i] = s[2]; }); }
+      const INST = new Float32Array(NB * 8);
+      function blocks(b) {
+        const T = TB.turn, ang = T[2] * Math.pow(1 - r(b, T[0], T[1]), 2) * (1 - r(b, T[0], T[1])), ca = Math.cos(ang), sa = Math.sin(ang);
+        const RB = TB.rebuild, CL = TB.collapse, EX = TB.expand, SH = TB.shared;
+        const warm = sm(r(b, SH[0], SH[0] + 1.2)) * (1 - sm(r(b, SH[1] - 1.0, SH[1])));
+        for (let i = 0; i < NB; i++) {
+          let x = BX[i], y = BY[i], z = BZ[i], sc = 1;
+          const dl = hash(i, 5) * (RB[1] - RB[0] - 1.0), u = sm(r(b, RB[0] + dl, RB[0] + dl + 1.0));
+          let pres = lerp(IN3[i], IN4[i], u);
+          if (IN3[i] !== IN4[i]) { const out = 1 - pres, rr = Math.hypot(x, z) + 1, k = 700 * out; x += x / rr * k; z += z / rr * k; y += 260 * out * (hash(i, 9) - 0.5); sc = pres; }
+          if (IN4[i]) {
+            const d2 = hash(i, 11) * 0.8, c1 = sm(r(b, CL[0] + d2, CL[1] - 0.8 + d2)) * (1 - sm(r(b, EX[0] + d2, EX[1] - 0.8 + d2)));
+            if (c1 > 0) { x = lerp(x, CX[i], c1); y = lerp(y, CYs[i], c1) + Math.sin(c1 * Math.PI) * 60 * hash(i, 13); z = lerp(z, CZ[i], c1); }
+          }
+          const q = i * 8; INST[q] = ca * x + sa * z; INST[q + 1] = y; INST[q + 2] = -sa * x + ca * z; INST[q + 3] = sc > 0.004 ? sc : 0;
+          INST[q + 4] = NEED[i] >= 2 ? warm : 0; INST[q + 5] = hash(i, 3);
+        }
+      }
+      function swingDeg(b) { const SW = TB.swing; return lerp(SW[2], 135, sm(r(b, SW[0], SW[1]))); }
+      function lampDir(i, b) { const a = (i === 3 ? swingDeg(b) : ANG[i]) * DEG; return [Math.cos(a), 0, Math.sin(a)]; }
+      function keyv(K, b) { if (b <= K[0][0]) return K[0][1]; if (b >= K[K.length - 1][0]) return K[K.length - 1][1];
+        let i = 0; while (K[i + 1][0] < b) i++; const a = K[i], c = K[i + 1]; return lerp(a[1], c[1], sm(r(b, a[0], c[0]))); }
+      function camKey(K, b) {
+        if (b <= K[0][0]) return K[0].slice(1); if (b >= K[K.length - 1][0]) return K[K.length - 1].slice(1);
+        let i = 0; while (K[i + 1][0] < b) i++; const a = K[i], c = K[i + 1], u = sm(r(b, a[0], c[0])); return a.slice(1).map((v, q) => lerp(v, c[q + 1], u));
+      }
+
+      // ---------------- geometry: a unit box with its local position kept, for the bevel
+      function boxMesh() {
+        const P3 = [], NM = [], I = [];
+        const F = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+        for (const n of F) { const u = n[0] ? [0, 1, 0] : [1, 0, 0], v = [n[1] * u[2] - n[2] * u[1], n[2] * u[0] - n[0] * u[2], n[0] * u[1] - n[1] * u[0]], b0 = P3.length / 3;
+          for (const [a, c] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { P3.push((n[0] + a * u[0] + c * v[0]) / 2, (n[1] + a * u[1] + c * v[1]) / 2, (n[2] + a * u[2] + c * v[2]) / 2); NM.push(...n); }
+          I.push(b0, b0 + 1, b0 + 2, b0, b0 + 2, b0 + 3); }
+        return { P3, NM, I };
+      }
+      const LIGHT = `
+uniform highp sampler2DArrayShadow uSh; uniform mat4 uLVP[4]; uniform vec3 uLD[4], uLC[4]; uniform float uLL[4], uAmb, uLi; uniform vec3 uEye;
+float sh(int i, vec3 w, vec3 n){
+  vec4 lp = uLVP[i] * vec4(w + n * 0.9, 1.0); vec3 s = lp.xyz / lp.w;
+  float beam = smoothstep(1.0, 0.94, abs(s.x)) * smoothstep(1.0, 0.94, abs(s.y));
+  if (beam <= 0.0) return 0.0;
+  s = s * 0.5 + 0.5; float sum = 0.0, px = 1.0 / 2048.0;
+  for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) sum += texture(uSh, vec4(s.xy + vec2(x, y) * px, float(i), s.z - 0.0006));
+  return beam * sum / 9.0;
+}
+vec3 lamps(vec3 w, vec3 n, vec3 alb, float gloss){
+  vec3 V = normalize(uEye - w), c = alb * uAmb * (0.35 + 0.65 * max(n.y, 0.0)) * (gloss < 0.1 ? 0.22 : 1.0);
+  for (int i = 0; i < 4; i++) {
+    if (uLL[i] <= 0.001) continue;
+    vec3 L = -uLD[i]; float d = max(dot(n, L), 0.0); if (d <= 0.0) continue;
+    float s = sh(i, w, n); float spe = pow(max(dot(n, normalize(L + V)), 0.0), 40.0) * gloss;
+    c += uLC[i] * uLL[i] * s * (alb * d + spe);
+  }
+  return c;
+}
+vec3 tone(vec3 c){ c = c / (1.0 + c * 0.55); return pow(max(c, 0.0), vec3(0.9)); }
+`;
+      const BLK_VS = `#version 300 es
+layout(location=0) in vec3 aP; layout(location=1) in vec3 aN; layout(location=3) in vec4 aI; layout(location=4) in vec4 aJ;
+uniform mat4 uVP; uniform float uS; out vec3 vW, vN, vL; out float vWarm, vVar;
+void main(){ vec3 w = aI.xyz + aP * uS * aI.w * 1.004; vW = w; vN = aN; vL = aP; vWarm = aJ.x; vVar = aJ.y;
+  gl_Position = aI.w > 0.0 ? uVP * vec4(w, 1.0) : vec4(2.0, 2.0, 2.0, 1.0); }`;
+      const BLK_FS = `#version 300 es
+precision highp float; out vec4 o; in vec3 vW, vN, vL; in float vWarm, vVar;` + LIGHT + `
+void main(){
+  vec3 n = normalize(vN), a = abs(vL) * 2.0; float e = max(max(min(a.x, a.y), min(a.y, a.z)), min(a.x, a.z));
+  float bev = smoothstep(0.80, 0.98, e);   // the softly bevelled edges catch less light
+  vec3 alb = vec3(0.86, 0.82, 0.74) * (0.94 + 0.08 * vVar);
+  alb = mix(alb, vec3(1.0, 0.62, 0.32), vWarm * 0.55);
+  vec3 c = lamps(vW, n, alb, 0.25) * (1.0 - 0.32 * bev) + vec3(1.0, 0.58, 0.25) * vWarm * 0.08;
+  o = vec4(tone(c * uLi), 1.0);
+}`;
+      const SOL_VS = `#version 300 es
+layout(location=0) in vec3 aP; layout(location=1) in vec3 aN;
+uniform mat4 uVP, uB; out vec3 vW, vN, vL;
+void main(){ vec4 w = uB * vec4(aP, 1.0); vW = w.xyz; vL = aP; mat3 m = mat3(uB); vN = normalize(m * (aN / vec3(dot(m[0], m[0]), dot(m[1], m[1]), dot(m[2], m[2])))); gl_Position = uVP * w; }`;
+      const SOL_FS = `#version 300 es
+precision highp float; out vec4 o; in vec3 vW, vN, vL; uniform vec3 uAlb; uniform float uKind;` + LIGHT + `
+float h21(vec2 p){ vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(h21(i), h21(i + vec2(1, 0)), f.x), mix(h21(i + vec2(0, 1)), h21(i + vec2(1, 1)), f.x), f.y); }
+void main(){
+  vec3 n = normalize(vN); vec3 alb = uAlb;
+  if (uKind < 0.5) { vec2 p = vec2(vW.x + vW.z, vW.y) * 0.02; alb *= 0.9 + 0.12 * vn(p) + 0.05 * vn(p * 4.1); }   // plaster
+  vec3 c = lamps(vW, n, alb, uKind > 1.5 ? 0.2 : 0.02);
+  if (uKind > 0.5 && uKind < 1.5) {   // the floor: a soft spill under each beam, the light bounced off the walls
+    for (int i = 0; i < 4; i++) { if (uLL[i] <= 0.001) continue; vec3 D = uLD[i]; float along = dot(vW.xz, D.xz), lat = dot(vW.xz, vec2(-D.z, D.x));
+      c += alb * uLC[i] * uLL[i] * 0.16 * smoothstep(${(RW * 0.95).toFixed(1)}, 300.0, abs(along - 600.0)) * smoothstep(900.0, 300.0, abs(lat)); }
+    c *= smoothstep(4200.0, 1200.0, length(vW.xz));
+  }
+  o = vec4(tone(c * uLi), 1.0);
+}`;
+      const DEPTH_FS = `#version 300 es
+precision highp float; void main(){}`;
+
+      let gl, ovG, PRG = {}, VAO = {}, instBuf, shTex, shFB = [], msFB, frame = -1;
+      function prog(vs, fs) {
+        const mk = (t, src) => { const s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+        const p = gl.createProgram(); gl.attachShader(p, mk(gl.VERTEX_SHADER, vs)); gl.attachShader(p, mk(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
+        if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+        const U = {}, n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS); for (let i = 0; i < n; i++) { const a = gl.getActiveUniform(p, i); U[a.name.replace("[0]", "")] = gl.getUniformLocation(p, a.name); }
+        return { p, U };
+      }
+      function buf(target, data) { const b = gl.createBuffer(); gl.bindBuffer(target, b); gl.bufferData(target, data, gl.STATIC_DRAW); return b; }
+      function attr(loc, data, size) { buf(gl.ARRAY_BUFFER, new Float32Array(data)); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, size, gl.FLOAT, false, 0, 0); }
+      const SHR = 2048;
+      function initGL() {
+        gl = $("#stage").getContext("webgl2", { antialias: false, alpha: true, premultipliedAlpha: false, depth: true, stencil: false, preserveDrawingBuffer: true });
+        PRG.blk = prog(BLK_VS, BLK_FS); PRG.blkD = prog(BLK_VS, DEPTH_FS); PRG.sol = prog(SOL_VS, SOL_FS); PRG.solD = prog(SOL_VS, DEPTH_FS);
+        instBuf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, instBuf); gl.bufferData(gl.ARRAY_BUFFER, INST.byteLength, gl.DYNAMIC_DRAW);
+        const bm = boxMesh();
+        VAO.blk = gl.createVertexArray(); gl.bindVertexArray(VAO.blk); attr(0, bm.P3, 3); attr(1, bm.NM, 3);
+        gl.bindBuffer(gl.ARRAY_BUFFER, instBuf);
+        gl.enableVertexAttribArray(3); gl.vertexAttribPointer(3, 4, gl.FLOAT, false, 32, 0); gl.vertexAttribDivisor(3, 1);
+        gl.enableVertexAttribArray(4); gl.vertexAttribPointer(4, 4, gl.FLOAT, false, 32, 16); gl.vertexAttribDivisor(4, 1);
+        buf(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(bm.I)); VAO.n = bm.I.length;
+        VAO.box = gl.createVertexArray(); gl.bindVertexArray(VAO.box); attr(0, bm.P3, 3); attr(1, bm.NM, 3); buf(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(bm.I));
+        gl.bindVertexArray(null);
+        shTex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D_ARRAY, shTex); gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.DEPTH_COMPONENT24, SHR, SHR, 4);
+        gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE); gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL);
+        gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        for (let i = 0; i < 4; i++) { const f = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, f); gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, shTex, 0, i);
+          gl.drawBuffers([gl.NONE]); gl.readBuffer(gl.NONE); shFB.push(f); }
+        const ms = Math.min(4, gl.getParameter(gl.MAX_SAMPLES));
+        msFB = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, msFB);
+        const rc = gl.createRenderbuffer(); gl.bindRenderbuffer(gl.RENDERBUFFER, rc); gl.renderbufferStorageMultisample(gl.RENDERBUFFER, ms, gl.RGBA8, W, H); gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, rc);
+        const rd = gl.createRenderbuffer(); gl.bindRenderbuffer(gl.RENDERBUFFER, rd); gl.renderbufferStorageMultisample(gl.RENDERBUFFER, ms, gl.DEPTH_COMPONENT24, W, H); gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, rd);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      }
+
+      // ---------------- the room: octagon walls square on to each lamp, and the floor
+      const FACE = 2 * RW * Math.tan(22.5 * DEG) + 4, WALLS = [0, 45, 90, 135].map((a) => M4.box(Math.cos(a * DEG) * (RW + 6), 250, Math.sin(a * DEG) * (RW + 6), 12, 1900, FACE, -a * DEG));
+      const FLOORM = M4.box(0, TB.floor - 6, 0, 9000, 12, 9000);
+      // the person: a flat cut-out, a head and shoulders, built from thin slices whose widths follow the profile
+      const BUST = []; for (let dy = -150; dy <= 196; dy += 8) { let w = 0;
+        if (dy > 70) { const q = (dy - 133) / 62; w = q * q < 1 ? 2 * 50 * Math.sqrt(1 - q * q) : 0; }          // the head
+        else if (dy > 44) w = 44;                                                                                   // the neck
+        else { const q = Math.min(1, (44 - dy) / 70); w = 92 + 150 * Math.sqrt(q); }                             // the shoulders, falling away
+        if (w > 1) BUST.push([dy, w]); }
+      function humanBoxes(b) {   // a head and shoulders, with a gap for the neck
+        const Hm = TB.human, u = sm(r(b, Hm.in[0], Hm.in[1])) * (1 - sm(r(b, Hm.out[0], Hm.out[1]))); if (u <= 0) return [];
+        const x = lerp(Hm.x0, Hm.x1, u), y = Hm.y, z = Hm.z;
+        return BUST.map(([dy, w]) => M4.box(x, y + dy, z, w, 9, 18));
+      }
+      function draw(nf) {
+        const b = (nf / FPS) / BEAT;
+        blocks(b); gl.bindBuffer(gl.ARRAY_BUFFER, instBuf); gl.bufferSubData(gl.ARRAY_BUFFER, 0, INST);
+        const LD = [], LL = [], LVP = [], LC = [];
+        for (let i = 0; i < 4; i++) { const d = lampDir(i, b); LD.push(...d); LL.push(keyv(TB.lamps[i], b)); LC.push(...TB.lampCol[i]);
+          LVP.push(M4.mul(M4.ortho(-800, 800, -560, 560, 200, 7000), M4.look([-d[0] * 3000, 0, -d[2] * 3000], [0, 0, 0], [0, 1, 0]))); }
+        const fl = keyv([[0, 0], [0.6, 0.0], [1.8, 1], [6.4, 1], [7.4, 0.12], [43.4, 0.12], [44.6, 0.05], [51.6, 0.05], [52.6, 0.12], [57.6, 0.12], [58.3, 0]], b);
+        const c = camKey(TB.cam, b), VP = M4.mul(M4.persp(c[6], W / H, 40, 14000), M4.look([c[0], c[1], c[2]], [c[3], c[4], c[5]], [0, 1, 0]));
+        const hum = humanBoxes(b);
+        // the shadow maps, one per lamp
+        gl.enable(gl.DEPTH_TEST); gl.depthMask(true); gl.disable(gl.BLEND); gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(2, 4);
+        for (let i = 0; i < 4; i++) {
+          gl.bindFramebuffer(gl.FRAMEBUFFER, shFB[i]); gl.viewport(0, 0, SHR, SHR); gl.clear(gl.DEPTH_BUFFER_BIT);
+          gl.useProgram(PRG.blkD.p); gl.uniformMatrix4fv(PRG.blkD.U.uVP, false, LVP[i]); gl.uniform1f(PRG.blkD.U.uS, S);
+          gl.bindVertexArray(VAO.blk); gl.drawElementsInstanced(gl.TRIANGLES, VAO.n, gl.UNSIGNED_SHORT, 0, NB);
+          gl.useProgram(PRG.solD.p); gl.uniformMatrix4fv(PRG.solD.U.uVP, false, LVP[i]); gl.bindVertexArray(VAO.box);
+          for (const m of hum) { gl.uniformMatrix4fv(PRG.solD.U.uB, false, m); gl.drawElements(gl.TRIANGLES, VAO.n, gl.UNSIGNED_SHORT, 0); }
+        }
+        gl.disable(gl.POLYGON_OFFSET_FILL);
+        // the picture
+        gl.bindFramebuffer(gl.FRAMEBUFFER, msFB); gl.viewport(0, 0, W, H); gl.clearColor(0.027, 0.031, 0.039, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        const lit = (p) => { const U = p.U; gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D_ARRAY, shTex); gl.uniform1i(U.uSh, 0);
+          gl.uniformMatrix4fv(U.uLVP, false, new Float32Array(LVP.flatMap((m) => [...m]))); gl.uniform3fv(U.uLD, LD); gl.uniform3fv(U.uLC, LC); gl.uniform1fv(U.uLL, LL);
+          gl.uniform1f(U.uAmb, fl); gl.uniform1f(U.uLi, 1.0); gl.uniform3f(U.uEye, c[0], c[1], c[2]); gl.uniformMatrix4fv(U.uVP, false, VP); };
+        gl.useProgram(PRG.blk.p); lit(PRG.blk); gl.uniform1f(PRG.blk.U.uS, S); gl.bindVertexArray(VAO.blk); gl.drawElementsInstanced(gl.TRIANGLES, VAO.n, gl.UNSIGNED_SHORT, 0, NB);
+        gl.useProgram(PRG.sol.p); lit(PRG.sol); gl.bindVertexArray(VAO.box); const U = PRG.sol.U;
+        gl.uniform1f(U.uKind, 0); gl.uniform3f(U.uAlb, 0.78, 0.72, 0.64); for (const m of WALLS) { gl.uniformMatrix4fv(U.uB, false, m); gl.drawElements(gl.TRIANGLES, VAO.n, gl.UNSIGNED_SHORT, 0); }
+        gl.uniform1f(U.uKind, 1); gl.uniform3f(U.uAlb, 0.30, 0.27, 0.24); gl.uniformMatrix4fv(U.uB, false, FLOORM); gl.drawElements(gl.TRIANGLES, VAO.n, gl.UNSIGNED_SHORT, 0);
+        gl.uniform1f(U.uKind, 2); gl.uniform3f(U.uAlb, 0.16, 0.15, 0.15); for (const m of hum) { gl.uniformMatrix4fv(U.uB, false, m); gl.drawElements(gl.TRIANGLES, VAO.n, gl.UNSIGNED_SHORT, 0); }
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, msFB); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null); gl.blitFramebuffer(0, 0, W, H, 0, 0, W, H, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        return { VP, b };
+      }
+
+      // ---------------- the flat layer: the words, the handoff light, the demo label and the end card
+      const BONE = "#F3EAD6", DARK = "#07080A", TEAL = "#2FD6C3";
+      function mono(g, s, x, y, size, col, al = "left", wt = 500) { g.font = `${wt} ${size}px JBM`; g.letterSpacing = "0.08em"; g.textAlign = al; g.textBaseline = "alphabetic"; g.fillStyle = col; g.fillText(s, x, y); g.letterSpacing = "0px"; }
+      function toScreen(VP, p) { const q = M4.ap(VP, p); if (q[3] <= 1) return null; return [(q[0] / q[3] * 0.5 + 0.5) * W, (0.5 - q[1] / q[3] * 0.5) * H]; }
+      function wallPt(deg, y) { const k = Math.floor(deg / 45 + 0.5) * 45, a = deg * DEG, n = k * DEG;   // on the octagon, at this bearing
+        const t = (RW - 2) / Math.cos(a - n); return [Math.cos(a) * t, y, Math.sin(a) * t, 1]; }
+      function overlay(g, D) {
+        const b = D.b; g.clearRect(0, 0, W, H);
+        const vg = g.createRadialGradient(W / 2, H * 0.52, H * 0.4, W / 2, H * 0.52, H * 1.05); vg.addColorStop(0, "rgba(7,8,10,0)"); vg.addColorStop(1, "rgba(7,8,10,0.6)"); g.fillStyle = vg; g.fillRect(0, 0, W, H);
+        // the handoff: a thin line of light running along the walls from one word to the next
+        for (const [b0, b1, i, j] of TB.beam) { if (b < b0 || b > b1 + 1.2) continue;
+          const u = sm(r(b, b0, b1)), fade = 1 - r(b, b1 + 0.4, b1 + 1.2), a0 = ANG[i], a1 = ANG[j], pts = [];
+          for (let k = 0; k <= 40; k++) { const p = toScreen(D.VP, wallPt(lerp(a0, a1, k / 40 * u), -180)); if (p) pts.push(p); }
+          if (pts.length < 2) continue;
+          g.save(); g.globalAlpha = fade; g.strokeStyle = TEAL; g.lineWidth = 4; g.shadowColor = TEAL; g.shadowBlur = 18; g.lineCap = "round";
+          g.beginPath(); pts.forEach((p, k) => k ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.stroke();
+          const e = pts[pts.length - 1]; g.fillStyle = "#E8FFFB"; g.beginPath(); g.arc(e[0], e[1], 7, 0, Math.PI * 2); g.fill(); g.restore(); }
+        // the words
+        for (const [s, b0, b1] of TB.caps) { if (b < b0 || b > b1 + 0.1) continue;
+          const a = sm(r(b, b0, b0 + 0.35)) * (1 - sm(r(b, b1 - 0.3, b1))); g.globalAlpha = a; g.font = '800 70px "Archivo"'; g.textAlign = "center"; g.textBaseline = "alphabetic";
+          g.fillStyle = "rgba(7,8,10,0.55)"; g.fillText(s, W / 2 + 3, 128 + 4 + (1 - a) * 10); g.fillStyle = BONE; g.fillText(s, W / 2, 128 + (1 - a) * 10); g.globalAlpha = 1; }
+        const RN = TB.runs; if (b >= RN[0] && b < RN[2]) { g.globalAlpha = sm(r(b, RN[0], RN[0] + 0.4)) * (1 - sm(r(b, RN[2] - 0.3, RN[2]))); mono(g, RN[1], W / 2, 184, 22, TEAL, "center"); g.globalAlpha = 1; }
+        if (b >= 6.4 && b < TB.logo) { g.font = "500 18px JBM"; g.letterSpacing = "0.08em"; const s = TB.label, w = g.measureText(s).width + 22; g.letterSpacing = "0px";
+          g.fillStyle = "rgba(7,8,10,0.86)"; g.fillRect(40, H - 68, w, 32); mono(g, s, 51, H - 46, 18, BONE); }
+        if (b >= TB.logo) { const u = r(b, TB.logo + 0.1, TB.logo + 0.8), lw = 926 * 0.72, lh = 193 * 0.72, a = 1 - r(b, TB.beats - 0.4, TB.beats), eO = 1 - Math.pow(1 - u, 3);
+          g.fillStyle = DARK; g.globalAlpha = r(b, TB.logo, TB.logo + 0.3); g.fillRect(0, 0, W, H);
+          g.globalAlpha = eO * a; g.drawImage($("#logo"), W / 2 - lw / 2, 300 - (1 - eO) * 14, lw, lh);
+          g.font = '800 80px "Archivo"'; g.textAlign = "center"; g.textBaseline = "alphabetic"; g.fillStyle = BONE; g.globalAlpha = a * r(b, TB.logo + 0.4, TB.logo + 0.9); g.fillText("AI Agent Architecture", W / 2, 610);
+          g.globalAlpha = a * r(b, TB.logo + 0.8, TB.logo + 1.3); mono(g, "ai.joaoqueiros.com", W / 2, 690, 28, BONE, "center"); mono(g, "A SERVICE · THIS FILM IS CODE", W / 2, 744, 20, TEAL, "center"); g.globalAlpha = 1; }
+      }
+      function paint(t) {
+        const nf = Math.min(Math.floor(t * FPS + 1e-6), Math.round(DUR * FPS) - 1); if (nf === frame) return;
+        frame = nf; const D = draw(nf); overlay(ovG, D);
+      }
+      const tl = gsap.timeline({ paused: true }), clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+      async function build() {
+        await Promise.all([$("#logo").decode(), document.fonts.load('800 40px "Archivo"'), document.fonts.load('500 20px "JBM"'), document.fonts.load('700 20px "JBM"')]);
+        ovG = $("#over").getContext("2d"); initGL();
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(0);
+        window.__timelines = window.__timelines || {}; window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+      window.__hf = window.__hf || {}; window.__hf.buildReady = window.__hf.buildReady || {}; window.__hf.buildReady["casting"] = build();
+    </script>
+  </body>
+</html>

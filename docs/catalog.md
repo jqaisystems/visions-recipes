@@ -106,6 +106,14 @@ Made for: Imagined Worlds · Stills. Stack: Three.js, TSL, GSAP, Python (score).
 
 ## Products and systems
 
+### R58 · Casting
+
+A shadow sculpture: one lattice of blocks that looks like a tangle from every side, carved so each level lamp throws a different exact word. RESEARCH, DRAFT and REVIEW from the same blocks; a fourth lamp swings in and the lattice rebuilds itself until PUBLISH lands too.
+
+Made for: AI Agent Architecture · JQ AI SYSTEMS. Stack: HyperFrames, WebGL2, Canvas 2D, GSAP, Python, FFmpeg.
+
+[Recipe and poster](../recipes/r58-casting/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r58-casting-v1)
+
 ### R57 · Impression
 
 A pin screen that remembers: 11,520 steel pins as real geometry behind acrylic. The problem is pressed in and the pins keep its shape; each path is pressed into that impression, and the pins that don't fit glow amber. One fits flush, and the frame tilts every pin home.
