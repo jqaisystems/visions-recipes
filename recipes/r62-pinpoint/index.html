@@ -1,0 +1,401 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <title>Pinpoint</title>
+    <!-- Pinpoint: kinetic motion graphics made entirely in code. One coral dot is carried through every scene: found in a field of
+         prospects, the needle of a fit gauge, the top bar of a sorted list, the marker on an enriched record, the cursor of a
+         message that writes itself, the nose of a paper plane that freezes short of SEND. The pipeline is a demo, and this film is code. -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/table.js"></script>
+    <style>
+      @font-face { font-family: "Archivo"; src: url("assets/fonts/Archivo.ttf") format("truetype"); font-weight: 100 900; font-stretch: 62% 125%; }
+      @font-face { font-family: "JBM"; src: url("assets/fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 100 800; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #0D0D11; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #0D0D11; }
+      #ct-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #stage { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #logo { position: absolute; left: -2000px; top: 0; width: 926px; height: 193px; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="38.71" data-width="1920" data-height="1080">
+      <div id="ct-stage" class="clip" data-start="0" data-duration="38.71" data-track-index="0">
+        <canvas id="stage" width="1920" height="1080" data-layout-allow-overflow></canvas>
+        <img id="logo" src="assets/brand/your-mark.svg" alt="Your mark" data-layout-allow-overflow>
+      </div>
+      <audio id="score" src="assets/bgm/score.wav" data-start="0" data-duration="38.71" data-track-index="7" data-volume="1"></audio>
+    </div>
+
+    <script>
+      // Every frame is worked out from the beat alone, so any frame renders on its own. Each frame is drawn eight times across a
+      // half-frame shutter and averaged, which is real motion blur: fast moves streak the way they do from a camera.
+      const TB = window.TABLE, Q = TB.q, W = TB.w, H = TB.h, FPS = 30, BEAT = TB.beat, DUR = TB.dur, NB = TB.beats;
+      const $ = (s) => document.querySelector(s);
+      const INK = "#0D0D11", BONE = "#F3EAD6", CORAL = "#FF4F36", TEAL = "#2FD6C3", AMBER = "#F2B46A";
+      const r = (x, a, b) => Math.min(1, Math.max(0, (x - a) / (b - a))), lerp = (a, b, u) => a + (b - a) * u, PI = Math.PI;
+      const sm = (u) => u * u * (3 - 2 * u), eo3 = (u) => 1 - Math.pow(1 - u, 3), ei3 = (u) => u * u * u;
+      const eio3 = (u) => (u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2), eoE = (u) => (u >= 1 ? 1 : 1 - Math.pow(2, -10 * u));
+      const back = (u, s = 1.7) => 1 + (s + 1) * Math.pow(u - 1, 3) + s * Math.pow(u - 1, 2);
+      const hash = (i, s) => { let x = (i * 374761393 + s * 668265263) | 0; x = Math.imul(x ^ (x >>> 13), 1274126177); x ^= x >>> 16; return (x >>> 0) / 4294967296; };
+      const mix = (c1, c2, u) => { const p = (c) => [1, 3, 5].map((k) => parseInt(c.slice(k, k + 2), 16)); const a = p(c1), b = p(c2);
+        return `rgb(${a.map((v, k) => Math.round(lerp(v, b[k], u))).join(",")})`; };
+      let g = null;   // the context of whichever canvas is being drawn
+      const fq = (b) => (Math.floor(b * BEAT * FPS + 1e-6) + 0.5) / FPS / BEAT;   // the beat at the middle of b's frame: typed text changes once a frame, so it never ghosts
+
+      // ---------------- the field: 2,304 prospects on a jittered grid, each with a fit score. The hero is the coral one
+      const COLS = 64, ROWS = 36, NF = COLS * ROWS, FX = new Float32Array(NF), FY = new Float32Array(NF), FS = new Uint8Array(NF), FH = new Float32Array(NF), FH2 = new Float32Array(NF);
+      let HERO = 0;
+      { let best = 1e9; for (let i = 0; i < NF; i++) { const c = i % COLS, rw = (i / COLS) | 0;
+          FX[i] = 15 + c * 30 + (hash(i, 1) - 0.5) * 12; FY[i] = 15 + rw * 30 + (hash(i, 2) - 0.5) * 12; FS[i] = Math.floor(hash(i, 7) * 100);
+          FH[i] = hash(i, 3); FH2[i] = hash(i, 4); const d = Math.hypot(FX[i] - 1250, FY[i] - 610); if (d < best) { best = d; HERO = i; } }
+        FS[HERO] = 87; }
+      const HX = FX[HERO], HY = FY[HERO];
+      // the lens's path, and the beat each good fit lights as the lens first passes over it
+      const LP = [[300, 300], [760, 720], [1420, 330], [1660, 760], [HX, HY]];
+      function lensPos(b) { const u = sm(r(b, Q.lens[0], Q.lens[1])) * (LP.length - 1), k = Math.min(LP.length - 2, Math.floor(u)), t = u - k;
+        const p0 = LP[Math.max(0, k - 1)], p1 = LP[k], p2 = LP[k + 1], p3 = LP[Math.min(LP.length - 1, k + 2)];
+        const cr = (a, b2, c, d) => 0.5 * (2 * b2 + (-a + c) * t + (2 * a - 5 * b2 + 4 * c - d) * t * t + (-a + 3 * b2 - 3 * c + d) * t * t * t);
+        return [cr(p0[0], p1[0], p2[0], p3[0]), cr(p0[1], p1[1], p2[1], p3[1])]; }
+      const lensR = (b) => (b < Q.lock ? 170 * back(r(b, Q.lens[0], Q.lens[0] + 0.45), 1.4) : lerp(170, 34, eio3(r(b, Q.lock, Q.lock + 0.3))));
+      const LIT = new Float32Array(NF).fill(1e9), LITS = [];
+      for (let s = 0; s <= 900; s++) { const b = lerp(Q.lens[0] + 0.2, Q.lens[1], s / 900), p = lensPos(b), R = 150;
+        for (let i = 0; i < NF; i++) if (FS[i] >= 85 && LIT[i] > 1e8 && Math.hypot(FX[i] - p[0], FY[i] - p[1]) < R) { LIT[i] = b; LITS.push(b); } }
+
+      function fieldPos(i, b) {
+        const d = FH[i], e = eoE(r(b, Q.burst + d * 0.15, Q.burst + 1.3 + d * 0.5)), ang = (1 - e) * (FH2[i] - 0.5) * 1.8;
+        const dx = FX[i] - 960, dy = FY[i] - 540, c = Math.cos(ang), s = Math.sin(ang), dr = r(b, 4.4, 5.6) * 1.6;
+        return [960 + (dx * c - dy * s) * e + dr * Math.sin(b * 0.9 + d * 6.28), 540 + (dx * s + dy * c) * e + dr * Math.cos(b * 0.8 + FH2[i] * 5)];
+      }
+
+      // ---------------- the big words. Letters drop in one by one and land on the beat, or type themselves out in the stillness
+      function head(hd, b) {
+        const [lines, bin, bout, size, cy, col, mode, lands] = hd; if (b < bin || b > bout + 0.05) return;
+        g.font = `800 ${size}px Archivo`; g.textBaseline = "alphabetic"; g.textAlign = "left";
+        const tr = -0.035 * size, n = lines.length, fill = col === "ink" ? INK : BONE; let k = 0, last = 0;
+        const geo = lines.map((ln) => { const ws = [...ln].map((ch) => g.measureText(ch).width + tr); return { ws, tot: ws.reduce((a, c) => a + c, 0) - tr }; });
+        for (let li = 0; li < n; li++) { const base = cy + (li - (n - 1) / 2) * size * 1.02 + size * 0.36; let x = 960 - geo[li].tot / 2;
+          [...lines[li]].forEach((ch, ci) => { const L = lands[li][ci], adv = geo[li].ws[ci];
+            if (L !== null) { last = Math.max(last, L);
+              const ex = ei3(r(b, bout - 0.38 + k * 0.022, bout - 0.06 + k * 0.022)); let dy = -size * 1.25 * ex, sy = 1, a = 1 - ex;
+              if (mode === "slam") { const u = r(b, L - 0.22, L); dy += -size * 1.15 * (1 - u * u); if (b < L - 0.22) a = 0;
+                const t = b - L; if (t > 0) sy = 1 - 0.16 * Math.exp(-t * 14) * Math.cos(t * 40); }
+              else a *= fq(b) >= L ? 1 : 0;
+              if (a > 0.003) { g.save(); g.globalAlpha = a; g.translate(x + adv / 2, base + dy); g.scale(2 - sy, sy); g.fillStyle = fill; g.fillText(ch, -adv / 2 - tr / 2, 0); g.restore(); } }
+            x += adv; k++; }); }
+        // a ghost of the word springs off it as the last letter lands
+        const gh = r(b, last, last + 0.6); if (mode === "slam" && gh > 0 && gh < 1) { g.save(); g.globalAlpha = 0.45 * (1 - gh); g.strokeStyle = fill; g.lineWidth = 2;
+          const sc = 1 + 0.16 * eo3(gh); g.translate(960, cy); g.scale(sc, sc); g.translate(-960, -cy);
+          for (let li = 0; li < n; li++) { const base = cy + (li - (n - 1) / 2) * size * 1.02 + size * 0.36; let x = 960 - geo[li].tot / 2;
+            [...lines[li]].forEach((ch, ci) => { g.strokeText(ch, x - tr / 2 + 0, base); x += geo[li].ws[ci]; }); }
+          g.restore(); }
+      }
+      // the camera shakes a little with every hit
+      const IMP = [[Q.bounce, 10], [Q.burst, 24], [Q.lock, 4], [Q.score + 0.05, 10], [Q.stamp, 9], [Q.button + 0.35, 6]];
+      TB.heads.forEach((hd, hi) => { if (hd[6] === "slam") hd[7].flat().forEach((L) => { if (L !== null) IMP.push([L, hi < 4 ? 6 : 3]); }); });   // the first four are the big words
+      TB.rows.forEach((_, i) => IMP.push([Q.rows + i * Q.rowGap, 4]));
+      function shake(b) { let x = 0, y = 0; for (const [bi, a] of IMP) { const t = b - bi; if (t < 0 || t > 0.9) continue; const e = a * Math.exp(-t * 7);
+          x += e * Math.sin(t * 60 + bi * 13); y += e * Math.cos(t * 53 + bi * 7); } return [x, y]; }
+
+      const circle = (x, y, rad, col) => { g.fillStyle = col; g.beginPath(); g.arc(x, y, Math.max(0, rad), 0, 2 * PI); g.fill(); };
+      const ring = (x, y, rad, col, w, a = 1) => { g.globalAlpha = a; g.strokeStyle = col; g.lineWidth = w; g.beginPath(); g.arc(x, y, Math.max(0, rad), 0, 2 * PI); g.stroke(); g.globalAlpha = 1; };
+      function rrect(x, y, w, h, rad) { rad = Math.min(rad, w / 2, h / 2); g.beginPath(); g.moveTo(x + rad, y); g.arcTo(x + w, y, x + w, y + h, rad); g.arcTo(x + w, y + h, x, y + h, rad);
+        g.arcTo(x, y + h, x, y, rad); g.arcTo(x, y, x + w, y, rad); g.closePath(); }
+      function mono(s, x, y, size, col, al = "left", wt = 500, sp = 0.12) { g.font = `${wt} ${size}px JBM`; g.letterSpacing = `${sp}em`; g.textAlign = al; g.textBaseline = "alphabetic"; g.fillStyle = col; g.fillText(s, x, y); g.letterSpacing = "0px"; }
+      function brackets(x, y, s, col, w, a) { g.globalAlpha = a; g.strokeStyle = col; g.lineWidth = w; g.lineCap = "square"; const l = Math.max(8, s * 0.42);
+        for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { g.beginPath(); g.moveTo(x + sx * s, y + sy * (s - l)); g.lineTo(x + sx * s, y + sy * s); g.lineTo(x + sx * (s - l), y + sy * s); g.stroke(); }
+        g.globalAlpha = 1; g.lineCap = "butt"; }
+
+      // ================= the open and 01 FIND
+      function sceneFind(b) {
+        g.fillStyle = INK; g.fillRect(-60, -60, W + 120, H + 120);
+        if (b < Q.burst) {   // a reticle waits, the dot drops into it, bounces, gathers itself and swells
+          const ra = r(b, 0.15, 0.9) * (1 - r(b, 1.7, 2.0)); if (ra > 0) { g.globalAlpha = 0.35 * ra; g.strokeStyle = BONE; g.lineWidth = 2; const L = 60 * eo3(r(b, 0.15, 0.9));
+            g.beginPath(); g.moveTo(960 - L, 540); g.lineTo(960 - 14, 540); g.moveTo(960 + 14, 540); g.lineTo(960 + L, 540); g.moveTo(960, 540 - L); g.lineTo(960, 540 - 14); g.moveTo(960, 540 + 14); g.lineTo(960, 540 + L); g.stroke(); g.globalAlpha = 1; }
+          if (b >= Q.drop) { const y = b < Q.bounce ? lerp(-60, 540, Math.pow(r(b, Q.drop, Q.bounce), 2)) : 540, t = Math.max(0, b - Q.bounce);
+            let rad = 18; if (b > 2.5) rad = b < 2.62 ? lerp(18, 12, sm(r(b, 2.5, 2.62))) : lerp(12, 120, ei3(r(b, 2.62, Q.burst)));
+            const sq = b < Q.bounce ? 1 + 0.5 * r(b, 1.6, 2.0) : 1 + 0.6 * Math.exp(-t * 8) * Math.cos(t * 28);
+            g.save(); g.translate(960, y + (b < Q.bounce ? 0 : rad * (1 - 1 / sq) * 0.5)); g.scale(b < Q.bounce ? 1 / sq : sq, b < Q.bounce ? sq : 1 / sq); circle(0, 0, rad, CORAL); g.restore();
+            if (b >= Q.bounce) { const u = r(b, Q.bounce, Q.bounce + 0.8); ring(960, 540, 18 + 320 * eo3(u), BONE, 2, 0.6 * (1 - u)); } }
+          return;
+        }
+        // the burst: a coral flash fills the frame, ink chases it back, and the prospects fly out to their places
+        if (b < Q.burst + 0.5) { circle(960, 540, lerp(120, 1250, eo3(r(b, Q.burst, Q.burst + 0.14))), CORAL); circle(960, 540, 1250 * eio3(r(b, Q.burst + 0.1, Q.burst + 0.42)), INK); }
+        const sw = r(b, Q.burst, Q.burst + 0.7); if (sw < 1) ring(960, 540, 1500 * eo3(sw), BONE, 3, 0.7 * (1 - sw));
+        // the zoom into the hero at the end of the scene
+        const zu = r(b, Q.zoom, Q.score), z = Math.exp(Math.log(170) * Math.pow(zu, 2.4)), kf = eio3(r(b, Q.zoom, Q.zoom + 0.7));
+        const hp = fieldPos(HERO, b), fx = lerp(hp[0], 960, kf), fy = lerp(hp[1], 540, kf);
+        const X = (p) => [fx + (p[0] - hp[0]) * z, fy + (p[1] - hp[1]) * z];
+        const lens = b >= Q.lens[0] && b < Q.zoom + 0.4, lp = lens ? lensPos(Math.min(b, Q.lens[1])) : [0, 0], LR = lens ? lensR(b) : 0;
+        const dimW = 1 - 0.62 * sm(r(b, 5.0, 5.2)) * (1 - sm(r(b, 8.4, 8.9))), dimL = 1 - 0.7 * sm(r(b, Q.lock + 0.1, Q.lock + 0.5));
+        const pn = new Path2D(), pl = new Path2D(), rings = [];
+        for (let i = 0; i < NF; i++) { if (i === HERO) continue; let p = fieldPos(i, b), rad = 3.2;
+          if (lens && b < Q.lock + 0.3) { const dx = p[0] - lp[0], dy = p[1] - lp[1], d = Math.hypot(dx, dy); if (d < LR) { const f = 1 - d / LR; p = [p[0] + dx * 0.45 * f, p[1] + dy * 0.45 * f]; rad *= 1 + 1.3 * f; } }
+          rad *= 1 + 0.22 * Math.sin(FX[i] * 0.012 - b * 2.2) * r(b, 4.6, 5.4);
+          const lit = b >= LIT[i]; if (lit) { rad *= 1.35; const lt = b - LIT[i]; if (lt < 0.5) rings.push([p, lt]); }
+          const s = X(p); rad *= z; if (s[0] < -rad || s[0] > W + rad || s[1] < -rad || s[1] > H + rad) continue;
+          const P = lit ? pl : pn; P.moveTo(s[0] + rad, s[1]); P.arc(s[0], s[1], rad, 0, 2 * PI); }
+        g.globalAlpha = 0.5 * dimW * dimL; g.fillStyle = BONE; g.fill(pn); g.globalAlpha = dimW * (1 - 0.35 * r(b, Q.lock + 0.1, Q.lock + 0.5)); g.fillStyle = TEAL; g.fill(pl);
+        for (const [p, lt] of rings) { const s = X(p); ring(s[0], s[1], (4 + 22 * eo3(lt / 0.5)) * z, TEAL, 2, 0.8 * (1 - lt / 0.5)); }
+        g.globalAlpha = 1;
+        if (lens) { const la = 1 - r(b, Q.zoom, Q.zoom + 0.3), s = X(lp);
+          if (b < Q.lock + 0.3) { g.globalAlpha = 0.07 * la; circle(s[0], s[1], LR * z, TEAL); g.globalAlpha = 1; ring(s[0], s[1], LR * z, BONE, 2, 0.85 * la);
+            for (let k = 0; k < 4; k++) { const a = k * PI / 2 + b * 0.6; g.globalAlpha = 0.85 * la; g.strokeStyle = BONE; g.lineWidth = 2; g.beginPath();
+              g.moveTo(s[0] + Math.cos(a) * (LR + 6), s[1] + Math.sin(a) * (LR + 6)); g.lineTo(s[0] + Math.cos(a) * (LR + 20), s[1] + Math.sin(a) * (LR + 20)); g.stroke(); }
+            g.globalAlpha = la; mono("MATCH ≥ 85", s[0], s[1] - LR - 22, 16, BONE, "center", 600); g.globalAlpha = 1; } }
+        // the hero, with the lock closing round it
+        const hs = X(hp); if (b >= Q.lock) { const u = r(b, Q.lock, Q.lock + 0.35), a = 1 - r(b, Q.zoom, Q.zoom + 0.25); brackets(hs[0], hs[1], lerp(130, 26, back(u, 1.3)), BONE, 3, a);
+            const ta = a * r(b, Q.lock + 0.3, Q.lock + 0.5); g.globalAlpha = ta; mono("PROSPECT 0412", hs[0] + 48, hs[1] - 6, 18, BONE, "left", 600); mono("FIT 87", hs[0] + 48, hs[1] + 20, 18, TEAL, "left", 700); g.globalAlpha = 1;
+            const pu = r(b, Q.lock, Q.lock + 0.6); if (pu < 1) ring(hs[0], hs[1], 10 + 60 * eo3(pu), CORAL, 3, 1 - pu); }
+        circle(hs[0], hs[1], (b < Q.burst + 0.2 ? lerp(120, 9, eo3(r(b, Q.burst, Q.burst + 0.2))) : 9) * z * (1 + 0.25 * Math.exp(-Math.max(0, b - Q.lock) * 6) * (b >= Q.lock ? 1 : 0)), CORAL);
+        // inside the dot is the next scene
+        if (b > Q.score - 0.35) circle(960, 540, 1250 * eo3(r(b, Q.score - 0.35, Q.score + 0.05)), BONE);
+        head(TB.heads[0], b);
+      }
+
+      // ================= 02 SCORE
+      const CX = 960, CY = 600, th = (v) => (210 - 2.4 * v) * PI / 180, gp = (v, R) => [CX + R * Math.cos(th(v)), CY - R * Math.sin(th(v))];
+      const needleV = (b) => { const t = b - (Q.needle + 0.4); return t <= 0 ? 0 : Math.min(100, Math.max(0, 87 - 87 * Math.exp(-2.2 * t) * Math.cos(5.5 * t))); };
+      const X0 = 560, rowY = (s) => 290 + s * 70, BL = 8;
+      const RANK = TB.bars.map((v, i) => [v, i]).sort((a, c) => c[0] - a[0]).reduce((o, [, i], k) => { o[i] = k; return o; }, []);
+      function heroBarGeo(b) {   // where the hero's needle, then bar, is: pivot, length, width, angle
+        const m = eio3(r(b, Q.morph, Q.morph + 0.8)), v = needleV(b), len0 = 280 * eo3(r(b, Q.needle, Q.needle + 0.4));
+        let x = lerp(CX, X0, m), y = lerp(CY, rowY(TB.heroBar), m), len = lerp(len0, 87 * BL, m), w = lerp(6, 24, m), ang = lerp(th(v), 0, m);
+        const su = eio3(r(b, Q.sort, Q.sort + 0.9)); y = lerp(y, rowY(0), su) ; x += 50 * Math.sin(PI * su);
+        const cu = eio3(r(b, Q.toCard, Q.wipe)); y = lerp(y, 540, cu); x = lerp(x, 510, cu); len = lerp(len, 900, cu);
+        return { x, y, len, w, ang, tip: [x + len * Math.cos(ang), y - len * Math.sin(ang)] };
+      }
+      function sceneScore(b) {
+        g.fillStyle = BONE; g.fillRect(-60, -60, W + 120, H + 120);
+        const m = eio3(r(b, Q.morph, Q.morph + 0.8)), fade = 1 - m;
+        if (b >= Q.dial && b < Q.bars + 0.5) {   // the gauge draws itself tick by tick, then drops apart
+          TB.dialTicks.forEach((tb, k) => { const u = eo3(r(b, tb, tb + 0.15)); if (u <= 0) return; const v = k * 2.5, major = k % 4 === 0;
+            const fall = Math.pow(r(b, Q.morph + k * 0.008, Q.morph + 0.7 + k * 0.008), 2), R2 = 330, R1 = lerp(R2, major ? 282 : 302, u);
+            const a = gp(v, R1), c = gp(v, R2); g.globalAlpha = 1 - fall; g.strokeStyle = v >= 70 ? CORAL : INK; g.lineWidth = major ? 6 : 3;
+            g.beginPath(); g.moveTo(a[0], a[1] + fall * 700); g.lineTo(c[0] + fall * 30 * (k % 3 - 1), c[1] + fall * 760); g.stroke();
+            if (major && u > 0.5) { const p = gp(v, 380); g.globalAlpha = fade * r(b, tb + 0.1, tb + 0.3); mono(String(v), p[0], p[1] + 8, 22, INK, "center", 600, 0.04); } });
+          g.globalAlpha = fade; g.strokeStyle = INK; g.lineWidth = 2; g.beginPath(); const au = r(b, Q.dial, Q.dial + 1.0);
+          g.arc(CX, CY, 346, -th(0), -th(100 * au) + 0.0001, false); g.stroke();
+          const bu = eo3(r(b, Q.dial + 1.0, Q.dial + 1.4)); if (bu > 0) { g.strokeStyle = CORAL; g.lineWidth = 12; g.beginPath(); g.arc(CX, CY, 356, -th(70), -th(lerp(70, 100, bu)), false); g.stroke(); }
+          g.globalAlpha = 1; }
+        if (b >= Q.needle && b < Q.bars + 0.6) { const v = needleV(b); g.globalAlpha = fade; g.font = "800 150px Archivo"; g.textAlign = "center"; g.fillStyle = INK;
+          g.fillText(String(Math.round(v)).padStart(2, "0"), CX, 820); mono("FIT SCORE", CX, 860, 18, INK, "center", 600, 0.3); g.globalAlpha = 1; }
+        // the bars: the other prospects rise beside the hero, then sort themselves, warm ones first
+        if (b >= Q.bars) TB.bars.forEach((v, i) => { if (i === TB.heroBar) return; const rk = RANK[i], gu = eoE(r(b, Q.bars + rk * 0.1, Q.bars + 0.6 + rk * 0.1));
+          const su = eio3(r(b, Q.sort + rk * 0.08, Q.sort + 0.9 + rk * 0.08)), slot = lerp(i, rk, su), y = rowY(slot), x = X0 + 50 * Math.sin(PI * su) * (rk % 2 ? -1 : 1) - 1900 * ei3(r(b, Q.toCard + rk * 0.04, Q.toCard + 0.5 + rk * 0.04));
+          const wu = r(b, Q.warm, Q.warm + 0.4), col = v >= 70 ? mix(INK, AMBER, wu) : INK, a = v >= 70 ? 1 : 1 - 0.75 * wu, len = v * BL * gu;
+          g.globalAlpha = a; g.strokeStyle = col; g.lineWidth = 24; g.lineCap = "round"; g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.max(0.1, len), y); g.stroke(); g.lineCap = "butt";
+          mono(TB.barIds[i], x - 36, y + 7, 20, INK, "right", 500, 0.06); g.font = "700 28px Archivo"; g.textAlign = "left"; g.fillStyle = INK; g.fillText(String(Math.round(v * gu)), x + len + 26, y + 10); g.globalAlpha = 1; });
+        const hb = heroBarGeo(b);
+        if (b >= Q.morph + 0.3 && b < Q.toCard + 0.4) { const a = r(b, Q.morph + 0.5, Q.morph + 0.8) * (1 - r(b, Q.toCard, Q.toCard + 0.3)); g.globalAlpha = a;
+          mono(TB.barIds[TB.heroBar], hb.x - 36, hb.y + 7, 20, INK, "right", 700, 0.06); g.font = "800 28px Archivo"; g.textAlign = "left"; g.fillStyle = CORAL; g.fillText("87", hb.tip[0] + 30, hb.y + 10); g.globalAlpha = 1; }
+        // the teal wipe opens out of the dot, then the hero bar is drawn over it
+        if (b > Q.wipe) circle(hb.tip[0], hb.tip[1], 2400 * eo3(r(b, Q.wipe, Q.wipe + 0.8)), TEAL);
+        if (b >= Q.needle) { g.strokeStyle = CORAL; g.lineWidth = hb.w; g.lineCap = "round"; g.beginPath(); g.moveTo(hb.x, hb.y); g.lineTo(hb.tip[0], hb.tip[1]); g.stroke(); g.lineCap = "butt";
+          if (m < 1) { g.globalAlpha = fade; circle(CX, CY, 11, INK); circle(CX, CY, 4, BONE); g.globalAlpha = 1; } }
+        const pop = back(r(b, Q.score + 0.05, Q.score + 0.4), 2.2), dp = b < Q.needle ? [CX, CY] : hb.tip; circle(dp[0], dp[1], 16 * pop, CORAL);
+        head(TB.heads[1], b);
+      }
+
+      // ================= 03 ENRICH
+      const CARD = { x: 960, y: 520, w: 1000, h: 470 }, MCARD = { x: 960, y: 600, w: 1180, h: 540 };
+      function cardFront(b, a) {   // drawn about the card's centre
+        const L = -CARD.w / 2, T = -CARD.h / 2; g.globalAlpha = a * r(b, Q.card + 0.6, Q.card + 0.9);
+        mono("PROSPECT 0412", L + 120, T + 82, 20, "rgba(243,234,214,0.6)", "left", 600, 0.16);
+        rrect(CARD.w / 2 - 170, T + 50, 110, 46, 23); g.fillStyle = CORAL; g.fill(); g.font = "800 28px Archivo"; g.textAlign = "center"; g.fillStyle = INK; g.fillText("87", CARD.w / 2 - 115, T + 83);
+        g.globalAlpha = a; const du = eo3(r(b, Q.card + 0.6, Q.card + 1.0)); g.strokeStyle = "rgba(243,234,214,0.18)"; g.lineWidth = 2; g.beginPath(); g.moveTo(L + 50, T + 125); g.lineTo(L + 50 + (CARD.w - 100) * du, T + 125); g.stroke();
+        TB.rows.forEach(([k, v], i) => { const Lb = Q.rows + i * Q.rowGap, u = r(b, Lb - 0.32, Lb); if (u <= 0) return; const dir = i % 2 ? 1 : -1, off = dir * 1500 * (1 - back(u, 1.1)), y = T + 182 + i * 52;
+          g.globalAlpha = a; mono(k, L + 70 + off, y, 18, TEAL, "left", 600, 0.18); g.font = "600 34px Archivo"; g.textAlign = "left"; g.fillStyle = BONE; g.fillText(v, L + 300 + off, y + 2);
+          const cu = r(b, Q.ticks + i * 0.25, Q.ticks + 0.3 + i * 0.25); if (cu > 0) { g.strokeStyle = TEAL; g.lineWidth = 5; g.lineCap = "round"; g.lineJoin = "round"; const cx = CARD.w / 2 - 90, cy = y - 10;
+            const pts = [[cx - 13, cy], [cx - 4, cy + 10], [cx + 15, cy - 12]], seg1 = Math.min(1, cu * 2.2), seg2 = Math.max(0, (cu - 0.45) / 0.55);
+            g.beginPath(); g.moveTo(pts[0][0], pts[0][1]); g.lineTo(lerp(pts[0][0], pts[1][0], seg1), lerp(pts[0][1], pts[1][1], seg1)); if (seg2 > 0) g.lineTo(lerp(pts[1][0], pts[2][0], seg2), lerp(pts[1][1], pts[2][1], seg2)); g.stroke(); g.lineCap = "butt"; } });
+        const sc = r(b, Q.ticks - 0.2, Q.ticks + 1.4); if (sc > 0 && sc < 1) { const y = lerp(T + 140, CARD.h / 2 - 30, sm(sc)); g.globalAlpha = a * 0.7 * Math.sin(PI * sc);
+          const gr = g.createLinearGradient(0, y - 30, 0, y); gr.addColorStop(0, "rgba(47,214,195,0)"); gr.addColorStop(1, "rgba(47,214,195,0.35)"); g.fillStyle = gr; g.fillRect(L + 30, y - 30, CARD.w - 60, 30);
+          g.fillStyle = TEAL; g.fillRect(L + 30, y - 1, CARD.w - 60, 2); }
+        g.globalAlpha = 1;
+      }
+      function sceneEnrich(b) {
+        g.fillStyle = TEAL; g.fillRect(-60, -60, W + 120, H + 120);
+        if (b > Q.flipMid) circle(MCARD.x, MCARD.y, 1400 * eo3(r(b, Q.flipMid, Q.flipMid + 0.6)), CORAL);
+        head(TB.heads[2], b);
+        const c = eio3(r(b, Q.card, Q.card + 0.8)), fu = eio3(r(b, Q.flip, Q.flip + 1.0)), ang = PI * fu, sx = Math.cos(ang);
+        const cx = lerp(lerp(960, CARD.x, c), MCARD.x, fu), cy = lerp(lerp(540, CARD.y, c), MCARD.y, fu), w = lerp(lerp(924, CARD.w, c), MCARD.w, fu), h = lerp(lerp(24, CARD.h, c), MCARD.h, fu);
+        g.save(); g.translate(cx, cy); g.transform(Math.abs(sx), 0.12 * Math.sin(ang) * (sx > 0 ? 1 : -1), 0, 1, 0, 0);
+        if (sx >= 0) { if (c > 0.3) { g.fillStyle = "rgba(0,0,0,0.16)"; rrect(-w / 2, -h / 2 + 18, w, h, lerp(12, 28, c)); g.fill(); }
+          g.fillStyle = mix("#FF4F36", "#0D0D11", c); rrect(-w / 2, -h / 2, w, h, lerp(12, 28, c)); g.fill(); if (c >= 1) cardFront(b, 1 - r(b, Q.flip, Q.flip + 0.4)); }
+        else { g.fillStyle = "rgba(0,0,0,0.16)"; rrect(-w / 2, -h / 2 + 18, w, h, 28); g.fill(); g.fillStyle = BONE; rrect(-w / 2, -h / 2, w, h, 28); g.fill(); }
+        g.restore();
+        // the dot rides the bar's end, then marks the record, then hops over the flip to wait at the message's start
+        const tip = [lerp(1410, CARD.x - CARD.w / 2 + 70, c), lerp(540, CARD.y - CARD.h / 2 + 70, c)], hu = eio3(r(b, Q.flip + 0.05, Q.flip + 1.0)), dst = DSTART;
+        const dp = [lerp(tip[0], dst[0], hu), lerp(tip[1], dst[1], hu) - 220 * Math.sin(PI * hu)]; circle(dp[0], dp[1], lerp(lerp(16, 22, c), 10, hu), CORAL);
+      }
+
+      // ================= 04 DRAFT
+      const ML = MCARD.x - MCARD.w / 2 + 70, HDRY = [MCARD.y - MCARD.h / 2 + 76, MCARD.y - MCARD.h / 2 + 116], BODYY = TB.msg.map((_, i) => MCARD.y - MCARD.h / 2 + 222 + i * 60);
+      const DSTART = [ML + 6, HDRY[0] - 8], FH_ = "500 22px JBM", FB = "500 36px Archivo";
+      function typed(lines, times, b) { return lines.map((ln, i) => { let n = 0; while (n < ln.length && b >= times[i][n]) n++; return n; }); }
+      function cursorAt(b) {   // the end of whatever is being typed now
+        const nh = typed(TB.hdr, TB.typeHdr, fq(b)), nb = typed(TB.msg, TB.typeMsg, fq(b)); let line = null, n = 0, font = FH_, y = HDRY[0], last = -1;
+        nh.forEach((k, i) => { if (k > 0) { line = TB.hdr[i]; n = k; font = FH_; y = HDRY[i]; last = TB.typeHdr[i][k - 1]; } });
+        nb.forEach((k, i) => { if (k > 0) { line = TB.msg[i]; n = k; font = FB; y = BODYY[i]; last = TB.typeMsg[i][k - 1]; } });
+        if (line === null) return { p: DSTART, last };
+        g.font = font; g.letterSpacing = font === FH_ ? "0.04em" : "0px"; const wd = g.measureText(line.slice(0, n)).width; g.letterSpacing = "0px";
+        return { p: [ML + wd + 14, y - (font === FB ? 12 : 8)], last };
+      }
+      const PL = 300, RV = [[-0.827, -0.377], [0, -0.377], [0.827, -0.377], [0.827, 0.377], [0, 0.377], [-0.827, 0.377], [-0.827, 0]];
+      const PV = [[-0.9, -0.62], [0.02, -0.32], [1, 0], [1, 0], [0.02, 0.32], [-0.9, 0.62], [-0.6, 0]], VD = [51.15, 51.0, 50.85, 50.85, 51.0, 51.15, 51.15];
+      function planeVerts(b) { return RV.map((v, i) => { const u = eio3(r(b, VD[i], VD[i] + 0.45)); return [lerp(v[0], PV[i][0], u), lerp(v[1], PV[i][1], u)]; }); }
+      function drawPlane(cx, cy, rot, sc, vs, sh, a = 1) {
+        g.save(); g.globalAlpha = a; g.translate(cx, cy); g.rotate(rot); g.scale(sc * PL, sc * PL);
+        const poly = (idx, col) => { g.fillStyle = col; g.beginPath(); idx.forEach((k, j) => (j ? g.lineTo(vs[k][0], vs[k][1]) : g.moveTo(vs[k][0], vs[k][1]))); g.closePath(); g.fill(); };
+        poly([0, 1, 2, 3, 4, 5, 6], BONE); if (sh > 0) { g.globalAlpha = a * sh; g.strokeStyle = "rgba(13,13,17,0.3)"; g.lineWidth = 1.5 / (sc * PL);
+          g.beginPath(); g.moveTo(vs[6][0], vs[6][1]); g.lineTo(vs[2][0], vs[2][1]); g.stroke(); }
+        g.restore();
+      }
+      // the plane proper: a nose, a spine, two wings angled up off the centre crease and a keel folded down under it, turned to a
+      // three-quarter view and lit, so each folded face takes its own shade. fold 0 is the flat dart seen from above
+      function drawPlane3(cx, cy, rot, sc, fold, tilt, a = 1) {
+        const F = (f, n) => f.map((v, k) => lerp(v, n[k], fold));
+        const P = { N: [1, 0, 0], T: F([-0.6, 0, 0], [-0.84, 0, 0.02]), L: F([-0.9, -0.62, 0], [-0.94, -0.52, 0.34]), R: F([-0.9, 0.62, 0], [-0.94, 0.52, 0.34]), K: F([-0.6, 0, 0], [-0.78, 0, -0.34]) };
+        const ca = Math.cos(tilt), sa = Math.sin(tilt), V = {};
+        for (const k in P) { const [x, y, z] = P[k]; V[k] = [x, y * ca - z * sa, y * sa + z * ca]; }
+        const faces = [["N", "T", "L"], ["N", "T", "R"], ["N", "T", "K"]].map((f) => { const [p0, p1, p2] = f.map((k) => V[k]);
+          const u = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]], v = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
+          const n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]], nl = Math.hypot(...n) || 1;
+          const lam = Math.abs((n[0] * -0.25 + n[1] * -0.55 + n[2] * 0.8) / nl / 1.0);
+          return { f, d: (p0[2] + p1[2] + p2[2]) / 3, lam }; }).sort((p, q) => p.d - q.d);
+        const wings = faces.filter((fc) => fc.f[2] !== "K");   // the keel darkest, the far wing mid, the near wing lightest
+        faces.forEach((fc) => { const t = fc.f[2] === "K" ? "#A6987A" : fc === wings[0] ? "#DDD0B4" : "#F7EFDD"; fc.col = mix("#F3EAD6", t, fold); });
+        g.save(); g.globalAlpha = a; g.translate(cx, cy); g.rotate(rot); if (Math.cos(rot) < 0) g.scale(1, -1); g.scale(sc * PL, sc * PL);
+        g.lineJoin = "round"; g.lineWidth = 1.4 / (sc * PL);
+        for (const fc of faces) { g.fillStyle = fc.col; g.strokeStyle = "rgba(13,13,17,0.28)"; g.beginPath(); fc.f.forEach((k, j) => (j ? g.lineTo(V[k][0], V[k][1]) : g.moveTo(V[k][0], V[k][1])));
+          g.closePath(); g.fill(); g.stroke(); }
+        g.strokeStyle = "rgba(13,13,17,0.4)"; g.beginPath(); g.moveTo(V.N[0], V.N[1]); g.lineTo(V.T[0], V.T[1]); g.stroke();
+        g.restore();
+      }
+      const planeTilt = (b) => { const u = eio3(r(b, 51.6, Q.fly + 0.2)), fb = Math.min(b, Q.freeze); return 1.05 * u + 0.16 * Math.sin(fb * 1.7) * r(b, Q.fly, Q.fly + 0.6); };
+      const bez = (P, u) => { const v = 1 - u; return [0, 1].map((k) => v * v * v * P[0][k] + 3 * v * v * u * P[1][k] + 3 * v * u * u * P[2][k] + u * u * u * P[3][k]); };
+      const bezD = (P, u) => { const v = 1 - u; return [0, 1].map((k) => 3 * v * v * (P[1][k] - P[0][k]) + 6 * v * u * (P[2][k] - P[1][k]) + 3 * u * u * (P[3][k] - P[2][k])); };
+      const FLY = [[960, 580], [1250, 840], [1500, 120], [2400, 240]];
+      function planeFly(b) { const u = Math.pow(r(b, Q.fly, Q.button), 1.5), p = bez(FLY, u), d = bezD(FLY, Math.max(0.001, u)), rot0 = lerp(0, -0.25, eio3(r(b, 51.4, Q.fly)));
+        return { p: b < Q.fly ? [960, 580] : p, rot: b < Q.fly ? rot0 : lerp(rot0, Math.atan2(d[1], d[0]), eio3(r(b, Q.fly, Q.fly + 0.3))), sc: lerp(1, 0.8, r(b, Q.fly, Q.button)) }; }
+      function sceneDraft(b) {
+        g.fillStyle = CORAL; g.fillRect(-60, -60, W + 120, H + 120);
+        const s = eio3(r(b, Q.fold, Q.fold + 0.45)), ta = 1 - r(b, Q.fold, Q.fold + 0.2), folding = b >= 50.85, pf = planeFly(b);
+        if (!folding) { const w = lerp(MCARD.w, 2 * 0.827 * PL, s), h = lerp(MCARD.h, 2 * 0.377 * PL, s), cx = MCARD.x, cy = lerp(MCARD.y, 580, s), rad = lerp(28, 0, s);
+          g.fillStyle = "rgba(0,0,0,0.16)"; rrect(cx - w / 2, cy - h / 2 + 18 * (1 - s), w, h, rad); g.fill(); g.fillStyle = BONE; rrect(cx - w / 2, cy - h / 2, w, h, rad); g.fill();
+          if (ta > 0) { g.globalAlpha = ta;
+            TB.hdr.forEach((ln, i) => { const n = typed(TB.hdr, TB.typeHdr, fq(b))[i]; if (n) { g.font = FH_; g.letterSpacing = "0.04em"; g.textAlign = "left"; g.fillStyle = "rgba(13,13,17,0.55)"; g.fillText(ln.slice(0, n), ML, HDRY[i]); g.letterSpacing = "0px"; } });
+            const du = eo3(r(b, Q.subject + 0.8, Q.subject + 1.1)); g.fillStyle = "rgba(13,13,17,0.14)"; g.fillRect(ML, HDRY[1] + 34, (MCARD.w - 140) * du, 2);
+            const nb = typed(TB.msg, TB.typeMsg, fq(b)); g.font = FB; g.textAlign = "left";
+            TB.marks.forEach(([li, word]) => { const k0 = TB.msg[li].indexOf(word), k1 = k0 + word.length - 1; if (nb[li] <= k1) return; const t1 = TB.typeMsg[li][k1], u = eo3(r(b, t1, t1 + 0.4));
+              const x0 = ML + g.measureText(TB.msg[li].slice(0, k0)).width, wd = g.measureText(word).width, y = BODYY[li];
+              g.fillStyle = `rgba(255,79,54,${0.16 * u})`; g.fillRect(x0 - 4, y - 34, wd + 8, 46); g.fillStyle = CORAL; g.fillRect(x0, y + 9, wd * u, 4); });
+            TB.msg.forEach((ln, i) => { if (nb[i]) { g.fillStyle = INK; g.fillText(ln.slice(0, nb[i]), ML, BODYY[i]); } });
+            const st = r(b, Q.stamp - 0.18, Q.stamp); if (st > 0) { g.save(); g.translate(MCARD.x + MCARD.w / 2 - 230, MCARD.y + MCARD.h / 2 - 72); g.rotate(-0.12); const sc = lerp(2.4, 1, ei3(st)) * (1 - 0.06 * Math.exp(-Math.max(0, b - Q.stamp) * 10));
+              g.scale(sc, sc); g.globalAlpha = ta * Math.min(1, st * 3); g.strokeStyle = CORAL; g.lineWidth = 4; rrect(-170, -32, 340, 64, 8); g.stroke(); mono("DRAFT · FOR REVIEW", 0, 9, 22, CORAL, "center", 800, 0.12); g.restore(); }
+            g.globalAlpha = 1; }
+        } else if (b < 51.6) { drawPlane(pf.p[0], pf.p[1], pf.rot, pf.sc, planeVerts(b), r(b, 50.9, 51.3)); }
+        else drawPlane3(pf.p[0], pf.p[1], pf.rot, pf.sc, eio3(r(b, 51.6, Q.fly + 0.2)), planeTilt(b));
+        // a faint trail behind the plane as it flies off
+        if (b > Q.fly) { const u = Math.pow(r(b, Q.fly, Q.button), 1.5); g.strokeStyle = "rgba(13,13,17,0.35)"; g.lineWidth = 3; g.setLineDash([10, 12]); g.beginPath();
+          for (let k = 0; k <= 30; k++) { const p = bez(FLY, Math.max(0, u - 0.3 + 0.3 * k / 30)); k ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]); } g.stroke(); g.setLineDash([]); }
+        // the cursor: the dot, at the end of the text as it types; then it settles on the plane's nose
+        const cu = cursorAt(b), pulse = b < Q.subject ? 0.55 + 0.45 * Math.cos((b - Q.subject) * PI * 2) : 1, kick = 1 + 0.35 * Math.exp(-Math.max(0, b - cu.last) * 18) * (cu.last > 0 ? 1 : 0);
+        const nu = eio3(r(b, Q.fold + 0.2, 51.6)), nose = [pf.p[0] + Math.cos(pf.rot) * PL * pf.sc, pf.p[1] + Math.sin(pf.rot) * PL * pf.sc];
+        const dp = [lerp(cu.p[0], nose[0], nu), lerp(cu.p[1], nose[1], nu) - 120 * Math.sin(PI * nu)]; g.globalAlpha = lerp(pulse, 1, nu); circle(dp[0], dp[1], 10 * kick + 4 * nu, CORAL);
+        g.globalAlpha = 1; if (nu > 0.5) ring(dp[0], dp[1], 14 + 4 * nu, INK, 3, r(nu, 0.5, 1));
+        head(TB.heads[3], b);
+        if (b > Q.ink) { const w = W * eio3(r(b, Q.ink, Q.button)); g.fillStyle = INK; g.fillRect(-60, -60, w + 60, H + 120); }
+      }
+
+      // ================= 05 YOUR CALL
+      const BT = { x: 1220, y: 730, w: 520, h: 170 }, IN = [[-350, 940], [200, 260], [520, 980], [BT.x, BT.y]], REST = [BT.x + BT.w / 2 - 30, BT.y + BT.h / 2 + 10];
+      function sceneCall(b) {
+        g.fillStyle = INK; g.fillRect(-60, -60, W + 120, H + 120);
+        const k = ei3(r(b, Q.collapse, Q.collapse + 1.0)), u = r(Math.min(b, Q.freeze), Q.button, Q.button + 4.6), pp = bez(IN, u), pd = bezD(IN, u), rot = Math.atan2(pd[1], pd[0]), psc = 0.75;
+        const nose = [pp[0] + Math.cos(rot) * PL * psc, pp[1] + Math.sin(rot) * PL * psc];
+        const mu = eio3(r(b, Q.cursor, Q.cursor + 1.0)), dot0 = [lerp(nose[0], REST[0], mu), lerp(nose[1], REST[1], mu) - 180 * Math.sin(PI * mu)];
+        const cu = eio3(r(b, Q.collapse + 0.2, Q.close - 0.2)), dot = [lerp(dot0[0], 960, cu), lerp(dot0[1], 540, cu)];
+        g.save(); g.translate(dot[0], dot[1]); g.scale(1 - k, 1 - k); g.translate(-dot[0], -dot[1]); g.globalAlpha = 1 - k;
+        // the button
+        const bu = back(r(b, Q.button + 0.1, Q.button + 0.6), 1.6); if (bu > 0) { g.save(); g.translate(BT.x, BT.y); g.scale(bu, bu);
+          g.fillStyle = BONE; rrect(-BT.w / 2, -BT.h / 2, BT.w, BT.h, BT.h / 2); g.fill(); g.font = "800 92px Archivo"; g.letterSpacing = "0.02em"; g.textAlign = "center"; g.fillStyle = INK; g.fillText("SEND", 0, 33); g.letterSpacing = "0px";
+          const ha = r(b, Q.cursor + 0.6, Q.cursor + 1.0) * (0.55 + 0.45 * Math.sin((b - Q.cursor) * PI)); if (ha > 0) { g.globalAlpha = (1 - k) * ha; g.strokeStyle = CORAL; g.lineWidth = 4; rrect(-BT.w / 2 - 16, -BT.h / 2 - 16, BT.w + 32, BT.h + 32, BT.h / 2 + 16); g.stroke(); }
+          g.restore(); g.globalAlpha = 1 - k; }
+        // the plane's trail and the plane, frozen short of the button
+        g.strokeStyle = "rgba(243,234,214,0.3)"; g.lineWidth = 3; g.setLineDash([10, 12]); g.beginPath();
+        for (let j = 0; j <= 30; j++) { const p = bez(IN, Math.max(0, u - 0.35 + 0.35 * j / 30)); j ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]); } g.stroke(); g.setLineDash([]);
+        drawPlane3(pp[0], pp[1], rot, psc, 1, 1.05 + 0.16 * Math.sin(Math.min(b, Q.freeze) * 1.7), (1 - k) * (1 - 0.6 * r(b, Q.cursor + 0.4, Q.cursor + 1.4)));
+        if (b >= Q.freeze) { const fu = r(b, Q.freeze, Q.freeze + 0.2), fa = (1 - k) * (1 - r(b, Q.cursor, Q.cursor + 0.6)); brackets(pp[0] + 7, pp[1], lerp(330, 250, eo3(fu)), BONE, 2, fa);
+          g.globalAlpha = fa * r(b, Q.freeze + 0.15, Q.freeze + 0.3); mono("HELD", pp[0] - 243, pp[1] - 262, 16, BONE, "left", 700, 0.3); g.globalAlpha = 1 - k; }
+        head(TB.heads[4], b); head(TB.heads[5], b);
+        g.restore(); g.globalAlpha = 1;
+        // the dot: on the plane's nose, then at rest beside the button, never pressing it; then the frame folds into it
+        const br = 1 + 0.08 * Math.sin((b - Q.cursor) * PI) * r(b, Q.cursor + 1, Q.cursor + 1.5), drad = lerp(lerp(7, 13, mu) * br, 26, cu);
+        circle(dot[0], dot[1], drad, CORAL); if (mu > 0.9 && k < 1) ring(dot[0], dot[1], drad + 10 + 4 * Math.sin((b - Q.cursor) * PI), CORAL, 2, 0.4 * (1 - k));
+        if (b >= Q.freeze) { const fl = r(b, Q.freeze, Q.freeze + 0.3); if (fl < 1) { g.globalAlpha = 0.22 * (1 - fl); g.fillStyle = BONE; g.fillRect(0, 0, W, H); g.globalAlpha = 1; } }
+      }
+
+      // ================= the close
+      function sceneClose(b) {
+        g.fillStyle = INK; g.fillRect(-60, -60, W + 120, H + 120);
+        const pu = r(b, Q.close, Q.close + 0.3); if (pu < 1) { circle(960, 540, 26 * (1 - ei3(pu)), CORAL); }
+        const ru = r(b, Q.close, Q.close + 0.9); if (ru < 1) ring(960, 540, 26 + 900 * eo3(ru), CORAL, 3, 1 - ru);
+        const u = r(b, Q.close + 0.3, Q.close + 1.0), lw = 926 * 0.72, lh = 193 * 0.72, a = 1 - r(b, NB - 0.6, NB), e = eo3(u);
+        g.globalAlpha = e * a; g.drawImage($("#logo"), W / 2 - lw / 2, 300 - (1 - e) * 14, lw, lh);
+        g.font = "800 80px Archivo"; g.textAlign = "center"; g.textBaseline = "alphabetic"; g.fillStyle = BONE; g.globalAlpha = a * r(b, Q.close + 0.6, Q.close + 1.1); g.fillText("AI Lead Generation & Outreach", W / 2, 610);
+        g.globalAlpha = a * r(b, Q.close + 1.0, Q.close + 1.5); mono("ai.joaoqueiros.com", W / 2, 690, 28, BONE, "center", 500, 0.08); mono("A SERVICE · THIS FILM IS CODE", W / 2, 744, 20, TEAL, "center", 500, 0.08); g.globalAlpha = 1;
+      }
+
+      // ================= the flat layer: chapter marks, the lines under each scene, the field's count and the demo label
+      const bgAt = (b) => (b < Q.score ? "ink" : b < 29.6 ? "bone" : b < 39.4 ? "teal" : b < 52.9 ? "coral" : "ink");
+      function flat(b, bf) {
+        const fg = bgAt(b) === "ink" ? BONE : INK;
+        for (const [s, b0, b1, y] of TB.subs) { if (b < b0 || b > b1) continue; const n = Math.ceil(s.length * r(bf, b0, b0 + 0.6)); g.globalAlpha = 1 - r(b, b1 - 0.3, b1);
+          mono(s.slice(0, n), 960, y, 22, fg, "center", 600, 0.16); g.globalAlpha = 1; }
+        TB.chapters.forEach(([c0, num, name], i) => { const c1 = i + 1 < TB.chapters.length ? TB.chapters[i + 1][0] : Q.close; if (b < c0 || b > c1) return;
+          const u = eo3(r(b, c0, c0 + 0.45)), a = u * (1 - r(b, c1 - 0.3, c1)); g.globalAlpha = a; g.font = "800 30px Archivo"; g.textAlign = "left"; g.fillStyle = bgAt(b) === "coral" ? INK : CORAL;
+          g.fillText(num, 64 - 30 * (1 - u), 88); mono(name, 118 - 30 * (1 - u), 86, 18, fg, "left", 600, 0.24); g.fillStyle = fg; g.fillRect(64, 104, 120 * u, 2); g.globalAlpha = 1; });
+        if (b >= Q.lens[0] && b < Q.zoom + 0.3) { let n = 0; for (const t of LITS) if (t <= bf) n++; g.globalAlpha = r(b, Q.lens[0], Q.lens[0] + 0.3) * (1 - r(b, Q.zoom, Q.zoom + 0.3));
+          mono(`MATCHES ${String(n).padStart(3, "0")}`, W - 64, 86, 20, TEAL, "right", 700, 0.18); mono(`OF ${NF.toLocaleString("en-GB")} PROSPECTS`, W - 64, 114, 16, BONE, "right", 500, 0.18); g.globalAlpha = 1; }
+        if (b >= 1.6 && b < Q.close) { g.font = "500 18px JBM"; g.letterSpacing = "0.08em"; const s = TB.label, w = g.measureText(s).width + 22; g.letterSpacing = "0px";
+          g.fillStyle = "rgba(13,13,17,0.86)"; g.fillRect(40, H - 68, w, 32); mono(s, 51, H - 46, 18, BONE, "left", 500, 0.08); }
+      }
+
+      function draw(b) {
+        b = Math.max(0, Math.min(NB, b)); g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1;
+        const [sx, sy] = shake(b); g.translate(sx, sy);
+        if (b < Q.score + 0.05) sceneFind(b); else if (b < 30.0) sceneScore(b); else if (b < 39.7) sceneEnrich(b); else if (b < Q.button) sceneDraft(b); else if (b < Q.close) sceneCall(b); else sceneClose(b);
+        g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; flat(b, fq(b));
+      }
+
+      // ---------------- the frame: eight sub-frames over a half-frame shutter, averaged, then a little grain
+      const SUBN = 8, SHUT = 0.5; let frame = -1, sub = null, sg = null, out = null, grain = null;
+      function paint(t) {
+        const nf = Math.min(Math.floor(t * FPS + 1e-6), Math.round(DUR * FPS) - 1); if (nf === frame) return; frame = nf;
+        for (let k = 0; k < SUBN; k++) { g = sg; const ts = (nf + 0.5 + ((k + 0.5) / SUBN - 0.5) * SHUT) / FPS; draw(ts / BEAT);
+          out.globalAlpha = 1 / (k + 1); out.drawImage(sub, 0, 0); }
+        out.globalAlpha = 0.05; out.globalCompositeOperation = "overlay"; const ox = (nf * 137) % 256, oy = (nf * 71) % 256;
+        for (let x = -ox; x < W; x += 512) for (let y = -oy; y < H; y += 512) out.drawImage(grain, x, y);
+        out.globalCompositeOperation = "source-over"; out.globalAlpha = 1;
+      }
+      const tl = gsap.timeline({ paused: true }), clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+      async function build() {
+        await Promise.all([$("#logo").decode(), document.fonts.load('800 40px "Archivo"'), document.fonts.load('600 40px "Archivo"'), document.fonts.load('500 40px "Archivo"'),
+          document.fonts.load('700 40px "Archivo"'), document.fonts.load('500 20px "JBM"'), document.fonts.load('600 20px "JBM"'), document.fonts.load('700 20px "JBM"'), document.fonts.load('800 20px "JBM"')]);
+        sub = document.createElement("canvas"); sub.width = W; sub.height = H; sg = sub.getContext("2d"); out = $("#stage").getContext("2d");
+        grain = document.createElement("canvas"); grain.width = grain.height = 512; const gx = grain.getContext("2d"), id = gx.createImageData(512, 512);
+        for (let i = 0; i < 512 * 512; i++) { const v = Math.floor(hash(i, 99) * 255); id.data[i * 4] = id.data[i * 4 + 1] = id.data[i * 4 + 2] = v; id.data[i * 4 + 3] = 255; } gx.putImageData(id, 0, 0);
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(0);
+        window.__timelines = window.__timelines || {}; window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+      window.__hf = window.__hf || {}; window.__hf.buildReady = window.__hf.buildReady || {}; window.__hf.buildReady["pinpoint"] = build();
+    </script>
+  </body>
+</html>

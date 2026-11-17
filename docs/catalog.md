@@ -106,6 +106,14 @@ Made for: Imagined Worlds · Stills. Stack: Three.js, TSL, GSAP, Python (score).
 
 ## Products and systems
 
+### R62 · Pinpoint
+
+Kinetic motion graphics around one coral dot that is never cut away from: it is found in a field of prospects, becomes the needle of a gauge, the top bar of a sorted list, the marker on a record and the cursor of a message, then rides a paper plane that freezes short of SEND, music and all. Real motion blur from eight sub-frames a frame.
+
+Made for: AI Lead Generation & Outreach · JQ AI SYSTEMS. Stack: HyperFrames, Canvas 2D, GSAP, Python, NumPy, SciPy, FFmpeg.
+
+[Recipe and poster](../recipes/r62-pinpoint/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r62-pinpoint-v1)
+
 ### R61 · Stacked
 
 A shadow sculpture built on camera: a heap of blocks on the floor rises into a lattice row by row under three level lamps, so three words write themselves on three walls at once, from the bottom up. The lattice rebuilds twice: CODE / VIDEO / IMAGE, then SKILLS / PROMPTS / PLAYBOOK, then YOUR / OWN / STACK.
