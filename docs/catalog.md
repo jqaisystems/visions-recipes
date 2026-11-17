@@ -106,6 +106,14 @@ Made for: Imagined Worlds · Stills. Stack: Three.js, TSL, GSAP, Python (score).
 
 ## Products and systems
 
+### R61 · Stacked
+
+A shadow sculpture built on camera: a heap of blocks on the floor rises into a lattice row by row under three level lamps, so three words write themselves on three walls at once, from the bottom up. The lattice rebuilds twice: CODE / VIDEO / IMAGE, then SKILLS / PROMPTS / PLAYBOOK, then YOUR / OWN / STACK.
+
+Made for: AI Stack Setup & Enablement · JQ AI SYSTEMS. Stack: HyperFrames, WebGL2, Canvas 2D, GSAP, Python, FFmpeg.
+
+[Recipe and poster](../recipes/r61-stacked/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r61-stacked-v1)
+
 ### R60 · Sightline
 
 A shadow sculpture with one moving lamp: a lamp on a curved rail travels round a lattice of blocks, and its shadow is noise almost the whole way. At three exact angles it snaps into a word. The lattice rebuilds itself twice, so the sweeps read WHERE / DOES / AI FIT?, then AUDIT / RANK / PLAN, then FIRST / SECOND / THIRD.
