@@ -106,6 +106,14 @@ Made for: Imagined Worlds · Stills. Stack: Three.js, TSL, GSAP, Python (score).
 
 ## Products and systems
 
+### R60 · Sightline
+
+A shadow sculpture with one moving lamp: a lamp on a curved rail travels round a lattice of blocks, and its shadow is noise almost the whole way. At three exact angles it snaps into a word. The lattice rebuilds itself twice, so the sweeps read WHERE / DOES / AI FIT?, then AUDIT / RANK / PLAN, then FIRST / SECOND / THIRD.
+
+Made for: AI Consulting & Roadmapping · JQ AI SYSTEMS. Stack: HyperFrames, WebGL2, Canvas 2D, GSAP, Python, FFmpeg.
+
+[Recipe and poster](../recipes/r60-sightline/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r60-sightline-v1)
+
 ### R59 · Counter
 
 One unbroken zoom: every scene lives inside a hole in the scene before (the O of a word, a dial's knob, a full stop, a node, the 0 of 20), and the camera spirals down through six of them without a cut, from one prompt into the library inside it.
