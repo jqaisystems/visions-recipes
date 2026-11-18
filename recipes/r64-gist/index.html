@@ -1,0 +1,411 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <title>Gist</title>
+    <!-- Gist: string art made entirely in code, for AI News Curator. Nails land scattered across a dark board, every nail a saved
+         signal; a ripple straightens them onto one grid, a light gives each head its theme's colour, then one thread winds BRIEF
+         between only the nails that matter. It stops one pass short until a reviewer's lamp has passed, and the camera pulls back
+         to a wall of earlier days. The board and its signals are a demo, and this film is code. -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/table.js"></script>
+    <script src="assets/wind.js"></script>
+    <style>
+      @font-face { font-family: "Archivo"; src: url("assets/fonts/Archivo.ttf") format("truetype"); font-weight: 100 900; font-stretch: 62% 125%; }
+      @font-face { font-family: "JBM"; src: url("assets/fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 100 800; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #08080A; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #08080A; }
+      #ct-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #stage, #over { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #logo { position: absolute; left: -2000px; top: 0; width: 926px; height: 193px; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="40" data-width="1920" data-height="1080">
+      <div id="ct-stage" class="clip" data-start="0" data-duration="40" data-track-index="0">
+        <canvas id="stage" width="1920" height="1080" data-layout-allow-overflow></canvas>
+        <canvas id="over" width="1920" height="1080" data-layout-allow-overflow></canvas>
+        <img id="logo" src="assets/brand/your-mark.svg" alt="Your mark" data-layout-allow-overflow>
+      </div>
+      <audio id="score" src="assets/bgm/score.wav" data-start="0" data-duration="40" data-track-index="7" data-volume="1"></audio>
+    </div>
+
+    <script>
+      // Every nail and every pass of thread is real geometry, lit by one low key light with a real shadow map, so each nail throws
+      // a long shadow and each pass a hairline one. The winding was worked out beforehand (bake/wind.py): a pass is only allowed
+      // where the straight line between two nails stays inside a letter. Everything on screen is worked out from the time alone,
+      // so any frame renders on its own.
+      const TB = window.TABLE, WD = window.WIND, W = TB.w, H = TB.h, FPS = 30, BEAT = TB.beat, DUR = TB.dur;
+      const $ = (s) => document.querySelector(s);
+      const r = (x, a, b) => Math.min(1, Math.max(0, (x - a) / (b - a))), lerp = (a, b, u) => a + (b - a) * u, sm = (u) => u * u * (3 - 2 * u);
+      const hash = (i, s) => { let x = (i * 374761393 + s * 668265263) | 0; x = Math.imul(x ^ (x >>> 13), 1274126177); x ^= x >>> 16; return (x >>> 0) / 4294967296; };
+      const NH = TB.nailH, TZ = TB.threadZ;
+
+      // ---------------- small matrix kit, column major
+      const M4 = {
+        mul(a, b) { const o = new Float32Array(16); for (let c = 0; c < 4; c++) for (let rr = 0; rr < 4; rr++) { let s = 0; for (let k = 0; k < 4; k++) s += a[k * 4 + rr] * b[c * 4 + k]; o[c * 4 + rr] = s; } return o; },
+        persp(fov, asp, n, f) { const t = 1 / Math.tan(fov * Math.PI / 360), o = new Float32Array(16); o[0] = t / asp; o[5] = t; o[10] = (f + n) / (n - f); o[11] = -1; o[14] = 2 * f * n / (n - f); return o; },
+        ortho(l, rt, b, t, n, f) { const o = new Float32Array(16); o[0] = 2 / (rt - l); o[5] = 2 / (t - b); o[10] = -2 / (f - n); o[12] = -(rt + l) / (rt - l); o[13] = -(t + b) / (t - b); o[14] = -(f + n) / (f - n); o[15] = 1; return o; },
+        look(e, c, u) {
+          const nz = (v) => { const l = Math.hypot(...v); return v.map((q) => q / l); }, cr = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+          const z = nz([e[0] - c[0], e[1] - c[1], e[2] - c[2]]), x = nz(cr(u, z)), y = cr(z, x), o = new Float32Array(16);
+          o[0] = x[0]; o[4] = x[1]; o[8] = x[2]; o[1] = y[0]; o[5] = y[1]; o[9] = y[2]; o[2] = z[0]; o[6] = z[1]; o[10] = z[2];
+          o[12] = -(x[0] * e[0] + x[1] * e[1] + x[2] * e[2]); o[13] = -(y[0] * e[0] + y[1] * e[1] + y[2] * e[2]); o[14] = -(z[0] * e[0] + z[1] * e[1] + z[2] * e[2]); o[15] = 1; return o;
+        },
+        box(cx, cy, cz, sx, sy, sz) { return new Float32Array([sx, 0, 0, 0, 0, sy, 0, 0, 0, 0, sz, 0, cx, cy, cz, 1]); },
+        ap(m, p) { const x = p[0], y = p[1], z = p[2]; return [0, 1, 2, 3].map((i) => m[i] * x + m[4 + i] * y + m[8 + i] * z + m[12 + i]); },
+      };
+
+      // ---------------- the nails: each one's place on the grid, where it first lands (well off its place, leaning), when it lands,
+      // and when the ripple carries it home
+      const NN = WD.nails.length / 2, NX = new Float32Array(NN), NY = new Float32Array(NN), LAND = new Float32Array(NN);
+      const SX = new Float32Array(NN), SY = new Float32Array(NN), TILT = new Float32Array(NN), TANG = new Float32Array(NN), HOME = new Float32Array(NN);
+      const [N0, N1, ND] = TB.norm, MAXR = Math.hypot(WD.w / 2, WD.h / 2);
+      for (let i = 0; i < NN; i++) { NX[i] = WD.nails[i * 2] - WD.w / 2; NY[i] = WD.h / 2 - WD.nails[i * 2 + 1];
+        const w = Math.max(0, Math.min(TB.waves - 1, Math.floor((NX[i] + WD.w / 2) / WD.w * TB.waves + (hash(i, 1) - 0.5) * 0.9)));
+        LAND[i] = TB.wave0 + w + hash(i, 2) * TB.waveSpread;
+        const rad = TB.scatter[0] * Math.sqrt(hash(i, 21)), ang = 2 * Math.PI * hash(i, 22);
+        SX[i] = NX[i] + rad * Math.cos(ang); SY[i] = NY[i] + rad * Math.sin(ang);
+        TILT[i] = TB.scatter[1] * (0.3 + 0.7 * hash(i, 23)); TANG[i] = 2 * Math.PI * hash(i, 24);
+        HOME[i] = N0 + (N1 - ND - N0) * (0.85 * Math.hypot(NX[i], NY[i]) / MAXR + 0.15 * hash(i, 25)); }
+      const THEME = Int8Array.from(WD.theme);
+      // ---------------- the wall: five days across, three down; today's board is the last, at the origin
+      const [WC, WR] = TB.wall, [PX, PY] = TB.pitch, NDAY = WC * WR, TODAY = NDAY - 1;
+      const dayOff = (d) => [((d % WC) - (WC - 1)) * PX, ((WR - 1) - Math.floor(d / WC)) * PY];
+      // ---------------- the thread: BRIEF's passes; it is wound up to its last pass, which waits for the reviewer
+      const P = WD.passes; let LAST = P.length - 1; while (!P[LAST][2]) LAST--;
+      const NLAY = LAST, [W0, W1, WE] = TB.wind, AP = TB.approve;
+      const SW0 = TB.sweep[0], SW1 = TB.sweep[1], sweepX = (b) => lerp(-1150, 1150, r(b, SW0, SW1));
+      const LP0 = TB.lamp[0], LP1 = TB.lamp[1], lampX = (b) => lerp(-1150, 1150, r(b, LP0, LP1));
+      const [AR0, AR1] = TB.archive;
+      const layP = (b) => (b < W0 ? -1 : NLAY * Math.pow(r(b, W0, W1), WE));
+      const nailPos = (i, z) => [NX[i], NY[i], z];
+      function tipAt(b) {
+        const p = layP(b); if (p < 0 || p >= NLAY) return null; const j = Math.min(Math.floor(p), NLAY - 1), u = Math.min(1, p - j);
+        if (p <= 0) return nailPos(P[0][0], TZ[0]);
+        const [a, c, v] = P[j], z = lerp(TZ[0], TZ[1], j / P.length);
+        if (!v) return nailPos(u < 0.5 ? a : c, z);
+        return [lerp(NX[a], NX[c], u), lerp(NY[a], NY[c], u), z];
+      }
+
+      // ---------------- the instance data. Per nail: x, y, how far it stands proud, scale | glow, flash, variety, theme |
+      // lean, lean direction, how much of its theme colour it has taken, how high it is lifted
+      const NI = new Float32Array(NN * NDAY * 12);
+      const MAXT = 12000, TI = new Float32Array(MAXT * 8);  // per pass: end A (x, y, z, width), end B (x, y, z, shade)
+      const GI = new Float32Array(NN * 8);                  // per glow: x, y, z, size; r, g, b, strength
+      const PAST = [];                                      // every pass of the earlier days' boards, worked out once
+      for (let d = 0; d < TODAY; d++) { const [ox, oy] = dayOff(d);
+        for (let i = 0; i < NN; i++) { const q = (NN + d * NN + i) * 12;
+          NI[q] = NX[i] + ox; NI[q + 1] = NY[i] + oy; NI[q + 3] = 1; NI[q + 6] = hash(i, 7); NI[q + 7] = (THEME[i] + d) % 6; NI[q + 10] = 1; }
+        P.forEach(([a, c, v], j) => { if (!v) return; const z = lerp(TZ[0], TZ[1], j / P.length);
+          PAST.push(NX[a] + ox, NY[a] + oy, z, 1.0, NX[c] + ox, NY[c] + oy, z, hash(j + d * 997, 11)); }); }
+      const PASTN = PAST.length / 8, PASTF = Float32Array.from(PAST);
+      let nT = 0, nFeed = 0, nG = 0;
+      function seg(A, B, wid, shade) { if (nT >= MAXT) return; const q = nT * 8; TI[q] = A[0]; TI[q + 1] = A[1]; TI[q + 2] = A[2]; TI[q + 3] = wid; TI[q + 4] = B[0]; TI[q + 5] = B[1]; TI[q + 6] = B[2]; TI[q + 7] = shade; nT++; }
+      function looseEnd(b) {   // the thread end, hanging from its last nail and swaying a little, until the reviewer lets it lay
+        const a = P[LAST][0], c = P[LAST][1], pts = [], sw = Math.sin((b - TB.loose) * BEAT * 1.7) * 9 * sm(r(b, TB.loose, TB.loose + 1));
+        const drop = 170 * sm(r(b, TB.loose - 0.2, TB.loose + 0.9)) + 10, u = sm(r(b, AP, AP + 0.4));
+        for (let k = 0; k <= 12; k++) { const t = k / 12;
+          const hang = [NX[a] + 30 * Math.sin(t * 1.3) + sw * t * t, NY[a] - drop * Math.pow(t, 1.15), TZ[1] + 18 * t];
+          const line = [lerp(NX[a], NX[c], t), lerp(NY[a], NY[c], t), TZ[1]];
+          pts.push(hang.map((v, q) => lerp(v, line[q], u))); }
+        return { a, c, pts, u };
+      }
+      function scene(b) {
+        const xs = sweepX(b), inSweep = b > SW0 && b < SW1 + 0.5, lx = lampX(b), inLamp = b > LP0 - 0.3 && b < LP1 + 0.5;
+        const lo = b >= TB.loose ? looseEnd(b) : null, wait = lo ? sm(r(b, TB.loose, TB.loose + 1)) * (1 - sm(r(b, AP, AP + 0.8))) : 0;
+        nG = 0;
+        for (let i = 0; i < NN; i++) {
+          const q = i * 12, L = LAND[i], h0 = HOME[i], uu = r(b, h0, h0 + ND), u = sm(uu);
+          const scale = sm(r(b, L - 0.22, L - 0.1));
+          const proud = (b < L ? 13 : 13 * (1 - sm(r(b, L, L + 0.07)))) + 13 * Math.sin(Math.PI * Math.min(1, uu * 1.3));
+          const hit = (b >= L ? Math.exp(-(b - L) / 0.12) : 0) + (b >= h0 + ND ? 0.6 * Math.exp(-(b - h0 - ND) / 0.12) : 0);
+          let glow = 0, flash = hit * 0.7 + (inSweep ? Math.exp(-Math.pow((xs - NX[i]) / 46, 2)) * 1.1 : 0) + (inLamp ? Math.exp(-Math.pow((lx - NX[i]) / 70, 2)) * 0.55 : 0);
+          const waiting = lo && i === lo.c;
+          if (waiting) glow = wait * (1.3 + 0.7 * (0.5 + 0.5 * Math.sin((b - TB.loose) * BEAT * 5.0)));   // the nail the last pass is waiting for
+          NI[q] = lerp(SX[i], NX[i], u); NI[q + 1] = lerp(SY[i], NY[i], u); NI[q + 2] = proud; NI[q + 3] = scale;
+          NI[q + 4] = glow; NI[q + 5] = flash; NI[q + 6] = hash(i, 7); NI[q + 7] = THEME[i];
+          NI[q + 8] = TILT[i] * (1 - u); NI[q + 9] = TANG[i]; NI[q + 10] = b > SW0 ? r(xs - NX[i], 0, 90) : 0; NI[q + 11] = 34 * Math.sin(Math.PI * uu);
+          const ga = glow * 0.32 + flash * 0.6;
+          if (scale > 0 && ga > 0.06) { const g = nG * 8; GI[g] = NI[q]; GI[g + 1] = NI[q + 1]; GI[g + 2] = NH + proud + NI[q + 11] + 2; GI[g + 3] = (6 + 10 * Math.min(1.4, glow + flash * 0.5)) * (waiting ? 2.2 : 1);
+            GI[g + 4] = 1.0; GI[g + 5] = lerp(0.56, 0.86, Math.min(1, flash)); GI[g + 6] = lerp(0.22, 0.6, Math.min(1, flash)); GI[g + 7] = Math.min(1.4, ga); nG++; }
+        }
+        // the thread: every pass laid so far, the one being laid, the held end, and the length running off the board from its tip
+        nT = 0; nFeed = 0; const p = layP(b); let tip = null;
+        if (p >= 0) { const full = Math.min(NLAY, Math.floor(p));
+          for (let j = 0; j < full; j++) { const [a, c, v] = P[j]; if (!v) continue; const z = lerp(TZ[0], TZ[1], j / P.length);
+            seg(nailPos(a, z), nailPos(c, z), 1.0, hash(j, 11)); }
+          tip = tipAt(b);
+          if (full < NLAY && tip) { const [a, c, v] = P[full]; if (v) seg(nailPos(a, tip[2]), tip, 1.0, 0.5); } }
+        if (lo) for (let k = 0; k < 12; k++) seg(lo.pts[k], lo.pts[k + 1], 1.0, 0.6);
+        if (b >= AR0) { TI.set(PASTF.subarray(0, Math.min(PASTN, MAXT - nT) * 8), nT * 8); nT += Math.min(PASTN, MAXT - nT); }
+        const solid = nT;
+        if (tip && b < W1) { seg(tip, [tip[0] + 90, tip[1] + 150, tip[2] + 420], 1.0, -1); nFeed = 1; }
+        return { solid, tip, lo, xs, inSweep, lx, inLamp };
+      }
+
+      // ---------------- geometry
+      function cylinder(rad, z0, z1, segs, cap, out) {
+        const { P3, NM, I } = out;
+        for (let k = 0; k < segs; k++) { const a0 = k / segs * 2 * Math.PI, a1 = (k + 1) / segs * 2 * Math.PI, b0 = P3.length / 3;
+          for (const [a, z] of [[a0, z0], [a1, z0], [a1, z1], [a0, z1]]) { P3.push(Math.cos(a) * rad, Math.sin(a) * rad, z); NM.push(Math.cos(a), Math.sin(a), 0); }
+          I.push(b0, b0 + 1, b0 + 2, b0, b0 + 2, b0 + 3);
+          if (cap) { const c0 = P3.length / 3; P3.push(0, 0, z1, Math.cos(a0) * rad, Math.sin(a0) * rad, z1, Math.cos(a1) * rad, Math.sin(a1) * rad, z1); NM.push(0, 0, 1, 0, 0, 1, 0, 0, 1); I.push(c0, c0 + 1, c0 + 2); } }
+      }
+      function nailMesh() { const m = { P3: [], NM: [], I: [] }; cylinder(1.25, 0, NH, 10, false, m); cylinder(3.0, NH, NH + 1.2, 14, true, m); return m; }
+      function boxMesh() {
+        const P3 = [], NM = [], I = [], F = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+        for (const n of F) { const u = n[0] ? [0, 1, 0] : [1, 0, 0], v = [n[1] * u[2] - n[2] * u[1], n[2] * u[0] - n[0] * u[2], n[0] * u[1] - n[1] * u[0]], b0 = P3.length / 3;
+          for (const [a, c] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { P3.push((n[0] + a * u[0] + c * v[0]) / 2, (n[1] + a * u[1] + c * v[1]) / 2, (n[2] + a * u[2] + c * v[2]) / 2); NM.push(...n); }
+          I.push(b0, b0 + 1, b0 + 2, b0, b0 + 2, b0 + 3); }
+        return { P3, NM, I };
+      }
+
+      // ---------------- shaders
+      const LIGHT = `
+uniform highp sampler2DShadow uSh; uniform mat4 uLVP; uniform vec3 uLD, uEye; uniform float uKey, uAmb;
+float shadow(vec3 w, vec3 n){
+  vec4 lp = uLVP * vec4(w + n * 0.5, 1.0); vec3 s = lp.xyz / lp.w * 0.5 + 0.5;
+  if (s.x < 0.0 || s.y < 0.0 || s.x > 1.0 || s.y > 1.0 || s.z > 1.0) return 1.0;
+  float sum = 0.0, px = 1.0 / 4096.0;
+  for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) sum += texture(uSh, vec3(s.xy + vec2(x, y) * px, s.z - 0.00035));
+  return sum / 9.0;
+}
+vec3 shade(vec3 w, vec3 n, vec3 alb, float gloss, float pw){
+  vec3 V = normalize(uEye - w), L = -uLD; float d = max(dot(n, L), 0.0), s = d > 0.0 ? shadow(w, n) : 0.0;
+  float spe = pow(max(dot(n, normalize(L + V)), 0.0), pw) * gloss;
+  return alb * uAmb * (0.55 + 0.45 * max(n.z, 0.0)) + vec3(1.0, 0.93, 0.82) * uKey * s * (alb * d + spe);
+}
+vec3 tone(vec3 c){ c = c / (1.0 + c * 0.6); return pow(max(c, 0.0), vec3(0.92)); }
+`;
+      const NAIL_VS = `#version 300 es
+layout(location=0) in vec3 aP; layout(location=1) in vec3 aN; layout(location=3) in vec4 aI; layout(location=4) in vec4 aJ; layout(location=5) in vec4 aK;
+uniform mat4 uVP; out vec3 vW, vN; out float vGlow, vFlash, vHead, vVar, vTheme, vTA;
+vec3 lean(vec3 v, vec3 k, float a){ return v * cos(a) + cross(k, v) * sin(a) + k * dot(k, v) * (1.0 - cos(a)); }
+void main(){
+  vec3 p = aP; p.z += aI.z * smoothstep(0.0, ${NH.toFixed(1)}, aP.z);   // pulled out of the board, the nail stands proud
+  p *= vec3(aI.w);
+  vec3 k = vec3(-sin(aK.y), cos(aK.y), 0.0);                             // it leans from where it enters the board
+  p = lean(p, k, aK.x); vec3 n = lean(aN, k, aK.x);
+  vec3 w = vec3(aI.xy, aK.w) + p; vW = w; vN = n; vGlow = aJ.x; vFlash = aJ.y; vVar = aJ.z; vTheme = aJ.w; vTA = aK.z; vHead = step(${(NH - 0.01).toFixed(2)}, aP.z);
+  gl_Position = aI.w > 0.001 ? uVP * vec4(w, 1.0) : vec4(2.0, 2.0, 2.0, 1.0);
+}`;
+      const NAIL_FS = `#version 300 es
+precision highp float; out vec4 o; in vec3 vW, vN; in float vGlow, vFlash, vHead, vVar, vTheme, vTA;` + LIGHT + `
+const vec3 TH[6] = vec3[6](vec3(1.0, 0.36, 0.26), vec3(0.95, 0.68, 0.36), vec3(0.16, 0.80, 0.72), vec3(0.56, 0.76, 0.42), vec3(0.42, 0.64, 0.92), vec3(0.72, 0.54, 0.88));
+void main(){
+  vec3 n = normalize(vN);
+  vec3 head = mix(vec3(0.64, 0.50, 0.32) * (0.9 + 0.2 * vVar), TH[int(vTheme + 0.5)] * 0.8, vTA);
+  vec3 alb = mix(vec3(0.40, 0.40, 0.42), head, vHead);
+  vec3 c = shade(vW, n, alb, 0.9, 60.0);
+  c += vec3(1.0, 0.55, 0.20) * vGlow * mix(0.25, 1.9, vHead) + vec3(1.0, 0.85, 0.6) * vFlash * mix(0.3, 2.2, vHead);
+  o = vec4(tone(c), 1.0);
+}`;
+      const THR_VS = `#version 300 es
+layout(location=0) in vec2 aV; layout(location=3) in vec4 aA; layout(location=4) in vec4 aB;
+uniform mat4 uVP; uniform vec3 uEye, uLD; uniform float uOrtho, uWid;
+out vec3 vW, vSd, vTo; out float vSide, vS, vShade;
+void main(){
+  vec3 A = aA.xyz, B = aB.xyz, P = mix(A, B, aV.x), d = normalize(B - A + vec3(1e-4, 0.0, 0.0));
+  vec3 to = uOrtho > 0.5 ? -uLD : normalize(uEye - P), sd = normalize(cross(d, to));
+  P += sd * aV.y * uWid * aA.w * 0.5;
+  vW = P; vSd = sd; vTo = to; vSide = aV.y; vS = aV.x; vShade = aB.w; gl_Position = uVP * vec4(P, 1.0);
+}`;
+      const THR_FS = `#version 300 es
+precision highp float; out vec4 o; in vec3 vW, vSd, vTo; in float vSide, vS, vShade;` + LIGHT + `
+uniform float uFeed;
+void main(){
+  vec3 n = normalize(vSd * vSide + vTo * sqrt(max(0.0, 1.0 - vSide * vSide)));   // shaded as a round thread
+  vec3 alb = vec3(0.93, 0.89, 0.80) * (0.9 + 0.12 * abs(vShade));
+  vec3 c = shade(vW, n, alb, 0.35, 22.0);
+  float a = uFeed > 0.5 ? smoothstep(1.0, 0.15, vS) : 1.0;   // the length running off the board fades out of focus
+  o = vec4(tone(c), a);
+}`;
+      const SOL_VS = `#version 300 es
+layout(location=0) in vec3 aP; layout(location=1) in vec3 aN;
+uniform mat4 uVP, uB; out vec3 vW, vN;
+void main(){ vec4 w = uB * vec4(aP, 1.0); vW = w.xyz; vN = aN; gl_Position = uVP * w; }`;
+      const SOL_FS = `#version 300 es
+precision highp float; out vec4 o; in vec3 vW, vN; uniform vec3 uAlb; uniform float uKind, uSweepX, uSweepA, uLampX, uLampA;` + LIGHT + `
+float h21(vec2 p){ vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(h21(i), h21(i + vec2(1, 0)), f.x), mix(h21(i + vec2(0, 1)), h21(i + vec2(1, 1)), f.x), f.y); }
+void main(){
+  vec3 n = normalize(vN), alb = uAlb;
+  if (uKind < 0.5) {   // a board: dark stained wood, the grain running along it
+    float g = vn(vec2(vW.x * 0.0035, vW.y * 0.09)) * 0.6 + vn(vec2(vW.x * 0.012, vW.y * 0.31)) * 0.4;
+    alb *= 0.82 + 0.3 * g;
+  }
+  vec3 c = shade(vW, n, alb, uKind < 0.5 ? 0.08 : 0.0, 12.0);
+  if (uKind < 0.5) { float near = step(length(vW.xy), 1300.0);   // the sweeps light only today's board
+    c += near * vec3(1.0, 0.62, 0.30) * 0.10 * uSweepA * exp(-pow((vW.x - uSweepX) / 150.0, 2.0));
+    c += near * vec3(1.0, 0.84, 0.58) * 0.55 * uLampA * exp(-(pow(vW.x - uLampX, 2.0) + pow(vW.y + 20.0, 2.0)) / (240.0 * 240.0)); }   // the reviewer's lamp: a warm pool crossing the word
+  o = vec4(tone(c), 1.0);
+}`;
+      const GLOW_VS = `#version 300 es
+layout(location=0) in vec2 aV; layout(location=3) in vec4 aI; layout(location=4) in vec4 aC;
+uniform mat4 uVP; uniform vec3 uR, uU; out vec2 vQ; out vec4 vC;
+void main(){ vec3 w = aI.xyz + (uR * aV.x + uU * aV.y) * aI.w; vQ = aV; vC = aC; gl_Position = uVP * vec4(w, 1.0); }`;
+      const GLOW_FS = `#version 300 es
+precision highp float; out vec4 o; in vec2 vQ; in vec4 vC;
+void main(){ float d = dot(vQ, vQ); float a = exp(-d * 4.5) * vC.a * (1.0 - smoothstep(0.8, 1.0, d)); o = vec4(vC.rgb * a, 1.0); }`;
+      const DEPTH_FS = `#version 300 es
+precision highp float; void main(){}`;
+
+      let gl, ovG, PRG = {}, VAO = {}, nailBuf, thrBuf, glowBuf, shTex, shFB, msFB, frame = -1;
+      function prog(vs, fs) {
+        const mk = (t, src) => { const s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+        const p = gl.createProgram(); gl.attachShader(p, mk(gl.VERTEX_SHADER, vs)); gl.attachShader(p, mk(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
+        if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+        const U = {}, n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS); for (let i = 0; i < n; i++) { const a = gl.getActiveUniform(p, i); U[a.name.replace("[0]", "")] = gl.getUniformLocation(p, a.name); }
+        return { p, U };
+      }
+      function buf(target, data) { const b = gl.createBuffer(); gl.bindBuffer(target, b); gl.bufferData(target, data, gl.STATIC_DRAW); return b; }
+      function attr(loc, data, size) { buf(gl.ARRAY_BUFFER, new Float32Array(data)); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, size, gl.FLOAT, false, 0, 0); }
+      function inst(b, n = 2) { gl.bindBuffer(gl.ARRAY_BUFFER, b); const st = n * 16;
+        for (let k = 0; k < n; k++) { gl.enableVertexAttribArray(3 + k); gl.vertexAttribPointer(3 + k, 4, gl.FLOAT, false, st, k * 16); gl.vertexAttribDivisor(3 + k, 1); } }
+      const SHR = 4096;
+      function initGL() {
+        gl = $("#stage").getContext("webgl2", { antialias: false, alpha: true, premultipliedAlpha: false, depth: true, stencil: false, preserveDrawingBuffer: true });
+        PRG.nail = prog(NAIL_VS, NAIL_FS); PRG.nailD = prog(NAIL_VS, DEPTH_FS); PRG.thr = prog(THR_VS, THR_FS); PRG.thrD = prog(THR_VS, DEPTH_FS);
+        PRG.sol = prog(SOL_VS, SOL_FS); PRG.glow = prog(GLOW_VS, GLOW_FS);
+        const dyn = (bytes) => { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, bytes, gl.DYNAMIC_DRAW); return b; };
+        nailBuf = dyn(NI.byteLength); thrBuf = dyn(TI.byteLength); glowBuf = dyn(GI.byteLength);
+        gl.bindBuffer(gl.ARRAY_BUFFER, nailBuf); gl.bufferSubData(gl.ARRAY_BUFFER, 0, NI);   // the earlier days never change
+        const nm = nailMesh(); VAO.nail = gl.createVertexArray(); gl.bindVertexArray(VAO.nail); attr(0, nm.P3, 3); attr(1, nm.NM, 3); inst(nailBuf, 3);
+        buf(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(nm.I)); VAO.nailN = nm.I.length;
+        const strip = [0, -1, 1, -1, 1, 1, 0, -1, 1, 1, 0, 1];
+        VAO.thr = gl.createVertexArray(); gl.bindVertexArray(VAO.thr); attr(0, strip, 2); inst(thrBuf);
+        VAO.glow = gl.createVertexArray(); gl.bindVertexArray(VAO.glow); attr(0, [-1, -1, 1, -1, 1, 1, -1, -1, 1, 1, -1, 1], 2); inst(glowBuf);
+        const bm = boxMesh(); VAO.box = gl.createVertexArray(); gl.bindVertexArray(VAO.box); attr(0, bm.P3, 3); attr(1, bm.NM, 3); buf(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(bm.I)); VAO.boxN = bm.I.length;
+        gl.bindVertexArray(null);
+        shTex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, shTex); gl.texStorage2D(gl.TEXTURE_2D, 1, gl.DEPTH_COMPONENT24, SHR, SHR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        shFB = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, shFB); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, shTex, 0); gl.drawBuffers([gl.NONE]); gl.readBuffer(gl.NONE);
+        const ms = Math.min(4, gl.getParameter(gl.MAX_SAMPLES));
+        msFB = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, msFB);
+        const rc = gl.createRenderbuffer(); gl.bindRenderbuffer(gl.RENDERBUFFER, rc); gl.renderbufferStorageMultisample(gl.RENDERBUFFER, ms, gl.RGBA8, W, H); gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, rc);
+        const rd = gl.createRenderbuffer(); gl.bindRenderbuffer(gl.RENDERBUFFER, rd); gl.renderbufferStorageMultisample(gl.RENDERBUFFER, ms, gl.DEPTH_COMPONENT24, W, H); gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, rd);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      }
+
+      // ---------------- the camera: the keyed path, with the tip-following camera and the loose-end camera blended over it
+      function keyv(K, b) { if (b <= K[0][0]) return K[0][1]; if (b >= K[K.length - 1][0]) return K[K.length - 1][1];
+        let i = 0; while (K[i + 1][0] < b) i++; const a = K[i], c = K[i + 1]; return lerp(a[1], c[1], sm(r(b, a[0], c[0]))); }
+      function camKey(K, b) {
+        if (b <= K[0][0]) return K[0].slice(1); if (b >= K[K.length - 1][0]) return K[K.length - 1].slice(1);
+        let i = 0; while (K[i + 1][0] < b) i++; const a = K[i], c = K[i + 1], u = sm(r(b, a[0], c[0])); return a.slice(1).map((v, q) => lerp(v, c[q + 1], u));
+      }
+      function camera(b) {
+        let c = camKey(TB.cam, b);
+        const fw = keyv(TB.follow, b);
+        if (fw > 0) { let m = [0, 0, 0], n = 0;   // the tip, smoothed over the last half second so the camera floats rather than jerks
+          for (let j = 0; j < 14; j++) { const t = tipAt(b - j * 0.07); if (t) { m[0] += t[0]; m[1] += t[1]; m[2] += t[2]; n++; } }
+          if (n) { m = m.map((v) => v / n); const o = TB.followOff, f = [m[0] + o[0], m[1] + o[1], m[2] + o[2], m[0], m[1], m[2], o[3]];
+            c = c.map((v, q) => lerp(v, f[q], fw)); } }
+        const hw = keyv(TB.hold, b);
+        if (hw > 0) { const lo = looseEnd(Math.max(b, TB.loose)), A = [NX[lo.a], NY[lo.a]], C = [NX[lo.c], NY[lo.c]];
+          const mid = [(A[0] + C[0]) / 2, (A[1] + C[1]) / 2 + 12, 10], d = Math.max(520, Math.hypot(A[0] - C[0], A[1] - C[1]) * 2.4), o = TB.holdOff, l = Math.hypot(o[0], o[1], o[2]);
+          const f = [mid[0] + o[0] / l * d, mid[1] + o[1] / l * d, mid[2] + o[2] / l * d, ...mid, o[3]]; c = c.map((v, q) => lerp(v, f[q], hw)); }
+        return c;
+      }
+
+      const LD = (() => { const l = Math.hypot(...TB.light); return TB.light.map((v) => v / l); })();
+      const BACK = M4.box(TB.wallC[0], TB.wallC[1], -60, 60000, 40000, 20), TILE = [W + 200, H + 200];
+      function draw(nf) {
+        const b = (nf / FPS) / BEAT, S = scene(b), past = b >= AR0, nNail = past ? NN * NDAY : NN;
+        gl.bindBuffer(gl.ARRAY_BUFFER, nailBuf); gl.bufferSubData(gl.ARRAY_BUFFER, 0, NI, 0, NN * 12);
+        gl.bindBuffer(gl.ARRAY_BUFFER, thrBuf); gl.bufferSubData(gl.ARRAY_BUFFER, 0, TI, 0, nT * 8);
+        gl.bindBuffer(gl.ARRAY_BUFFER, glowBuf); gl.bufferSubData(gl.ARRAY_BUFFER, 0, GI, 0, Math.max(1, nG) * 8);
+        const c = camera(b), eye = [c[0], c[1], c[2]], VP = M4.mul(M4.persp(c[6], W / H, 16, 90000), M4.look(eye, [c[3], c[4], c[5]], [0, 1, 0]));
+        const key = sm(r(b, 0.2, 1.4)) * (1 - sm(r(b, TB.logo - 0.4, TB.logo + 0.3))), amb = 0.18 * key;
+        // the shadow map follows the camera out to the whole wall
+        const A = sm(r(b, AR0, AR1)), cx = A * TB.wallC[0], cy = A * TB.wallC[1], E = lerp(1450, 7600, A);
+        const LVP = M4.mul(M4.ortho(-E, E, -E, E, 1000, 5200), M4.look([cx - LD[0] * 3000, cy - LD[1] * 3000, -LD[2] * 3000], [cx, cy, 0], [0, 1, 0]));
+        gl.enable(gl.DEPTH_TEST); gl.depthMask(true); gl.disable(gl.BLEND); gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(2, 4);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, shFB); gl.viewport(0, 0, SHR, SHR); gl.clear(gl.DEPTH_BUFFER_BIT);
+        gl.useProgram(PRG.nailD.p); gl.uniformMatrix4fv(PRG.nailD.U.uVP, false, LVP); gl.bindVertexArray(VAO.nail); gl.drawElementsInstanced(gl.TRIANGLES, VAO.nailN, gl.UNSIGNED_SHORT, 0, nNail);
+        if (S.solid) { const U = PRG.thrD.U; gl.useProgram(PRG.thrD.p); gl.uniformMatrix4fv(U.uVP, false, LVP); gl.uniform3fv(U.uLD, LD); gl.uniform1f(U.uOrtho, 1); gl.uniform1f(U.uWid, 2.1);
+          gl.bindVertexArray(VAO.thr); gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, S.solid); }
+        gl.disable(gl.POLYGON_OFFSET_FILL);
+        // the picture
+        gl.bindFramebuffer(gl.FRAMEBUFFER, msFB); gl.viewport(0, 0, W, H); gl.clearColor(0.03, 0.03, 0.035, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        const lit = (p) => { const U = p.U; gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, shTex); gl.uniform1i(U.uSh, 0);
+          gl.uniformMatrix4fv(U.uLVP, false, LVP); gl.uniform3fv(U.uLD, LD); gl.uniform3fv(U.uEye, eye); gl.uniform1f(U.uKey, 1.25 * key); gl.uniform1f(U.uAmb, amb); gl.uniformMatrix4fv(U.uVP, false, VP); };
+        { const U = PRG.sol.U; gl.useProgram(PRG.sol.p); lit(PRG.sol); gl.bindVertexArray(VAO.box);
+          gl.uniform1f(U.uSweepX, S.xs); gl.uniform1f(U.uSweepA, S.inSweep ? 1 : 0); gl.uniform1f(U.uLampX, S.lx); gl.uniform1f(U.uLampA, S.inLamp ? sm(r(b, LP0 - 0.3, LP0 + 0.3)) * (1 - sm(r(b, LP1, LP1 + 0.5))) : 0);
+          gl.uniform1f(U.uKind, 0); gl.uniform3f(U.uAlb, 0.115, 0.098, 0.084);
+          for (let d = past ? 0 : TODAY; d < NDAY; d++) { const [ox, oy] = dayOff(d), big = !past;   // before the wall, today's board runs out of every shot
+            gl.uniformMatrix4fv(U.uB, false, M4.box(ox, oy, -15, big ? 24000 : TILE[0], big ? 16000 : TILE[1], 30)); gl.drawElements(gl.TRIANGLES, VAO.boxN, gl.UNSIGNED_SHORT, 0); }
+          gl.uniform1f(U.uKind, 1); gl.uniform3f(U.uAlb, 0.045, 0.045, 0.05); gl.uniformMatrix4fv(U.uB, false, BACK); gl.drawElements(gl.TRIANGLES, VAO.boxN, gl.UNSIGNED_SHORT, 0); }
+        gl.useProgram(PRG.nail.p); lit(PRG.nail); gl.bindVertexArray(VAO.nail); gl.drawElementsInstanced(gl.TRIANGLES, VAO.nailN, gl.UNSIGNED_SHORT, 0, nNail);
+        if (nT) { const U = PRG.thr.U; gl.useProgram(PRG.thr.p); lit(PRG.thr); gl.uniform1f(U.uOrtho, 0); gl.uniform1f(U.uWid, 2.1); gl.uniform1f(U.uFeed, 0); gl.bindVertexArray(VAO.thr);
+          gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, S.solid);
+          if (nFeed) { gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.uniform1f(U.uFeed, 1);
+            gl.bindBuffer(gl.ARRAY_BUFFER, thrBuf); gl.vertexAttribPointer(3, 4, gl.FLOAT, false, 32, S.solid * 32); gl.vertexAttribPointer(4, 4, gl.FLOAT, false, 32, S.solid * 32 + 16);
+            gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, nFeed);
+            gl.vertexAttribPointer(3, 4, gl.FLOAT, false, 32, 0); gl.vertexAttribPointer(4, 4, gl.FLOAT, false, 32, 16); gl.disable(gl.BLEND); } }
+        if (nG) { const U = PRG.glow.U, V = M4.look(eye, [c[3], c[4], c[5]], [0, 1, 0]);
+          gl.useProgram(PRG.glow.p); gl.uniformMatrix4fv(U.uVP, false, VP); gl.uniform3f(U.uR, V[0], V[4], V[8]); gl.uniform3f(U.uU, V[1], V[5], V[9]);
+          gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); gl.depthMask(false); gl.bindVertexArray(VAO.glow); gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, nG);
+          gl.depthMask(true); gl.disable(gl.BLEND); }
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, msFB); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null); gl.blitFramebuffer(0, 0, W, H, 0, 0, W, H, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        return { VP, b, S };
+      }
+
+      // ---------------- the flat layer: the source tags, the words, the waiting line, the days of the wall, the label and the end card
+      const BONE = "#F3EAD6", DARK = "#08080A", TEAL = "#2FD6C3", AMBER = "#F2B46A";
+      function mono(g, s, x, y, size, col, al = "left", wt = 500) { g.font = `${wt} ${size}px JBM`; g.letterSpacing = "0.08em"; g.textAlign = al; g.textBaseline = "alphabetic"; g.fillStyle = col; g.fillText(s, x, y); g.letterSpacing = "0px"; }
+      function toScreen(VP, p) { const q = M4.ap(VP, p); if (q[3] <= 1) return null; return [(q[0] / q[3] * 0.5 + 0.5) * W, (0.5 - q[1] / q[3] * 0.5) * H]; }
+      function overlay(g, D) {
+        const b = D.b; g.clearRect(0, 0, W, H);
+        const vg = g.createRadialGradient(W / 2, H * 0.52, H * 0.4, W / 2, H * 0.52, H * 1.05); vg.addColorStop(0, "rgba(8,8,10,0)"); vg.addColorStop(1, "rgba(8,8,10,0.62)"); g.fillStyle = vg; g.fillRect(0, 0, W, H);
+        const tg = g.createLinearGradient(0, 0, 0, 230); tg.addColorStop(0, "rgba(8,8,10,0.62)"); tg.addColorStop(1, "rgba(8,8,10,0)"); g.fillStyle = tg; g.fillRect(0, 0, W, 230);   // a little dark behind the words
+        // a few nails show what kind of source they are as they land: a type only, never a link or a headline
+        if (b > 1 && b < N0 + 0.8) WD.tags.forEach((i, k) => { const L = LAND[i], a = sm(r(b, L + 0.1, L + 0.4)) * (1 - sm(r(b, N0 - 0.2, N0 + 0.4)));
+          if (a <= 0) return; const p = toScreen(D.VP, [SX[i], SY[i], NH + 14]); if (!p) return; const s = TB.tags[k % TB.tags.length];
+          g.globalAlpha = a; g.font = "600 21px JBM"; g.letterSpacing = "0.08em"; const w = g.measureText(s).width + 20; g.letterSpacing = "0px";
+          g.fillStyle = "rgba(8,8,10,0.8)"; g.fillRect(p[0] - w / 2, p[1] - 50, w, 32); mono(g, s, p[0], p[1] - 27, 21, "rgba(243,234,214,0.9)", "center", 600); g.globalAlpha = 1; });
+        // the pass still to be laid, waiting for the reviewer
+        if (D.S.lo && b > TB.loose + 1.2 && b < AP + 0.4) { const A = toScreen(D.VP, D.S.lo.pts[0]), C = toScreen(D.VP, [NX[D.S.lo.c], NY[D.S.lo.c], TZ[1]]);
+          if (A && C) { g.globalAlpha = 0.9 * sm(r(b, TB.loose + 1.2, TB.loose + 2.2)) * (1 - sm(r(b, AP - 0.1, AP + 0.3))); g.strokeStyle = AMBER; g.lineWidth = 4; g.lineCap = "round"; g.setLineDash([12, 14]);
+            g.lineDashOffset = -b * 14; g.beginPath(); g.moveTo(A[0], A[1]); g.lineTo(C[0], C[1]); g.stroke(); g.setLineDash([]); g.globalAlpha = 1; } }
+        // the wall: a weekday over each column, and today's board marked
+        if (b > AR0 + 2 && b < TB.logo) { const a = sm(r(b, AR0 + 2, AR0 + 3.5));
+          for (let k = 0; k < WC; k++) { const p = toScreen(D.VP, [dayOff(k)[0], dayOff(k)[1] + TILE[1] / 2 + 150, 0]); if (p) { g.globalAlpha = a; mono(g, TB.days[k], p[0], p[1], 24, "rgba(243,234,214,0.8)", "center", 600); } }
+          const t = toScreen(D.VP, [0, -TILE[1] / 2 - 230, 0]); if (t) { g.globalAlpha = a; mono(g, "TODAY", t[0], t[1], 24, AMBER, "center", 700); } g.globalAlpha = 1; }
+        for (const [s, b0, b1] of TB.caps) { if (b < b0 || b > b1 + 0.1) continue;
+          const a = sm(r(b, b0, b0 + 0.35)) * (1 - sm(r(b, b1 - 0.3, b1))); g.globalAlpha = a; g.font = '800 64px "Archivo"'; const fs = Math.min(64, 64 * 1780 / g.measureText(s).width);
+          g.font = "800 " + fs.toFixed(1) + 'px "Archivo"'; g.textAlign = "center"; g.textBaseline = "alphabetic"; const cy = 122;
+          g.fillStyle = "rgba(8,8,10,0.6)"; g.fillText(s, W / 2 + 3, cy + 4 + (1 - a) * 10); g.fillStyle = BONE; g.fillText(s, W / 2, cy + (1 - a) * 10); g.globalAlpha = 1; }
+        if (b >= 1.6 && b < TB.logo) { g.font = "500 18px JBM"; g.letterSpacing = "0.08em"; const s = TB.label, w = g.measureText(s).width + 22; g.letterSpacing = "0px";
+          g.fillStyle = "rgba(8,8,10,0.86)"; g.fillRect(40, H - 68, w, 32); mono(g, s, 51, H - 46, 18, BONE); }
+        if (b >= TB.logo) { const u = r(b, TB.logo + 0.1, TB.logo + 0.8), lw = 926 * 0.72, lh = 193 * 0.72, a = 1 - r(b, TB.beats - 0.4, TB.beats), eO = 1 - Math.pow(1 - u, 3);
+          g.fillStyle = DARK; g.globalAlpha = r(b, TB.logo, TB.logo + 0.3); g.fillRect(0, 0, W, H);
+          g.globalAlpha = eO * a; g.drawImage($("#logo"), W / 2 - lw / 2, 300 - (1 - eO) * 14, lw, lh);
+          g.font = '800 80px "Archivo"'; g.textAlign = "center"; g.textBaseline = "alphabetic"; g.fillStyle = BONE; g.globalAlpha = a * r(b, TB.logo + 0.4, TB.logo + 0.9); g.fillText(TB.endTitle, W / 2, 610);
+          g.globalAlpha = a * r(b, TB.logo + 0.8, TB.logo + 1.3); mono(g, TB.endUrl, W / 2, 690, 28, BONE, "center"); mono(g, TB.endLine, W / 2, 744, 20, TEAL, "center"); g.globalAlpha = 1; }
+      }
+      function paint(t) {
+        const nf = Math.min(Math.floor(t * FPS + 1e-6), Math.round(DUR * FPS) - 1); if (nf === frame) return;
+        frame = nf; const D = draw(nf); overlay(ovG, D);
+      }
+      const tl = gsap.timeline({ paused: true }), clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+      async function build() {
+        await Promise.all([$("#logo").decode(), document.fonts.load('800 40px "Archivo"'), document.fonts.load('500 20px "JBM"'), document.fonts.load('700 20px "JBM"')]);
+        ovG = $("#over").getContext("2d"); initGL();
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(0);
+        window.__timelines = window.__timelines || {}; window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+      window.__hf = window.__hf || {}; window.__hf.buildReady = window.__hf.buildReady || {}; window.__hf.buildReady["gist"] = build();
+    </script>
+  </body>
+</html>

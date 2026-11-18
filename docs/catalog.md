@@ -106,6 +106,14 @@ Made for: Imagined Worlds · Stills. Stack: Three.js, TSL, GSAP, Python (score).
 
 ## Products and systems
 
+### R64 · Gist
+
+String art in code: 5,184 nails land scattered, straighten onto a grid and take their theme's colour, then one thread winds BRIEF only along passes that stay inside the letters, chosen in Python. The last pass waits for a reviewer's lamp, and the camera pulls back to a wall of earlier days. Every pass is plucked as it lands, pitched by its length.
+
+Made for: AI News Curator · JQ AI SYSTEMS. Stack: HyperFrames, WebGL2, GSAP, Python, NumPy, SciPy, FFmpeg.
+
+[Recipe and poster](../recipes/r64-gist/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r64-gist-v1)
+
 ### R63 · Compound
 
 String art in code, the classic ring loom: a ring of 300 pins and one thread whose straight passes, each chosen in Python to add the most light the picture still owes, draw a flower a pass a day, then faster and faster, and coral, amber and teal threads bloom it in colour. Every pass is plucked as it lands, pitched by its length.
