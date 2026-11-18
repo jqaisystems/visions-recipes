@@ -106,6 +106,14 @@ Made for: Imagined Worlds · Stills. Stack: Three.js, TSL, GSAP, Python (score).
 
 ## Products and systems
 
+### R63 · Compound
+
+String art in code, the classic ring loom: a ring of 300 pins and one thread whose straight passes, each chosen in Python to add the most light the picture still owes, draw a flower a pass a day, then faster and faster, and coral, amber and teal threads bloom it in colour. Every pass is plucked as it lands, pitched by its length.
+
+Made for: Pinterest Growth Automation · JQ AI SYSTEMS. Stack: HyperFrames, WebGL2, GSAP, Python, NumPy, FFmpeg.
+
+[Recipe and poster](../recipes/r63-compound/) · [Download release](https://github.com/jqaisystems/visions-recipes/releases/tag/r63-compound-v1)
+
 ### R62 · Pinpoint
 
 Kinetic motion graphics around one coral dot that is never cut away from: it is found in a field of prospects, becomes the needle of a gauge, the top bar of a sorted list, the marker on a record and the cursor of a message, then rides a paper plane that freezes short of SEND, music and all. Real motion blur from eight sub-frames a frame.

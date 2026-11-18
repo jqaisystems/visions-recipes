@@ -1,0 +1,375 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <title>Compound</title>
+    <!-- Compound: string art made entirely in code. A ring of pins goes into a dark board, a light approves them, and one thread
+         starts to wind: a pass a day, then faster, never taking a pass back, until a flower comes out of nothing but straight lines.
+         Three more threads bloom it in colour. The board is a demo, and this film is code. -->
+    <script src="assets/vendor/gsap.min.js"></script>
+    <script src="assets/table.js"></script>
+    <script src="assets/wind.js"></script>
+    <style>
+      @font-face { font-family: "Archivo"; src: url("assets/fonts/Archivo.ttf") format("truetype"); font-weight: 100 900; font-stretch: 62% 125%; }
+      @font-face { font-family: "JBM"; src: url("assets/fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 100 800; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #08080A; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #08080A; }
+      #ct-stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+      #stage, #over { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+      #logo { position: absolute; left: -2000px; top: 0; width: 926px; height: 193px; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="40" data-width="1920" data-height="1080">
+      <div id="ct-stage" class="clip" data-start="0" data-duration="40" data-track-index="0">
+        <canvas id="stage" width="1920" height="1080" data-layout-allow-overflow></canvas>
+        <canvas id="over" width="1920" height="1080" data-layout-allow-overflow></canvas>
+        <img id="logo" src="assets/brand/your-mark.svg" alt="Your mark" data-layout-allow-overflow>
+      </div>
+      <audio id="score" src="assets/bgm/score.wav" data-start="0" data-duration="40" data-track-index="7" data-volume="1"></audio>
+    </div>
+
+    <script>
+      // Every pin and every pass of thread is real geometry, lit by one low key light with a real shadow map. The winding was worked
+      // out beforehand (bake/wind.py): from the nail it is on, each thread takes the pass that adds the most light the picture still
+      // owes. A pass is drawn at the thread's true width, and where that is thinner than a pixel it fades instead, so passes add up
+      // the way real thread does. Everything on screen is worked out from the time alone, so any frame renders on its own.
+      const TB = window.TABLE, WD = window.WIND, W = TB.w, H = TB.h, FPS = 30, BEAT = TB.beat, DUR = TB.dur;
+      const $ = (s) => document.querySelector(s);
+      const r = (x, a, b) => Math.min(1, Math.max(0, (x - a) / (b - a))), lerp = (a, b, u) => a + (b - a) * u, sm = (u) => u * u * (3 - 2 * u);
+      const hash = (i, s) => { let x = (i * 374761393 + s * 668265263) | 0; x = Math.imul(x ^ (x >>> 13), 1274126177); x ^= x >>> 16; return (x >>> 0) / 4294967296; };
+      const NH = TB.nailH, TZ = TB.threadZ, TW = 0.12;   // TW: the thread's true width, in world units
+
+      // ---------------- small matrix kit, column major
+      const M4 = {
+        mul(a, b) { const o = new Float32Array(16); for (let c = 0; c < 4; c++) for (let rr = 0; rr < 4; rr++) { let s = 0; for (let k = 0; k < 4; k++) s += a[k * 4 + rr] * b[c * 4 + k]; o[c * 4 + rr] = s; } return o; },
+        persp(fov, asp, n, f) { const t = 1 / Math.tan(fov * Math.PI / 360), o = new Float32Array(16); o[0] = t / asp; o[5] = t; o[10] = (f + n) / (n - f); o[11] = -1; o[14] = 2 * f * n / (n - f); return o; },
+        ortho(l, rt, b, t, n, f) { const o = new Float32Array(16); o[0] = 2 / (rt - l); o[5] = 2 / (t - b); o[10] = -2 / (f - n); o[12] = -(rt + l) / (rt - l); o[13] = -(t + b) / (t - b); o[14] = -(f + n) / (f - n); o[15] = 1; return o; },
+        look(e, c, u) {
+          const nz = (v) => { const l = Math.hypot(...v); return v.map((q) => q / l); }, cr = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+          const z = nz([e[0] - c[0], e[1] - c[1], e[2] - c[2]]), x = nz(cr(u, z)), y = cr(z, x), o = new Float32Array(16);
+          o[0] = x[0]; o[4] = x[1]; o[8] = x[2]; o[1] = y[0]; o[5] = y[1]; o[9] = y[2]; o[2] = z[0]; o[6] = z[1]; o[10] = z[2];
+          o[12] = -(x[0] * e[0] + x[1] * e[1] + x[2] * e[2]); o[13] = -(y[0] * e[0] + y[1] * e[1] + y[2] * e[2]); o[14] = -(z[0] * e[0] + z[1] * e[1] + z[2] * e[2]); o[15] = 1; return o;
+        },
+        box(cx, cy, cz, sx, sy, sz) { return new Float32Array([sx, 0, 0, 0, 0, sy, 0, 0, 0, 0, sz, 0, cx, cy, cz, 1]); },
+        ap(m, p) { const x = p[0], y = p[1], z = p[2]; return [0, 1, 2, 3].map((i) => m[i] * x + m[4 + i] * y + m[8 + i] * z + m[12 + i]); },
+      };
+
+      // ---------------- the ring: where each nail is, when it goes in, and its pin's colour
+      const NN = WD.n, NX = new Float32Array(NN), NY = new Float32Array(NN), LAND = new Float32Array(NN), PAL = new Float32Array(NN);
+      for (let i = 0; i < NN; i++) { NX[i] = WD.nails[i * 2]; NY[i] = WD.nails[i * 2 + 1];
+        LAND[i] = lerp(TB.land[0], TB.land[1], i / NN) + (hash(i, 2) - 0.5) * 0.05; PAL[i] = Math.floor(hash(i, 5) * 4); }
+      // ---------------- the four threads: their passes, and how many are laid at any beat
+      const THR = WD.threads.map((t) => ({ seq: t.seq, n: t.seq.length - 1 }));
+      const TOTAL = THR.reduce((s, t) => s + t.n, 0), OFF = []; { let o = 0; for (const t of THR) { OFF.push(o); o += t.n; } }
+      function laid(k, b) {   // fractional passes of thread k laid by beat b
+        const t = THR[k], [f, to, e] = TB.wind[k];
+        if (k === 0) { const D = TB.days; if (b < D[0][0]) return 0;
+          for (let i = 0; i < D.length - 1; i++) if (b < D[i + 1][0]) return D[i][1] + sm(r(b, D[i][0], D[i + 1][0])) * (D[i + 1][1] - D[i][1]);
+          return Math.min(t.n, 3 + (t.n - 3) * Math.pow(r(b, f, to), e)); }
+        return b < f ? 0 : t.n * Math.pow(r(b, f, to), e);
+      }
+      const nailPos = (i, z) => [NX[i], NY[i], z];
+      const zOf = (k, j) => lerp(TZ[0], TZ[1], (OFF[k] + j) / TOTAL);
+      function active(b) {   // the thread being wound now, if any
+        if (b < TB.tie || b >= TB.tieoff) return -1;
+        for (let k = THR.length - 1; k >= 0; k--) if (b >= (k ? TB.wind[k][0] : TB.tie)) return laid(k, b) < THR[k].n ? k : -1;
+        return -1;
+      }
+      function tipAt(b) {
+        const k = active(b); if (k < 0) return null; const t = THR[k], p = laid(k, b), j = Math.min(Math.floor(p), t.n - 1), u = Math.min(1, p - j);
+        const a = t.seq[j], c = t.seq[j + 1], z = zOf(k, j);
+        return [lerp(NX[a], NX[c], u), lerp(NY[a], NY[c], u), z, k];
+      }
+
+      // ---------------- the instance data, filled every frame
+      const NI = new Float32Array(NN * 8);        // per nail: x, y, how far it stands proud, scale; glow, flash, variety, pin colour
+      const MAXT = TOTAL + 8, TI = new Float32Array(MAXT * 8);   // per pass: end A (x, y, z, width), end B (x, y, z, thread + shade)
+      const GI = new Float32Array(NN * 8);        // per glow: x, y, z, size; r, g, b, strength
+      let nT = 0, nFeed = 0, nG = 0;
+      function seg(A, B, wid, kind) { if (nT >= MAXT) return; const q = nT * 8; TI[q] = A[0]; TI[q + 1] = A[1]; TI[q + 2] = A[2]; TI[q + 3] = wid; TI[q + 4] = B[0]; TI[q + 5] = B[1]; TI[q + 6] = B[2]; TI[q + 7] = kind; nT++; }
+      const PALC = [[1.0, 0.31, 0.21], [0.95, 0.70, 0.42], [0.18, 0.84, 0.76], [0.95, 0.92, 0.84]];
+      function scene(b) {
+        const A0 = TB.approve[0], A1 = TB.approve[1], sweep = r(b, A0, A1) * NN, inSweep = b > A0 - 0.2 && b < A1 + 0.3;
+        const thick = (() => { const K = TB.thick; if (b <= K[0][0]) return K[0][1]; for (let i = 0; i < K.length - 1; i++) if (b < K[i + 1][0]) return lerp(K[i][1], K[i + 1][1], sm(r(b, K[i][0], K[i + 1][0]))); return K[K.length - 1][1]; })();
+        const k0 = active(b), tip = tipAt(b);
+        nG = 0;
+        for (let i = 0; i < NN; i++) {
+          const q = i * 8, L = LAND[i], scale = sm(r(b, L - 0.25, L - 0.1)), proud = b < L ? 12 : 12 * (1 - sm(r(b, L, L + 0.08)));
+          const hit = b >= L ? Math.exp(-(b - L) / 0.12) : 0;
+          const ds = Math.min(Math.abs(sweep - i), NN - Math.abs(sweep - i)), passed = b > A0 && sweep >= i;
+          let glow = passed ? 0.5 * Math.exp(-(b - (A0 + i / NN * (A1 - A0))) / 1.2) : 0, flash = hit * 0.6 + (inSweep ? Math.exp(-Math.pow(ds / 5, 2)) * 1.5 : 0);
+          if (tip && k0 >= 0) { const t = THR[k0], j = Math.min(Math.floor(laid(k0, b)), t.n - 1); if (i === t.seq[j + 1] && b < TB.wind[0][0] + 1.5) glow += 0.8; }
+          NI[q] = NX[i]; NI[q + 1] = NY[i]; NI[q + 2] = proud; NI[q + 3] = scale; NI[q + 4] = glow; NI[q + 5] = flash; NI[q + 6] = hash(i, 7); NI[q + 7] = PAL[i];
+          const ga = glow * 0.4 + flash * 0.5;
+          if (scale > 0 && ga > 0.05) { const g = nG * 8, c = PALC[PAL[i]]; GI[g] = NX[i]; GI[g + 1] = NY[i]; GI[g + 2] = NH + proud + 4; GI[g + 3] = 10 + 14 * Math.min(1.4, glow + flash * 0.5);
+            GI[g + 4] = lerp(c[0], 1.0, 0.35); GI[g + 5] = lerp(c[1], 0.9, 0.35); GI[g + 6] = lerp(c[2], 0.75, 0.35); GI[g + 7] = Math.min(1.4, ga); nG++; }
+        }
+        // the thread: every pass laid so far, the one being laid, and the length running off the board from its tip
+        nT = 0; nFeed = 0;
+        for (let k = 0; k < THR.length; k++) { const t = THR[k], p = laid(k, b), full = Math.min(t.n, Math.floor(p));
+          for (let j = 0; j < full; j++) { const z = zOf(k, j); seg(nailPos(t.seq[j], z), nailPos(t.seq[j + 1], z), TW * thick, k + 0.5 * hash(j, 11 + k)); }
+          if (k === k0 && full < t.n && tip) { const z = zOf(k, full); seg(nailPos(t.seq[full], z), tip, TW * thick, k + 0.5); } }
+        const solid = nT;
+        if (tip) { seg(tip, [tip[0] + 110, tip[1] + 170, tip[2] + 460], TW * thick, tip[3] + 0.5); nFeed = 1; }
+        return { solid, tip, thick };
+      }
+
+      // ---------------- geometry
+      function cylinder(rad, z0, z1, segs, cap, out) {
+        const { P3, NM, I } = out;
+        for (let k = 0; k < segs; k++) { const a0 = k / segs * 2 * Math.PI, a1 = (k + 1) / segs * 2 * Math.PI, b0 = P3.length / 3;
+          for (const [a, z] of [[a0, z0], [a1, z0], [a1, z1], [a0, z1]]) { P3.push(Math.cos(a) * rad, Math.sin(a) * rad, z); NM.push(Math.cos(a), Math.sin(a), 0); }
+          I.push(b0, b0 + 1, b0 + 2, b0, b0 + 2, b0 + 3);
+          if (cap) { const c0 = P3.length / 3; P3.push(0, 0, z1, Math.cos(a0) * rad, Math.sin(a0) * rad, z1, Math.cos(a1) * rad, Math.sin(a1) * rad, z1); NM.push(0, 0, 1, 0, 0, 1, 0, 0, 1); I.push(c0, c0 + 1, c0 + 2); } }
+      }
+      function sphere(rad, cz, segs, rings, out) {   // the pin's round head
+        const { P3, NM, I } = out, b0 = P3.length / 3;
+        for (let y = 0; y <= rings; y++) { const th = y / rings * Math.PI; for (let x = 0; x <= segs; x++) { const ph = x / segs * 2 * Math.PI;
+          const n = [Math.sin(th) * Math.cos(ph), Math.sin(th) * Math.sin(ph), -Math.cos(th)]; P3.push(n[0] * rad, n[1] * rad, cz + n[2] * rad); NM.push(...n); } }
+        for (let y = 0; y < rings; y++) for (let x = 0; x < segs; x++) { const a = b0 + y * (segs + 1) + x, c = a + segs + 1; I.push(a, c, a + 1, a + 1, c, c + 1); }
+      }
+      function nailMesh() { const m = { P3: [], NM: [], I: [] }; cylinder(0.9, 0, NH, 8, false, m); sphere(4.2, NH + 2.6, 16, 10, m); return m; }
+      function boxMesh() {
+        const P3 = [], NM = [], I = [], F = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+        for (const n of F) { const u = n[0] ? [0, 1, 0] : [1, 0, 0], v = [n[1] * u[2] - n[2] * u[1], n[2] * u[0] - n[0] * u[2], n[0] * u[1] - n[1] * u[0]], b0 = P3.length / 3;
+          for (const [a, c] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { P3.push((n[0] + a * u[0] + c * v[0]) / 2, (n[1] + a * u[1] + c * v[1]) / 2, (n[2] + a * u[2] + c * v[2]) / 2); NM.push(...n); }
+          I.push(b0, b0 + 1, b0 + 2, b0, b0 + 2, b0 + 3); }
+        return { P3, NM, I };
+      }
+
+      // ---------------- shaders
+      const LIGHT = `
+uniform highp sampler2DShadow uSh; uniform mat4 uLVP; uniform vec3 uLD, uEye; uniform float uKey, uAmb;
+float shadow(vec3 w, vec3 n){
+  vec4 lp = uLVP * vec4(w + n * 0.5, 1.0); vec3 s = lp.xyz / lp.w * 0.5 + 0.5;
+  if (s.x < 0.0 || s.y < 0.0 || s.x > 1.0 || s.y > 1.0 || s.z > 1.0) return 1.0;
+  float sum = 0.0, px = 1.0 / 4096.0;
+  for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) sum += texture(uSh, vec3(s.xy + vec2(x, y) * px, s.z - 0.00035));
+  return sum / 9.0;
+}
+vec3 shade(vec3 w, vec3 n, vec3 alb, float gloss, float pw){
+  vec3 V = normalize(uEye - w), L = -uLD; float d = max(dot(n, L), 0.0), s = d > 0.0 ? shadow(w, n) : 0.0;
+  float spe = pow(max(dot(n, normalize(L + V)), 0.0), pw) * gloss;
+  return alb * uAmb * (0.55 + 0.45 * max(n.z, 0.0)) + vec3(1.0, 0.93, 0.82) * uKey * s * (alb * d + spe);
+}
+vec3 tone(vec3 c){ c = c / (1.0 + c * 0.6); return pow(max(c, 0.0), vec3(0.92)); }
+`;
+      const NAIL_VS = `#version 300 es
+layout(location=0) in vec3 aP; layout(location=1) in vec3 aN; layout(location=3) in vec4 aI; layout(location=4) in vec4 aJ;
+uniform mat4 uVP; out vec3 vW, vN; out float vGlow, vFlash, vHead, vVar, vPal;
+void main(){
+  vec3 p = aP; p.z += aI.z * smoothstep(0.0, ${NH.toFixed(1)}, aP.z);   // before it is pressed home, the pin stands proud
+  p *= aI.w;
+  vec3 w = vec3(aI.xy, 0.0) + p; vW = w; vN = aN; vGlow = aJ.x; vFlash = aJ.y; vVar = aJ.z; vPal = aJ.w; vHead = step(${(NH - 1.7).toFixed(2)}, aP.z);
+  gl_Position = aI.w > 0.001 ? uVP * vec4(w, 1.0) : vec4(2.0, 2.0, 2.0, 1.0);
+}`;
+      const NAIL_FS = `#version 300 es
+precision highp float; out vec4 o; in vec3 vW, vN; in float vGlow, vFlash, vHead, vVar, vPal;` + LIGHT + `
+void main(){
+  vec3 n = normalize(vN);
+  vec3 pin = vPal < 0.5 ? vec3(0.90, 0.20, 0.13) : vPal < 1.5 ? vec3(0.86, 0.55, 0.26) : vPal < 2.5 ? vec3(0.10, 0.62, 0.56) : vec3(0.82, 0.78, 0.70);
+  vec3 alb = mix(vec3(0.42, 0.42, 0.44), pin * (0.92 + 0.16 * vVar), vHead);
+  vec3 c = shade(vW, n, alb, mix(0.9, 0.7, vHead), mix(60.0, 90.0, vHead));
+  c += pin * vGlow * mix(0.2, 1.6, vHead) + vec3(1.0, 0.88, 0.7) * vFlash * mix(0.3, 1.8, vHead);
+  o = vec4(tone(c), 1.0);
+}`;
+      // a pass of thread: a ribbon facing the camera, never drawn thinner than a pixel and a half; where the thread itself is thinner
+      // than that, it fades by the same amount, so a hundred passes over one spot add up like real thread
+      const THR_VS = `#version 300 es
+layout(location=0) in vec2 aV; layout(location=3) in vec4 aA; layout(location=4) in vec4 aB;
+uniform mat4 uVP; uniform vec3 uEye, uLD; uniform float uOrtho, uFpx;
+out vec3 vW, vSd, vTo; out float vSide, vS, vKind, vCov;
+void main(){
+  vec3 A = aA.xyz, B = aB.xyz, P = mix(A, B, aV.x), d = normalize(B - A + vec3(1e-4, 0.0, 0.0));
+  vec3 to = uOrtho > 0.5 ? -uLD : normalize(uEye - P), sd = normalize(cross(d, to));
+  float wid = aA.w, cov = 1.0;
+  if (uOrtho < 0.5) { float cw = (uVP * vec4(P, 1.0)).w, px = wid * uFpx / cw; cov = min(1.0, px / 1.5); wid = max(wid, 1.5 * cw / uFpx); }
+  P += sd * aV.y * wid * 0.5;
+  vW = P; vSd = sd; vTo = to; vSide = aV.y; vS = aV.x; vKind = aB.w; vCov = cov; gl_Position = uVP * vec4(P, 1.0);
+}`;
+      const THR_FS = `#version 300 es
+precision highp float; out vec4 o; in vec3 vW, vSd, vTo; in float vSide, vS, vKind, vCov;` + LIGHT + `
+uniform float uFeed; uniform vec4 uTA;
+void main(){
+  vec3 n = normalize(vSd * vSide + vTo * sqrt(max(0.0, 1.0 - vSide * vSide)));   // shaded as a round thread
+  float k = floor(vKind), sh = fract(vKind);
+  vec3 alb = k < 0.5 ? vec3(0.93, 0.89, 0.80) : k < 1.5 ? vec3(1.0, 0.36, 0.25) : k < 2.5 ? vec3(0.98, 0.72, 0.42) : vec3(0.22, 0.86, 0.78);
+  alb *= 0.9 + 0.2 * sh;
+  vec3 c = tone(shade(vW, n, alb, 0.35, 22.0) + alb * 0.18);
+  float ta = k < 0.5 ? uTA.x : k < 1.5 ? uTA.y : k < 2.5 ? uTA.z : uTA.w;
+  float a = vCov * ta * (uFeed > 0.5 ? smoothstep(1.0, 0.15, vS) : 1.0) * (1.0 - smoothstep(0.6, 1.0, abs(vSide)) * 0.5);
+  o = vec4(c * a, 1.0);
+}`;
+      const SOL_VS = `#version 300 es
+layout(location=0) in vec3 aP; layout(location=1) in vec3 aN;
+uniform mat4 uVP, uB; out vec3 vW, vN;
+void main(){ vec4 w = uB * vec4(aP, 1.0); vW = w.xyz; vN = aN; gl_Position = uVP * w; }`;
+      const SOL_FS = `#version 300 es
+precision highp float; out vec4 o; in vec3 vW, vN; uniform vec3 uAlb; uniform float uKind;` + LIGHT + `
+float h21(vec2 p){ vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(h21(i), h21(i + vec2(1, 0)), f.x), mix(h21(i + vec2(0, 1)), h21(i + vec2(1, 1)), f.x), f.y); }
+void main(){
+  vec3 n = normalize(vN), alb = uAlb;
+  if (uKind < 0.5) {   // the board: dark stained wood, the grain running across it
+    float g = vn(vec2(vW.x * 0.0035, vW.y * 0.09)) * 0.6 + vn(vec2(vW.x * 0.012, vW.y * 0.31)) * 0.4;
+    alb *= (0.82 + 0.3 * g) * smoothstep(7000.0, 1800.0, length(vW.xy));
+  }
+  vec3 c = shade(vW, n, alb, uKind < 0.5 ? 0.08 : 0.0, 12.0);
+  o = vec4(tone(c), 1.0);
+}`;
+      const GLOW_VS = `#version 300 es
+layout(location=0) in vec2 aV; layout(location=3) in vec4 aI; layout(location=4) in vec4 aC;
+uniform mat4 uVP; uniform vec3 uR, uU; out vec2 vQ; out vec4 vC;
+void main(){ vec3 w = aI.xyz + (uR * aV.x + uU * aV.y) * aI.w; vQ = aV; vC = aC; gl_Position = uVP * vec4(w, 1.0); }`;
+      const GLOW_FS = `#version 300 es
+precision highp float; out vec4 o; in vec2 vQ; in vec4 vC;
+void main(){ float d = dot(vQ, vQ); float a = exp(-d * 4.5) * vC.a * (1.0 - smoothstep(0.8, 1.0, d)); o = vec4(vC.rgb * a, 1.0); }`;
+      const DEPTH_FS = `#version 300 es
+precision highp float; void main(){}`;
+
+      let gl, ovG, PRG = {}, VAO = {}, nailBuf, thrBuf, glowBuf, shTex, shFB, msFB, frame = -1;
+      function prog(vs, fs) {
+        const mk = (t, src) => { const s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+        const p = gl.createProgram(); gl.attachShader(p, mk(gl.VERTEX_SHADER, vs)); gl.attachShader(p, mk(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
+        if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+        const U = {}, n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS); for (let i = 0; i < n; i++) { const a = gl.getActiveUniform(p, i); U[a.name.replace("[0]", "")] = gl.getUniformLocation(p, a.name); }
+        return { p, U };
+      }
+      function buf(target, data) { const b = gl.createBuffer(); gl.bindBuffer(target, b); gl.bufferData(target, data, gl.STATIC_DRAW); return b; }
+      function attr(loc, data, size) { buf(gl.ARRAY_BUFFER, new Float32Array(data)); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, size, gl.FLOAT, false, 0, 0); }
+      function inst(b) { gl.bindBuffer(gl.ARRAY_BUFFER, b);
+        gl.enableVertexAttribArray(3); gl.vertexAttribPointer(3, 4, gl.FLOAT, false, 32, 0); gl.vertexAttribDivisor(3, 1);
+        gl.enableVertexAttribArray(4); gl.vertexAttribPointer(4, 4, gl.FLOAT, false, 32, 16); gl.vertexAttribDivisor(4, 1); }
+      const SHR = 4096;
+      function initGL() {
+        gl = $("#stage").getContext("webgl2", { antialias: false, alpha: true, premultipliedAlpha: false, depth: true, stencil: false, preserveDrawingBuffer: true });
+        PRG.nail = prog(NAIL_VS, NAIL_FS); PRG.nailD = prog(NAIL_VS, DEPTH_FS); PRG.thr = prog(THR_VS, THR_FS); PRG.thrD = prog(THR_VS, DEPTH_FS);
+        PRG.sol = prog(SOL_VS, SOL_FS); PRG.glow = prog(GLOW_VS, GLOW_FS);
+        const dyn = (bytes) => { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, bytes, gl.DYNAMIC_DRAW); return b; };
+        nailBuf = dyn(NI.byteLength); thrBuf = dyn(TI.byteLength); glowBuf = dyn(GI.byteLength);
+        const nm = nailMesh(); VAO.nail = gl.createVertexArray(); gl.bindVertexArray(VAO.nail); attr(0, nm.P3, 3); attr(1, nm.NM, 3); inst(nailBuf);
+        buf(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(nm.I)); VAO.nailN = nm.I.length;
+        const strip = [0, -1, 1, -1, 1, 1, 0, -1, 1, 1, 0, 1];
+        VAO.thr = gl.createVertexArray(); gl.bindVertexArray(VAO.thr); attr(0, strip, 2); inst(thrBuf);
+        VAO.glow = gl.createVertexArray(); gl.bindVertexArray(VAO.glow); attr(0, [-1, -1, 1, -1, 1, 1, -1, -1, 1, 1, -1, 1], 2); inst(glowBuf);
+        const bm = boxMesh(); VAO.box = gl.createVertexArray(); gl.bindVertexArray(VAO.box); attr(0, bm.P3, 3); attr(1, bm.NM, 3); buf(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(bm.I)); VAO.boxN = bm.I.length;
+        gl.bindVertexArray(null);
+        shTex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, shTex); gl.texStorage2D(gl.TEXTURE_2D, 1, gl.DEPTH_COMPONENT24, SHR, SHR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        shFB = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, shFB); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, shTex, 0); gl.drawBuffers([gl.NONE]); gl.readBuffer(gl.NONE);
+        const ms = Math.min(4, gl.getParameter(gl.MAX_SAMPLES));
+        msFB = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, msFB);
+        const rc = gl.createRenderbuffer(); gl.bindRenderbuffer(gl.RENDERBUFFER, rc); gl.renderbufferStorageMultisample(gl.RENDERBUFFER, ms, gl.RGBA8, W, H); gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, rc);
+        const rd = gl.createRenderbuffer(); gl.bindRenderbuffer(gl.RENDERBUFFER, rd); gl.renderbufferStorageMultisample(gl.RENDERBUFFER, ms, gl.DEPTH_COMPONENT24, W, H); gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, rd);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      }
+
+      // ---------------- the camera: the keyed path, with the tip-following camera blended over it
+      function keyv(K, b) { if (b <= K[0][0]) return K[0][1]; if (b >= K[K.length - 1][0]) return K[K.length - 1][1];
+        let i = 0; while (K[i + 1][0] < b) i++; const a = K[i], c = K[i + 1]; return lerp(a[1], c[1], sm(r(b, a[0], c[0]))); }
+      function camKey(K, b) {
+        if (b <= K[0][0]) return K[0].slice(1); if (b >= K[K.length - 1][0]) return K[K.length - 1].slice(1);
+        let i = 0; while (K[i + 1][0] < b) i++; const a = K[i], c = K[i + 1], u = sm(r(b, a[0], c[0])); return a.slice(1).map((v, q) => lerp(v, c[q + 1], u));
+      }
+      function camera(b) {
+        let c = camKey(TB.cam, b);
+        const fw = keyv(TB.follow, b);
+        if (fw > 0) { let m = [0, 0, 0], n = 0;   // the tip, smoothed over the last half second so the camera floats rather than jerks
+          for (let j = 0; j < 14; j++) { const t = tipAt(b - j * 0.07) || tipAt(Math.max(b, TB.days[0][0] + 0.01)); if (t) { m[0] += t[0]; m[1] += t[1]; m[2] += t[2]; n++; } }
+          if (!n) { const s = THR[0].seq[0]; m = [NX[s], NY[s], TZ[0]]; n = 1; }
+          m = m.map((v) => v / n); const o = TB.followOff, f = [m[0] + o[0], m[1] + o[1], m[2] + o[2], m[0], m[1], m[2], o[3]];
+          c = c.map((v, q) => lerp(v, f[q], fw)); }
+        return c;
+      }
+
+      const LD = (() => { const l = Math.hypot(...TB.light); return TB.light.map((v) => v / l); })();
+      const LVP = M4.mul(M4.ortho(-900, 900, -900, 900, 1000, 5200), M4.look([-LD[0] * 3000, -LD[1] * 3000, -LD[2] * 3000], [0, 0, 0], [0, 1, 0]));
+      const BOARD = M4.box(0, 0, -15, 24000, 16000, 30), BACK = M4.box(0, 0, -60, 12000, 9000, 20);
+      function draw(nf) {
+        const b = (nf / FPS) / BEAT, S = scene(b);
+        gl.bindBuffer(gl.ARRAY_BUFFER, nailBuf); gl.bufferSubData(gl.ARRAY_BUFFER, 0, NI);
+        gl.bindBuffer(gl.ARRAY_BUFFER, thrBuf); gl.bufferSubData(gl.ARRAY_BUFFER, 0, TI, 0, Math.max(1, nT) * 8);
+        gl.bindBuffer(gl.ARRAY_BUFFER, glowBuf); gl.bufferSubData(gl.ARRAY_BUFFER, 0, GI, 0, Math.max(1, nG) * 8);
+        const c = camera(b), eye = [c[0], c[1], c[2]], VP = M4.mul(M4.persp(c[6], W / H, 16, 90000), M4.look(eye, [c[3], c[4], c[5]], [0, 1, 0]));
+        const fpx = (H / 2) / Math.tan(c[6] * Math.PI / 360);
+        const key = sm(r(b, 0.2, 1.4)) * (1 - sm(r(b, TB.logo - 0.4, TB.logo + 0.3))), amb = 0.18 * key;
+        // the shadow map: the pins, and the thread while it is thick enough to cast one
+        gl.enable(gl.DEPTH_TEST); gl.depthMask(true); gl.disable(gl.BLEND); gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(2, 4);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, shFB); gl.viewport(0, 0, SHR, SHR); gl.clear(gl.DEPTH_BUFFER_BIT);
+        gl.useProgram(PRG.nailD.p); gl.uniformMatrix4fv(PRG.nailD.U.uVP, false, LVP); gl.bindVertexArray(VAO.nail); gl.drawElementsInstanced(gl.TRIANGLES, VAO.nailN, gl.UNSIGNED_SHORT, 0, NN);
+        if (S.solid && S.thick > 2) { const U = PRG.thrD.U; gl.useProgram(PRG.thrD.p); gl.uniformMatrix4fv(U.uVP, false, LVP); gl.uniform3fv(U.uLD, LD); gl.uniform1f(U.uOrtho, 1); gl.uniform1f(U.uFpx, 1);
+          gl.bindVertexArray(VAO.thr); gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, S.solid); }
+        gl.disable(gl.POLYGON_OFFSET_FILL);
+        // the picture
+        gl.bindFramebuffer(gl.FRAMEBUFFER, msFB); gl.viewport(0, 0, W, H); gl.clearColor(0.03, 0.03, 0.035, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        const lit = (p) => { const U = p.U; gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, shTex); gl.uniform1i(U.uSh, 0);
+          gl.uniformMatrix4fv(U.uLVP, false, LVP); gl.uniform3fv(U.uLD, LD); gl.uniform3fv(U.uEye, eye); gl.uniform1f(U.uKey, 1.25 * key); gl.uniform1f(U.uAmb, amb); gl.uniformMatrix4fv(U.uVP, false, VP); };
+        { const U = PRG.sol.U; gl.useProgram(PRG.sol.p); lit(PRG.sol); gl.bindVertexArray(VAO.box);
+          gl.uniform1f(U.uKind, 0); gl.uniform3f(U.uAlb, 0.105, 0.09, 0.078); gl.uniformMatrix4fv(U.uB, false, BOARD); gl.drawElements(gl.TRIANGLES, VAO.boxN, gl.UNSIGNED_SHORT, 0);
+          gl.uniform1f(U.uKind, 1); gl.uniform3f(U.uAlb, 0.05, 0.05, 0.055); gl.uniformMatrix4fv(U.uB, false, BACK); gl.drawElements(gl.TRIANGLES, VAO.boxN, gl.UNSIGNED_SHORT, 0); }
+        gl.useProgram(PRG.nail.p); lit(PRG.nail); gl.bindVertexArray(VAO.nail); gl.drawElementsInstanced(gl.TRIANGLES, VAO.nailN, gl.UNSIGNED_SHORT, 0, NN);
+        if (nT) { const U = PRG.thr.U, ta = TB.talpha, kk = key; gl.useProgram(PRG.thr.p); lit(PRG.thr); gl.uniform1f(U.uOrtho, 0); gl.uniform1f(U.uFpx, fpx); gl.uniform1f(U.uFeed, 0);
+          gl.uniform4f(U.uTA, ta[0] * kk, ta[1] * kk, ta[2] * kk, ta[3] * kk); gl.bindVertexArray(VAO.thr);
+          gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); gl.depthMask(false);   // thread adds up as light
+          gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, S.solid);
+          if (nFeed) { gl.uniform1f(U.uFeed, 1);
+            gl.bindBuffer(gl.ARRAY_BUFFER, thrBuf); gl.vertexAttribPointer(3, 4, gl.FLOAT, false, 32, S.solid * 32); gl.vertexAttribPointer(4, 4, gl.FLOAT, false, 32, S.solid * 32 + 16);
+            gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, nFeed);
+            gl.vertexAttribPointer(3, 4, gl.FLOAT, false, 32, 0); gl.vertexAttribPointer(4, 4, gl.FLOAT, false, 32, 16); }
+          gl.depthMask(true); gl.disable(gl.BLEND); }
+        if (nG) { const U = PRG.glow.U, V = M4.look(eye, [c[3], c[4], c[5]], [0, 1, 0]);
+          gl.useProgram(PRG.glow.p); gl.uniformMatrix4fv(U.uVP, false, VP); gl.uniform3f(U.uR, V[0], V[4], V[8]); gl.uniform3f(U.uU, V[1], V[5], V[9]);
+          gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); gl.depthMask(false); gl.bindVertexArray(VAO.glow); gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, nG);
+          gl.depthMask(true); gl.disable(gl.BLEND); }
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, msFB); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null); gl.blitFramebuffer(0, 0, W, H, 0, 0, W, H, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        return { VP, b, S };
+      }
+
+      // ---------------- the flat layer: the words, the day count by the first passes, the demo label and the end card
+      const BONE = "#F3EAD6", DARK = "#08080A", TEAL = "#2FD6C3", AMBER = "#F2B46A";
+      function mono(g, s, x, y, size, col, al = "left", wt = 500) { g.font = `${wt} ${size}px JBM`; g.letterSpacing = "0.08em"; g.textAlign = al; g.textBaseline = "alphabetic"; g.fillStyle = col; g.fillText(s, x, y); g.letterSpacing = "0px"; }
+      function toScreen(VP, p) { const q = M4.ap(VP, p); if (q[3] <= 1) return null; return [(q[0] / q[3] * 0.5 + 0.5) * W, (0.5 - q[1] / q[3] * 0.5) * H]; }
+      function overlay(g, D) {
+        const b = D.b; g.clearRect(0, 0, W, H);
+        const vg = g.createRadialGradient(W / 2, H * 0.55, H * 0.42, W / 2, H * 0.55, H * 1.05); vg.addColorStop(0, "rgba(8,8,10,0)"); vg.addColorStop(1, "rgba(8,8,10,0.6)"); g.fillStyle = vg; g.fillRect(0, 0, W, H);
+        // DAY 1, 2, 3: one label for each of the first passes, riding beside the tip
+        const DK = TB.days;
+        for (let d = 0; d < 3; d++) { const b0 = DK[d][0], b1 = DK[d + 1][0], a = sm(r(b, b0 + 0.1, b0 + 0.4)) * (1 - sm(r(b, b1 - 0.05, b1 + 0.35)));
+          if (a <= 0 || !D.S.tip) continue; const p = toScreen(D.VP, [D.S.tip[0], D.S.tip[1], D.S.tip[2]]); if (!p) continue;
+          g.globalAlpha = a; g.fillStyle = "rgba(8,8,10,0.72)"; g.fillRect(p[0] + 26, p[1] - 58, 116, 36); mono(g, "DAY " + (d + 1), p[0] + 84, p[1] - 32, 22, AMBER, "center", 700); g.globalAlpha = 1; }
+        for (const [s, b0, b1] of TB.caps) { if (b < b0 || b > b1 + 0.1) continue;
+          const a = sm(r(b, b0, b0 + 0.35)) * (1 - sm(r(b, b1 - 0.3, b1))); g.globalAlpha = a; g.font = '800 64px "Archivo"'; g.textAlign = "center"; g.textBaseline = "alphabetic";
+          g.fillStyle = "rgba(8,8,10,0.6)"; g.fillText(s, W / 2 + 3, 122 + 4 + (1 - a) * 10); g.fillStyle = BONE; g.fillText(s, W / 2, 122 + (1 - a) * 10); g.globalAlpha = 1; }
+        if (b >= 1.6 && b < TB.logo) { g.font = "500 18px JBM"; g.letterSpacing = "0.08em"; const s = TB.label, w = g.measureText(s).width + 22; g.letterSpacing = "0px";
+          g.fillStyle = "rgba(8,8,10,0.86)"; g.fillRect(40, H - 68, w, 32); mono(g, s, 51, H - 46, 18, BONE); }
+        if (b >= TB.logo) { const u = r(b, TB.logo + 0.1, TB.logo + 0.8), lw = 926 * 0.72, lh = 193 * 0.72, a = 1 - r(b, TB.beats - 0.4, TB.beats), eO = 1 - Math.pow(1 - u, 3);
+          g.fillStyle = DARK; g.globalAlpha = r(b, TB.logo, TB.logo + 0.3); g.fillRect(0, 0, W, H);
+          g.globalAlpha = eO * a; g.drawImage($("#logo"), W / 2 - lw / 2, 300 - (1 - eO) * 14, lw, lh);
+          g.font = '800 80px "Archivo"'; g.textAlign = "center"; g.textBaseline = "alphabetic"; g.fillStyle = BONE; g.globalAlpha = a * r(b, TB.logo + 0.4, TB.logo + 0.9); g.fillText("Pinterest Growth Automation", W / 2, 610);
+          g.globalAlpha = a * r(b, TB.logo + 0.8, TB.logo + 1.3); mono(g, "ai.joaoqueiros.com", W / 2, 690, 28, BONE, "center"); mono(g, "A SERVICE · THIS FILM IS CODE", W / 2, 744, 20, TEAL, "center"); g.globalAlpha = 1; }
+      }
+      function paint(t) {
+        const nf = Math.min(Math.floor(t * FPS + 1e-6), Math.round(DUR * FPS) - 1); if (nf === frame) return;
+        frame = nf; const D = draw(nf); overlay(ovG, D);
+      }
+      const tl = gsap.timeline({ paused: true }), clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => paint(clock.t) }, 0);
+      async function build() {
+        await Promise.all([$("#logo").decode(), document.fonts.load('800 40px "Archivo"'), document.fonts.load('500 20px "JBM"'), document.fonts.load('700 20px "JBM"')]);
+        ovG = $("#over").getContext("2d"); initGL();
+        window.addEventListener("hf-seek", (ev) => paint(ev.detail.time));
+        paint(0);
+        window.__timelines = window.__timelines || {}; window.__timelines["main"] = tl;
+        if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
+      }
+      window.__hf = window.__hf || {}; window.__hf.buildReady = window.__hf.buildReady || {}; window.__hf.buildReady["compound"] = build();
+    </script>
+  </body>
+</html>
